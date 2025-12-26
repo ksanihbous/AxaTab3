@@ -173,6 +173,16 @@ local ENTRIES = {
         method = "HttpGetAsync",
     },
     {
+        label  = "SPEARFISHING JUMA",
+        url    = "https://raw.githubusercontent.com/JumaNexus/Spear-Fishing/refs/heads/main/main.lua",
+        method = "HttpGet",
+    },
+    {
+        label  = "INFINITE YIELD",
+        url    = "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",
+        method = "HttpGet",
+    },
+    {
         label  = "DEX EXPLORER",
         url    = "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua",
         method = "HttpGetAsync",
