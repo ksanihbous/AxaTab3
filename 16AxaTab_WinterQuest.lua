@@ -1,6 +1,6 @@
 --==========================================================
---  22AxaTab_WinterQuest.lua
---  TAB 22: "Winter Quest Auto PRO++ (Systematic AutoQuest + Dialog-aware)"
+--  16AxaTab_WinterQuest.lua
+--  TAB 16: "Winter Quest Auto PRO++ (Systematic AutoQuest + Dialog-aware)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
