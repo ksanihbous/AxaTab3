@@ -156,7 +156,7 @@ local header = ui("TextLabel", {
     TextSize = 15,
     TextColor3 = Color3.fromRGB(30,30,55),
     TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "📡 Webhook Caught V2",
+    Text = "📡 Webhook Caught V1",
 }, headerCard)
 
 local sub = ui("TextLabel", {
