@@ -1,5 +1,5 @@
 --==========================================================
---  4AxaTab_AntiAFK.lua
+--  3AxaTab_AntiAFK.lua
 --  Smart AntiAFK + Smart Auto Nonaktif (Jam WITA)
 --  + Remote Discord API + Report Players API + Wordban Chat AutoLeave
 --==========================================================
