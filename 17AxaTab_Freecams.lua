@@ -1036,7 +1036,7 @@ local function setupTabUI()
     title.TextSize = 20
     title.TextColor3 = Color3.fromRGB(250, 0, 0)
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Text = "Freecam (PC + Mobile Joystick) V4"
+    title.Text = "Freecam (PC + Mobile Joystick) V1"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "Description"
@@ -1052,8 +1052,6 @@ local function setupTabUI()
     desc.TextWrapped = true
     desc.Text = table.concat({
         "PC: F toggle, WASD/Arrow, Space/E naik, Q turun, Shift sprint, mouse look.",
-        "Mobile: FREECAM bar di atas tengah ON → joystick kiri (gerak), joystick kanan (putar), tombol UP/DOWN (naik/turun).",
-        "Icon mata: 0=normal, 1=hide semua ScreenGui (kecuali overlay + CoreGui), 2=hide semua ScreenGui + overlay (sisa icon mata + CoreGui).",
         "Speed joystick +/− ada di bawah FREECAM bar (overlay), muncul saat FREECAM ON.",
         "FREECAM PC: karakter tidak bergerak (WASD diblok lewat ContextActionService)."
     }, "\n")
