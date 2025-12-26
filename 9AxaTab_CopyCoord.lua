@@ -1,5 +1,5 @@
 --==========================================================
---  13AxaTab_CopyCoord.lua (UPGRADE: Position + LookAt)
+--  9AxaTab_CopyCoord.lua (UPGRADE: Position + LookAt)
 --  Env dari CORE:
 --    TAB_FRAME, TAB_ID
 --    Players, LocalPlayer, RunService, UserInputService, StarterGui
@@ -116,7 +116,7 @@ end
 -- HEADER DALAM TAB
 ----------------------------------------------------------------
 makeLabel(
-    frame,"Header","📍 Copy Coordinate v2",
+    frame,"Header","📍 Copy Coordinate V1",
     UDim2.new(1,-10,0,22),UDim2.new(0,5,0,6),
     {
         Font      = Enum.Font.GothamBold,
