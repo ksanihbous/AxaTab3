@@ -229,7 +229,7 @@ connect(player.CharacterAdded, function(newChar)
 end)
 
 -- ========== HEADER ==========
-makeLabel(frame,"Header","🎥 Spectate + ESP V7",
+makeLabel(frame,"Header","🎥 Spectate + ESP V1",
     UDim2.new(1,-10,0,22),UDim2.new(0,5,0,6),
     {Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.fromRGB(40,40,60),XAlign=Enum.TextXAlignment.Left}
 )
