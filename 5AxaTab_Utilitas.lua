@@ -1,5 +1,5 @@
 --==========================================================
---  6AxaTab_Utilitas.lua (UI simple + checklist)
+--  5AxaTab_Utilitas.lua (UI simple + checklist)
 --  ShiftRun + Infinite Jump + Kompas HUD + Horizontal + Rejoin Voice + No Clip + Fly + Invisible (No Visual)
 --==========================================================
 
