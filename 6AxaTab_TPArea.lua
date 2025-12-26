@@ -1,5 +1,5 @@
 --==========================================================
---  8AxaTab_TPArea.lua (ringkas)
+--  6AxaTab_TPArea.lua (ringkas)
 --==========================================================
 local players          = Players or game:GetService("Players")
 local player           = LocalPlayer or players.LocalPlayer
