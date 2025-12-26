@@ -1,6 +1,6 @@
 --==========================================================
---  18AxaTab_SulselVoice.lua
---  TAB 18: "Sulsel Voice - Fish Giver V3"
+--  14AxaTab_SulselVoice.lua
+--  TAB 14: "Sulsel Voice - Fish Giver V3"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
