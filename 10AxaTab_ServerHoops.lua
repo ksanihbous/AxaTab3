@@ -1,6 +1,6 @@
 --==========================================================
---  14AxaTab_ServerHoops.lua
---  TAB 14: "Server Hoops"
+--  10AxaTab_ServerHoops.lua
+--  TAB 10: "Server Hoops"
 --  Env dari CORE:
 --    TAB_FRAME, TAB_ID
 --    Players, LocalPlayer, HttpService, UserInputService,
