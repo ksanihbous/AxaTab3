@@ -1,5 +1,5 @@
 --==========================================================
---  5AxaTab_Autokey.lua
+--  4AxaTab_Autokey.lua
 --  Dipanggil via AxaHub CORE (loadstring + env TAB_FRAME)
 --==========================================================
 
