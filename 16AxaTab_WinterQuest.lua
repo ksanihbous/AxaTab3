@@ -2202,7 +2202,7 @@ end)
 do
     local headerCard = makeCard(body, 1)
 
-    makeLabel(headerCard, "❄ Winter Quest V7.4+ — Indo Hangout", UDim2.new(1,0,0,20), {
+    makeLabel(headerCard, "❄ Winter Quest V1 — Indo Hangout", UDim2.new(1,0,0,20), {
         Font = Enum.Font.GothamBold,
         TextSize = 15,
         TextColor3 = Color3.fromRGB(35,38,70),
