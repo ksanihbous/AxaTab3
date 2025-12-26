@@ -1164,7 +1164,7 @@ do
         TextSize = 15,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextColor3 = Color3.fromRGB(40,40,70),
-        Text = "⚙️ Utilitas V4 - Invisible"
+        Text = "⚙️ Utilitas V1 - Invisible"
     }, TAB)
 
     -- ScrollingFrame vertikal berisi checkbox checklist
@@ -1262,7 +1262,7 @@ do
     local rowShift = createToggleRow(
         scroll,
         "1_ShiftRun",
-        "ShiftRun (LeftShift, anim, FOV 80 / 70)",
+        "ShiftRun (LeftShift, anim, FOV Run/Normal)",
         false
     )
     rowShift.OnChanged(function(state)
@@ -1272,6 +1272,100 @@ do
             state and "ShiftRun AKTIF (tahan LeftShift)." or "ShiftRun dimatikan.",
             3
         )
+    end)
+
+    ----------------------------------------------------------------
+    -- INPUT BOX: SHIFT RUN SPEED & FOV (DIBAWAH SHIFT RUN)
+    ----------------------------------------------------------------
+    local srConfigRow = ui("Frame", {
+        Name = "1a_ShiftRunConfig",
+        Size = UDim2.new(1,0,0,30),
+        BackgroundTransparency = 1
+    }, scroll)
+
+    local srLabel = ui("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0,150,1,0),
+        Position = UDim2.new(0,0,0,0),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = Color3.fromRGB(40,40,70),
+        Text = "ShiftRun Speed / FOV:"
+    }, srConfigRow)
+
+    local speedBox = ui("TextBox", {
+        Name = "SpeedBox",
+        Size = UDim2.new(0,70,0,24),
+        Position = UDim2.new(0,160,0,3),
+        BackgroundColor3 = Color3.fromRGB(235,235,245),
+        BorderSizePixel = 0,
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 13,
+        TextColor3 = Color3.fromRGB(40,40,70),
+        PlaceholderText = "40",
+        Text = tostring(SR_RunningSpeed),
+        ClearTextOnFocus = false
+    }, srConfigRow)
+    ui("UICorner", {CornerRadius = UDim.new(0,6)}, speedBox)
+
+    local fovBox = ui("TextBox", {
+        Name = "FOVBox",
+        Size = UDim2.new(0,70,0,24),
+        Position = UDim2.new(0,240,0,3),
+        BackgroundColor3 = Color3.fromRGB(235,235,245),
+        BorderSizePixel = 0,
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 13,
+        TextColor3 = Color3.fromRGB(40,40,70),
+        PlaceholderText = "80",
+        Text = tostring(SR_RunFOV),
+        ClearTextOnFocus = false
+    }, srConfigRow)
+    ui("UICorner", {CornerRadius = UDim.new(0,6)}, fovBox)
+
+    speedBox.FocusLost:Connect(function(enterPressed)
+        local txt = speedBox.Text
+        local num = tonumber(txt)
+        if not num then
+            -- reset ke nilai sekarang jika bukan angka
+            speedBox.Text = tostring(SR_RunningSpeed)
+            notify("ShiftRun","Speed harus angka (contoh: 40).",2)
+            return
+        end
+        -- clamp biar aman
+        num = math.clamp(num, 16, 200)
+        SR_RunningSpeed = num
+        speedBox.Text = tostring(num)
+
+        -- jika sedang lari, apply ulang
+        if SR_Humanoid and SR_sprintEnabled and SR_Running then
+            SR_run()
+        end
+        notify("ShiftRun","RunningSpeed di-set ke "..tostring(num)..".",2)
+    end)
+
+    fovBox.FocusLost:Connect(function(enterPressed)
+        local txt = fovBox.Text
+        local num = tonumber(txt)
+        if not num then
+            fovBox.Text = tostring(SR_RunFOV)
+            notify("ShiftRun","Run FOV harus angka (contoh: 80).",2)
+            return
+        end
+        num = math.clamp(num, 60, 120)
+        SR_RunFOV = num
+        fovBox.Text = tostring(num)
+
+        -- rebuild tween biar target FOV baru
+        SR_ensureTweens()
+        -- apply state sekarang
+        if SR_sprintEnabled and SR_Running then
+            SR_run()
+        else
+            SR_walk()
+        end
+        notify("ShiftRun","Run FOV di-set ke "..tostring(num)..".",2)
     end)
 
     -- Checkbox: Infinite Jump
