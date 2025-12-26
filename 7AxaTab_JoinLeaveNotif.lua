@@ -1,5 +1,5 @@
 --==========================================================
---  10AxaTab_JoinLeaveNotif.lua (ringkas + jam WITA di list Join/Leave)
+--  7AxaTab_JoinLeaveNotif.lua (ringkas + jam WITA di list Join/Leave)
 --==========================================================
 local frame        = TAB_FRAME
 local Players      = Players
