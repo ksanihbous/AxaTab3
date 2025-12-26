@@ -1,6 +1,6 @@
 --==========================================================
---  24AxaTab_ChangeGender.lua
---  TAB 24: "Change Gender"
+--  18AxaTab_ChangeGender.lua
+--  TAB 18: "Change Gender"
 --  UI Tahoe AxaHub + RemoteFunction Gender (Pilih Laki-laki / Perempuan)
 --==========================================================
 
