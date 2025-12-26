@@ -265,7 +265,7 @@ mk("TextLabel",{
     Name="Header",Size=UDim2.new(1,-10,0,22),Position=UDim2.new(0,5,0,6),
     BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=15,
     TextColor3=Color3.fromRGB(40,40,60),TextXAlignment=Enum.TextXAlignment.Left,
-    Text="🛏️ AntiAFK+ Smart v6.9"
+    Text="🛏️ AntiAFK+ Smart V1"
 },antiTabFrame)
 
 mk("TextLabel",{
