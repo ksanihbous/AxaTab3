@@ -1,6 +1,6 @@
 --==========================================================
---  19AxaTab_IndoBeach.lua
---  TAB 19: "Indo Beach - Fish Giver V2.2+"
+--  13AxaTab_IndoBeach.lua
+--  TAB 13: "Indo Beach - Fish Giver V1"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
@@ -144,7 +144,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(235, 235, 245)
-    title.Text = "Indo Beach - Fish Giver V2.2++"
+    title.Text = "Indo Beach - Fish Giver V1"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
