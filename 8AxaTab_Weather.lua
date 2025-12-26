@@ -1,5 +1,5 @@
 --==========================================================
---  11AxaTab_Weather.lua
+--  8AxaTab_Weather.lua
 --  Dipanggil via loadstring dari CORE AxaHub
 --  Env yang tersedia (dari core):
 --    TAB_FRAME, TAB_ID
