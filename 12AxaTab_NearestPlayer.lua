@@ -1,7 +1,7 @@
 --==========================================================
---  16AxaTab_NearestPlayer.lua
+--  12AxaTab_NearestPlayer.lua
 --  TAB 16: "Nearest Player Guard PRO++ (Smart Reeling + Emote Duduk + AutoFishing Lokal + Multi Antena)"
---  v10.8 (WINTER) + UPGRADE SMART AUTOFISH AFTER TELEPORT
+--  V1 (WINTER) + UPGRADE SMART AUTOFISH AFTER TELEPORT
 --  + Friend Monitor (Exclude Friends: ON -> Webhook Friend Radius/Map)
 --  PATCH: Friend Join/Leave Map always updated + remove duplicate webhook logic + lighter
 --==========================================================
@@ -559,7 +559,7 @@ end
 
 ------------------- UI HEADER -------------------
 makeLabel(
-    frame, "Header", "🧭 Nearest Player v10.8 (❄ Winter)",
+    frame, "Header", "🧭 Nearest Player V1 (❄ Winter)",
     UDim2.new(1,-10,0,22), UDim2.new(0,5,0,6),
     { Font=Enum.Font.GothamBold, TextSize=15, TextColor3=Color3.fromRGB(40,40,60), XAlign=Enum.TextXAlignment.Left }
 )
