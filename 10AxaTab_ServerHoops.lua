@@ -1,6 +1,6 @@
 --==========================================================
 --  10AxaTab_ServerHoops.lua
---  TAB 10: "Server Hoops"
+--  TAB 14: "Server Hoops"
 --  Env dari CORE:
 --    TAB_FRAME, TAB_ID
 --    Players, LocalPlayer, HttpService, UserInputService,
@@ -357,7 +357,7 @@ end
 
 ------------------- HEADER TAB (SESUAI CORE) -------------------
 makeLabel(
-    frame,"Header","🌐 Server Hoops",
+    frame,"Header","🌐 Server Hoops V1",
     UDim2.new(1,-10,0,22),UDim2.new(0,5,0,6),
     { Font=Enum.Font.GothamBold, TextSize=15, TextColor3=Color3.fromRGB(40,40,60), XAlign=Enum.TextXAlignment.Left }
 )
