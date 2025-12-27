@@ -1,6 +1,6 @@
 --==========================================================
 --  17AxaTab_GalleryBBHY.lua
---  TAB 17: "Gallery BBHY - Fish Giver V1"
+--  TAB 17: "Gallery BBHY - Fish Giver V3"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -15,6 +15,7 @@ local HttpService       = HttpService       or game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = UserInputService  or game:GetService("UserInputService")
 local StarterGui        = StarterGui        or game:GetService("StarterGui")
+local CollectionService = game:GetService("CollectionService")
 
 if not (frame and LocalPlayer) then return end
 
@@ -631,32 +632,31 @@ local rodPurchaseRemote    = rodShopEvents and rodShopEvents:FindFirstChild("Req
 local rodPurchaseSuccess   = rodShopEvents and rodShopEvents:FindFirstChild("PurchaseSuccess")
 local globalLuckMultiplier = fishingSystem and fishingSystem:FindFirstChild("GlobalLuckMultiplier")
 
--- Custom Inventory (InventoryEvents) - server-side Fish/Rod Inventory
-local inventoryEvents           = fishingSystem and fishingSystem:FindFirstChild("InventoryEvents")
-local inventoryGetDataRemote    = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_GetData")
-local inventoryEquipRodRemote   = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_EquipRod")
-local inventoryEquipFishRemote  = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_EquipFish")
-local inventoryUnequipAllRemote = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_UnequipAll")
-local inventorySellAllRemote    = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_SellAll")
+-- Inventory Events (Custom Inventory / Favorite / Equip / SellAll)
+local inventoryEvents      = fishingSystem and fishingSystem:FindFirstChild("InventoryEvents")
+local invGetDataRemote     = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_GetData")
+local invToggleFavorite    = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_ToggleFavorite")
+local invSellAllRemote     = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_SellAll")
+local invEquipRodRemote    = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_EquipRod")
+local invEquipFishRemote   = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_EquipFish")
+local invUnequipAllRemote  = inventoryEvents and inventoryEvents:FindFirstChild("Inventory_UnequipAll")
 
--- FishingConfig & Assets.Fish (untuk warna rarity + icon Fish Inventory)
-local fishingConfig       = nil
-local fishingRarityColors = {}
-local fishAssetFolder     = nil
+local inventoryFishingConfig = nil
+local rarityColors           = nil
+local assetsFish             = nil
 
 if fishingSystem then
     pcall(function()
-        local cfg = require(fishingSystem:WaitForChild("FishingConfig"))
-        fishingConfig = cfg
-        if cfg and cfg.RarityColors then
-            fishingRarityColors = cfg.RarityColors
-        end
+        inventoryFishingConfig = require(fishingSystem:WaitForChild("FishingConfig"))
     end)
-
-    local assets = fishingSystem:FindFirstChild("Assets")
-    if assets then
-        fishAssetFolder = assets:FindFirstChild("Fish")
+    local assetsFolder = fishingSystem:FindFirstChild("Assets")
+    if assetsFolder then
+        assetsFish = assetsFolder:FindFirstChild("Fish")
     end
+end
+
+if inventoryFishingConfig then
+    rarityColors = inventoryFishingConfig.RarityColors or {}
 end
 
 if not fishingSystem then
@@ -674,8 +674,8 @@ end
 if not rodShopEvents or not rodGetDataRemote or not rodPurchaseRemote then
     warn("[17AxaTab_GalleryBBHY] RodShopEvents remotes tidak lengkap (GetShopData/RequestPurchase).")
 end
-if not inventoryEvents or not inventoryGetDataRemote then
-    warn("[17AxaTab_GalleryBBHY] InventoryEvents.Inventory_GetData tidak ditemukan (Fish/Rod Inventory card terbatas).")
+if not inventoryEvents or not invGetDataRemote then
+    warn("[17AxaTab_GalleryBBHY] InventoryEvents / Inventory_GetData tidak lengkap (Fish Inventory/Auto Sell Full akan terbatas).")
 end
 
 ------------------- STATE -------------------
@@ -693,12 +693,12 @@ local selectedWeightText    = ""
 
 local workerRunning         = false
 
--- Sell (Backpack)
+-- Sell (Tool-based, SellFishRemote)
 local fishInventoryCache    = {}   -- [name] = { {fishId, rarity, weight}, ... }
 local sellNameOptions       = { "ALL" }
 local selectedSellNameIndex = 1
 
--- UI refs
+-- UI refs umum
 local progressLabel         = nil
 
 -- Drop Money
@@ -714,23 +714,31 @@ local rodOwnedDict          = {}   -- [rodName] = true
 local rodAllData            = {}   -- dari GetShopData.AllRodData
 local rodDataLoaded         = false
 
--- Server Custom Inventory (InventoryEvents)
-local inventoryDataLoaded       = false
-local inventoryLoading          = false
-local inventoryFishList         = {}   -- dari Inventory_GetData().Fish
-local inventoryRodList          = {}   -- dari Inventory_GetData().Rods
-local inventorySelectedFishId   = nil
-local inventorySelectedRodName  = nil
-local inventoryEquippedRodName  = nil
-local inventoryInitDelaySec     = 0.5  -- initial custom inventory delay (bisa diubah via input box)
+-- Server Inventory (Custom Inventory View)
+local invAlivePoll             = true
+local invFishList              = {}   -- dari Inventory_GetData().Fish
+local invRodList               = {}   -- dari Inventory_GetData().Rods
+local invFishById              = {}   -- [uniqueId] = fishEntry
+local invSelectedFishId        = nil
+local invSelectedRodName       = nil
+local invCurrentCount          = 0
+local invMaxFromConfig         = (inventoryFishingConfig and inventoryFishingConfig.InventoryLimitSettings and inventoryFishingConfig.InventoryLimitSettings.maxFishInventory) or 500
+local invCustomMaxCount        = invMaxFromConfig
+local invPollDelay             = 2.0  -- detik
+local invPolling               = false
+local autoSellAlwaysEnabled    = false    -- Sell All Always
+local autoSellFullEnabled      = true     -- Sell All Full (jika >= limit)
 
--- UI refs Fish/Rod Inventory
-local fishInvScroll             = nil
-local fishInvCountLabel         = nil
-local fishInvRows               = {}
-local rodInvScroll              = nil
-local rodInvCountLabel          = nil
-local rodInvRows                = {}
+-- UI refs inventory
+local fishInvCountLabel    = nil
+local fishInvScroll        = nil
+local fishInvSelectedFrame = nil
+
+local rodInvScroll         = nil
+local rodInvSelectedFrame  = nil
+
+local toggleSellAlwaysUi   = nil
+local toggleSellFullUi     = nil
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -782,7 +790,7 @@ local function createMainLayout(parent)
     header.TextSize = 16
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.TextColor3 = Color3.fromRGB(0, 0, 0)
-    header.Text = "Gallery BBHY - Fish Giver V2"
+    header.Text = "Gallery BBHY - Fish Giver V3"
 
     local body = Instance.new("ScrollingFrame")
     body.Name = "BodyScroll"
@@ -1314,7 +1322,7 @@ local function ensureWorker()
     end
 end
 
-------------------- LOGIC: INVENTORY SCAN BACKPACK UNTUK SELL -------------------
+------------------- LOGIC: INVENTORY SCAN UNTUK SELL (TOOL BASED) -------------------
 local function extractFishInfoFromTool(tool)
     if not tool then return nil end
     local source = tool
@@ -1339,7 +1347,7 @@ local function extractFishInfoFromTool(tool)
     }
 end
 
-local function rebuildFishInventoryBackpack()
+local function rebuildFishInventory()
     table.clear(fishInventoryCache)
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
     if not backpack then
@@ -1410,7 +1418,7 @@ local function sellSingleByName(targetName)
         return
     end
 
-    rebuildFishInventoryBackpack()
+    rebuildFishInventory()
     targetName = targetName or sellNameOptions[selectedSellNameIndex] or "ALL"
 
     local chosenList
@@ -1454,7 +1462,7 @@ local function sellAllByName(targetName)
         return
     end
 
-    rebuildFishInventoryBackpack()
+    rebuildFishInventory()
     targetName = targetName or sellNameOptions[selectedSellNameIndex] or "ALL"
 
     local batch = buildSellBatchForName(targetName)
@@ -1490,7 +1498,7 @@ local function sellAllByName(targetName)
     notify("Sell All", "Permintaan jual dikirim (" .. tostring(#batch) .. " ikan).", 4)
 end
 
-------------------- ROD SHOP LOGIC (BARU SESUAI CONFIG) -------------------
+------------------- ROD SHOP LOGIC -------------------
 
 -- Tier / rarity rod berdasarkan baseLuck (mengikuti script GUI asli)
 local ROD_TIERS = {
@@ -1793,6 +1801,7 @@ local function createRodItemFrame(rodName, rodData, order)
     local shopValue = shopInfo.Value
 
     if owned then
+        -- Sudah dimiliki / ada di backpack
         priceLabel.Text = "OWNED"
         priceLabel.TextColor3 = Color3.fromRGB(80, 170, 80)
 
@@ -1830,13 +1839,14 @@ local function createRodItemFrame(rodName, rodData, order)
 
                 task.delay(0.5, function()
                     if alive then
+                        -- refresh agar status OWNED ter-update setelah server respon
                         if rodGetDataRemote then
                             local okRefresh, _ = fetchRodShopData()
                             if okRefresh then
                                 clearRodScroll()
                                 local sorted = buildSortedRodList(rodAllData)
-                                for idx, info in ipairs(sorted) do
-                                    createRodItemFrame(info.name, info.data, idx)
+                                for idx2, info2 in ipairs(sorted) do
+                                    createRodItemFrame(info2.name, info2.data, idx2)
                                 end
                             end
                         end
@@ -1950,442 +1960,524 @@ if rodPurchaseSuccess then
     end)
 end
 
-------------------- CUSTOM INVENTORY (FISH & ROD) VIA InventoryEvents -------------------
+------------------- INVENTORY (SERVER) LOGIC: FISH & ROD -------------------
+local rebuildFishInventoryUI
+local rebuildRodInventoryUI
+local refreshServerInventoryData
+local ensureInventoryPolling
+local favoriteSelectedFish
+local favoriteAllFish
+local inventorySellAll
 
-local FISH_RARITY_COLORS = {
-    Common    = Color3.fromRGB(210, 210, 210),
-    Uncommon  = Color3.fromRGB(120, 255, 120),
-    Rare      = Color3.fromRGB(120, 180, 255),
-    Epic      = Color3.fromRGB(200, 140, 255),
-    Legendary = Color3.fromRGB(255, 200, 90),
-    Mitos     = Color3.fromRGB(255, 120, 120),
-    Secret    = Color3.fromRGB(255, 80, 200),
-}
-
-local function getFishRarityColor(r)
-    return fishingRarityColors[r] or FISH_RARITY_COLORS[r] or Color3.fromRGB(230, 230, 230)
-end
-
-local function updateFishSelectionHighlight()
-    local selectedId = inventorySelectedFishId
-    for id, row in pairs(fishInvRows) do
-        if row and row.Parent then
-            if id == selectedId then
-                row.BackgroundColor3 = Color3.fromRGB(55, 90, 140)
-            else
-                row.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-            end
-        end
+local function updateInventoryCountLabel()
+    if fishInvCountLabel then
+        local maxLimit = invCustomMaxCount or invMaxFromConfig or 0
+        fishInvCountLabel.Text = string.format("Inventory: %d / %d", invCurrentCount or 0, maxLimit)
     end
 end
 
-local function updateRodSelectionHighlight()
-    local selectedName = inventorySelectedRodName or inventoryEquippedRodName
-    for name, row in pairs(rodInvRows) do
-        if row and row.Parent then
-            if name == selectedName then
-                row.BackgroundColor3 = Color3.fromRGB(55, 90, 140)
-            else
-                row.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-            end
+refreshServerInventoryData = function()
+    if not invGetDataRemote then
+        return
+    end
+
+    local ok, data = pcall(function()
+        return invGetDataRemote:InvokeServer()
+    end)
+    if not ok or not data then
+        return
+    end
+
+    invFishList = data.Fish or {}
+    invRodList  = data.Rods or {}
+    invCurrentCount = #invFishList
+
+    table.clear(invFishById)
+    for _, fish in ipairs(invFishList) do
+        if fish.uniqueId then
+            invFishById[fish.uniqueId] = fish
         end
+    end
+
+    updateInventoryCountLabel()
+
+    if fishInvScroll then
+        rebuildFishInventoryUI()
+    end
+    if rodInvScroll then
+        rebuildRodInventoryUI()
     end
 end
 
-local function renderFishInventory()
+rebuildFishInventoryUI = function()
     if not fishInvScroll then return end
 
     for _, child in ipairs(fishInvScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextButton") then
+        if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("ImageButton") then
             child:Destroy()
         end
     end
-    table.clear(fishInvRows)
 
-    if not inventoryDataLoaded or #inventoryFishList == 0 then
+    if not invFishList or #invFishList == 0 then
         local lbl = Instance.new("TextLabel")
         lbl.Parent = fishInvScroll
         lbl.BackgroundTransparency = 1
         lbl.Size = UDim2.new(1, -4, 0, 18)
         lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 11
+        lbl.TextSize = 12
         lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.TextColor3 = Color3.fromRGB(210, 210, 210)
-        lbl.Text = "Inventory Fish kosong / belum diambil dari server."
-        if fishInvCountLabel then
-            fishInvCountLabel.Text = "Fish Inventory: 0"
-        end
+        lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+        lbl.Text = "Inventory kosong."
         return
     end
 
-    local list = {}
-    for i, v in ipairs(inventoryFishList) do
-        list[i] = v
-    end
-
     local rarityRank = {
-        Unknown   = 0,
-        Common    = 1,
-        Uncommon  = 2,
-        Rare      = 3,
-        Epic      = 4,
-        Legendary = 5,
-        Mitos     = 6,
-        Secret    = 7,
+        Unknown = 0, Common = 1, Uncommon = 2,
+        Rare = 3, Epic = 4, Legendary = 5,
+        Mythical = 6, Mitos = 6, Secret = 7,
     }
 
-    table.sort(list, function(a, b)
-        local favA = a.isFavorited and 1 or 0
-        local favB = b.isFavorited and 1 or 0
-        if favA ~= favB then
-            return favA > favB
+    table.sort(invFishList, function(a, b)
+        local fa = a.isFavorited and true or false
+        local fb = b.isFavorited and true or false
+        if fa ~= fb then
+            return fa
         end
         local ra = rarityRank[a.rarity] or 0
         local rb = rarityRank[b.rarity] or 0
         if ra ~= rb then
             return ra > rb
         end
-        return (a.weight or 0) > (b.weight or 0)
+        local wa = a.weight or 0
+        local wb = b.weight or 0
+        return wa > wb
     end)
 
-    for _, fish in ipairs(list) do
-        local uniqueId = fish.uniqueId or fish.name or ""
-        local row = Instance.new("TextButton")
-        row.Name = uniqueId
+    local currentSelection = invSelectedFishId
+    fishInvSelectedFrame = nil
+
+    for idx, fish in ipairs(invFishList) do
+        local row = Instance.new("Frame")
+        row.Name = fish.uniqueId or ("Fish_" .. idx)
         row.Parent = fishInvScroll
-        row.Size = UDim2.new(1, -4, 0, 50)
-        row.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-        row.AutoButtonColor = false
+        row.Size = UDim2.new(1, -4, 0, 44)
+        row.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+        row.BackgroundTransparency = 0.1
         row.BorderSizePixel = 0
-        row.Text = ""
-        row.Active = true
+        row.LayoutOrder = idx
 
         local corner = Instance.new("UICorner")
         corner.Parent = row
         corner.CornerRadius = UDim.new(0, 8)
 
+        local stroke = Instance.new("UIStroke")
+        stroke.Parent = row
+        stroke.Thickness = 1
+        stroke.Transparency = 0.8
+        stroke.Color = Color3.fromRGB(80, 80, 95)
+
         local img = Instance.new("ImageLabel")
         img.Name = "FishImage"
         img.Parent = row
+        img.BackgroundTransparency = 1
+        img.Size = UDim2.new(0, 36, 0, 36)
+        img.Position = UDim2.new(0, 4, 0.5, 0)
+        img.AnchorPoint = Vector2.new(0, 0.5)
+        img.ScaleType = Enum.ScaleType.Fit
+
+        if assetsFish and fish.name then
+            local asset = assetsFish:FindFirstChild(fish.name)
+            if asset and asset.TextureId ~= "" then
+                local tex = tostring(asset.TextureId)
+                if tex:sub(1, 13) == "rbxassetid://" then
+                    img.Image = tex
+                else
+                    img.Image = "rbxassetid://" .. tex
+                end
+            end
+        end
+
+        local textFrame = Instance.new("Frame")
+        textFrame.Parent = row
+        textFrame.BackgroundTransparency = 1
+        textFrame.Position = UDim2.new(0, 46, 0, 4)
+        textFrame.Size = UDim2.new(1, -120, 1, -8)
+
+        local textLayout = Instance.new("UIListLayout")
+        textLayout.Parent = textFrame
+        textLayout.FillDirection = Enum.FillDirection.Vertical
+        textLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        textLayout.Padding = UDim.new(0, 2)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = textFrame
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Size = UDim2.new(1, 0, 0, 18)
+        nameLabel.Font = Enum.Font.GothamSemibold
+        nameLabel.TextSize = 12
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        local rColor = rarityColors and rarityColors[fish.rarity] or Color3.fromRGB(235, 235, 235)
+        nameLabel.TextColor3 = rColor
+        nameLabel.Text = string.format("%s (%s)", tostring(fish.name or "?"), tostring(fish.rarity or "?"))
+
+        local infoLabel = Instance.new("TextLabel")
+        infoLabel.Parent = textFrame
+        infoLabel.BackgroundTransparency = 1
+        infoLabel.Size = UDim2.new(1, 0, 0, 16)
+        infoLabel.Font = Enum.Font.Gotham
+        infoLabel.TextSize = 11
+        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+        infoLabel.Text = string.format("Weight: %s kg | ID: %s",
+            formatKg(fish.weight or 0),
+            tostring(fish.uniqueId or "-")
+        )
+
+        local favLabel = Instance.new("TextLabel")
+        favLabel.Parent = row
+        favLabel.BackgroundTransparency = 1
+        favLabel.AnchorPoint = Vector2.new(1, 0.5)
+        favLabel.Position = UDim2.new(1, -8, 0.5, 0)
+        favLabel.Size = UDim2.new(0, 40, 0, 20)
+        favLabel.Font = Enum.Font.GothamSemibold
+        favLabel.TextSize = 14
+        favLabel.TextXAlignment = Enum.TextXAlignment.Right
+        if fish.isFavorited then
+            favLabel.Text = "★"
+            favLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+        else
+            favLabel.Text = "-"
+            favLabel.TextColor3 = Color3.fromRGB(140, 140, 140)
+        end
+
+        local btn = Instance.new("TextButton")
+        btn.Parent = row
+        btn.BackgroundTransparency = 1
+        btn.BorderSizePixel = 0
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.Text = ""
+
+        btn.MouseButton1Click:Connect(function()
+            invSelectedFishId = fish.uniqueId
+            if fishInvSelectedFrame and fishInvSelectedFrame ~= row then
+                fishInvSelectedFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+            end
+            fishInvSelectedFrame = row
+            row.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        end)
+
+        if currentSelection and fish.uniqueId == currentSelection then
+            invSelectedFishId = fish.uniqueId
+            fishInvSelectedFrame = row
+            row.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        end
+    end
+end
+
+local function getEquippedRodName()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool and CollectionService:HasTag(tool, "Rod") then
+        return tool.Name
+    end
+    return nil
+end
+
+rebuildRodInventoryUI = function()
+    if not rodInvScroll then return end
+
+    for _, child in ipairs(rodInvScroll:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+
+    if not invRodList or #invRodList == 0 then
+        local lbl = Instance.new("TextLabel")
+        lbl.Parent = rodInvScroll
+        lbl.BackgroundTransparency = 1
+        lbl.Size = UDim2.new(1, -4, 0, 18)
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+        lbl.Text = "Rod Inventory kosong."
+        return
+    end
+
+    if not rodDataLoaded then
+        fetchRodShopData()
+    end
+
+    local equippedName = getEquippedRodName()
+    local rods = {}
+
+    for _, name in ipairs(invRodList) do
+        local data = rodAllData[name]
+        local stats = data and data.Stats or {}
+        table.insert(rods, {
+            name      = name,
+            data      = data,
+            baseLuck  = stats.baseLuck or 0,
+            maxWeight = stats.maxWeight or 0,
+            maxRarity = stats.maxRarity or "Common",
+        })
+    end
+
+    table.sort(rods, function(a, b)
+        if a.baseLuck == b.baseLuck then
+            return a.maxWeight > b.maxWeight
+        else
+            return a.baseLuck > b.baseLuck
+        end
+    end)
+
+    rodInvSelectedFrame = nil
+    local currentSel = invSelectedRodName
+
+    for idx, info in ipairs(rods) do
+        local rodName = info.name
+        local data    = info.data or {}
+        local stats   = data.Stats or {}
+        local textureId = data.TextureId
+        local baseLuck  = stats.baseLuck or 0
+        local maxWeight = stats.maxWeight or 0
+        local maxRarity = stats.maxRarity or "Common"
+        local tier      = getRodTier(baseLuck)
+
+        local frame = Instance.new("Frame")
+        frame.Name = rodName .. "InvItem"
+        frame.Parent = rodInvScroll
+        frame.Size = UDim2.new(1, -4, 0, 56)
+        frame.BackgroundColor3 = Color3.fromRGB(26, 26, 35)
+        frame.BackgroundTransparency = 0.1
+        frame.BorderSizePixel = 0
+        frame.LayoutOrder = idx
+
+        local corner = Instance.new("UICorner")
+        corner.Parent = frame
+        corner.CornerRadius = UDim.new(0, 8)
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Parent = frame
+        stroke.Thickness = 1
+        stroke.Transparency = 0.7
+        stroke.Color = tier.color
+
+        local img = Instance.new("ImageLabel")
+        img.Parent = frame
         img.BackgroundTransparency = 1
         img.Size = UDim2.new(0, 40, 0, 40)
         img.Position = UDim2.new(0, 4, 0.5, 0)
         img.AnchorPoint = Vector2.new(0, 0.5)
         img.ScaleType = Enum.ScaleType.Fit
 
-        if fishAssetFolder then
-            local asset = fishAssetFolder:FindFirstChild(fish.name or "")
-            if asset and asset.TextureId and asset.TextureId ~= "" then
-                local tex = tostring(asset.TextureId)
-                if tex:sub(1, 13) ~= "rbxassetid://" then
-                    tex = "rbxassetid://" .. tex
-                end
+        if textureId then
+            local tex = tostring(textureId)
+            if tex:sub(1, 13) == "rbxassetid://" then
                 img.Image = tex
+            else
+                img.Image = "rbxassetid://" .. tex
+            end
+        else
+            img.Image = ROD_IMAGE_MAP[rodName] or "rbxassetid://0"
+        end
+
+        local textFrame = Instance.new("Frame")
+        textFrame.Parent = frame
+        textFrame.BackgroundTransparency = 1
+        textFrame.Position = UDim2.new(0, 50, 0, 4)
+        textFrame.Size = UDim2.new(1, -140, 1, -8)
+
+        local textLayout = Instance.new("UIListLayout")
+        textLayout.Parent = textFrame
+        textLayout.FillDirection = Enum.FillDirection.Vertical
+        textLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        textLayout.Padding = UDim.new(0, 2)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = textFrame
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Size = UDim2.new(1, 0, 0, 18)
+        nameLabel.Font = Enum.Font.GothamSemibold
+        nameLabel.TextSize = 12
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextColor3 = tier.color
+        nameLabel.Text = string.format("[%s] %s", tostring(tier.name or "Common"), rodName)
+
+        local infoLabel = Instance.new("TextLabel")
+        infoLabel.Parent = textFrame
+        infoLabel.BackgroundTransparency = 1
+        infoLabel.Size = UDim2.new(1, 0, 0, 16)
+        infoLabel.Font = Enum.Font.Gotham
+        infoLabel.TextSize = 11
+        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+
+        local globalMult = 1
+        if globalLuckMultiplier and typeof(globalLuckMultiplier.Value) == "number" then
+            globalMult = globalLuckMultiplier.Value
+        end
+        local effectiveLuck = baseLuck * globalMult
+        infoLabel.Text = string.format("Luck: %.1fx | Weight: %dkg | MaxRarity: %s",
+            effectiveLuck,
+            maxWeight,
+            tostring(maxRarity))
+
+        local btn = Instance.new("TextButton")
+        btn.Name = "EquipButton"
+        btn.Parent = frame
+        btn.AnchorPoint = Vector2.new(1, 0.5)
+        btn.Position = UDim2.new(1, -8, 0.5, 0)
+        btn.Size = UDim2.new(0, 80, 0, 28)
+        btn.Font = Enum.Font.GothamSemibold
+        btn.TextSize = 12
+        btn.BorderSizePixel = 0
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.Parent = btn
+        btnCorner.CornerRadius = UDim.new(0, 8)
+
+        local function setEquippedStyle(isEquipped)
+            if isEquipped then
+                btn.Text = "EQUIPPED"
+                btn.BackgroundColor3 = Color3.fromRGB(60, 170, 80)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                btn.Text = "Equip"
+                btn.BackgroundColor3 = Color3.fromRGB(70, 90, 130)
+                btn.TextColor3 = Color3.fromRGB(240, 240, 240)
             end
         end
 
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "FishName"
-        nameLabel.Parent = row
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Position = UDim2.new(0, 50, 0, 4)
-        nameLabel.Size = UDim2.new(1, -100, 0, 18)
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 13
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Text = fish.name or "Fish"
-
-        local weightLabel = Instance.new("TextLabel")
-        weightLabel.Name = "FishWeight"
-        weightLabel.Parent = row
-        weightLabel.BackgroundTransparency = 1
-        weightLabel.Position = UDim2.new(0, 50, 0, 24)
-        weightLabel.Size = UDim2.new(0.6, 0, 0, 18)
-        weightLabel.Font = Enum.Font.Gotham
-        weightLabel.TextSize = 12
-        weightLabel.TextXAlignment = Enum.TextXAlignment.Left
-        weightLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-        weightLabel.Text = string.format("%s Kg", formatKg(fish.weight))
-
-        local rarityLabel = Instance.new("TextLabel")
-        rarityLabel.Name = "FishRarity"
-        rarityLabel.Parent = row
-        rarityLabel.BackgroundTransparency = 1
-        rarityLabel.AnchorPoint = Vector2.new(1, 0.5)
-        rarityLabel.Position = UDim2.new(1, -8, 0.5, 0)
-        rarityLabel.Size = UDim2.new(0, 80, 0, 16)
-        rarityLabel.Font = Enum.Font.GothamBold
-        rarityLabel.TextSize = 11
-        rarityLabel.TextXAlignment = Enum.TextXAlignment.Right
-        rarityLabel.TextColor3 = getFishRarityColor(fish.rarity or "Common")
-        rarityLabel.Text = tostring(fish.rarity or "?")
-
-        if fish.isFavorited then
-            local star = Instance.new("TextLabel")
-            star.Name = "FavStar"
-            star.Parent = row
-            star.BackgroundTransparency = 1
-            star.Position = UDim2.new(0, 32, 0, 2)
-            star.Size = UDim2.new(0, 16, 0, 16)
-            star.Font = Enum.Font.GothamBold
-            star.TextSize = 14
-            star.TextColor3 = Color3.fromRGB(255, 220, 0)
-            star.Text = "★"
+        local isEquipped = (rodName == equippedName)
+        setEquippedStyle(isEquipped)
+        if isEquipped then
+            invSelectedRodName = rodName
+            rodInvSelectedFrame = frame
         end
 
-        fishInvRows[uniqueId] = row
-
-        row.MouseButton1Click:Connect(function()
-            inventorySelectedFishId = uniqueId
-            updateFishSelectionHighlight()
+        btn.MouseButton1Click:Connect(function()
+            if not invEquipRodRemote then
+                notify("Rod Inventory", "Remote Inventory_EquipRod tidak ditemukan.", 3)
+                return
+            end
+            pcall(function()
+                invEquipRodRemote:FireServer(rodName)
+            end)
+            invSelectedRodName = rodName
+            if rodInvSelectedFrame and rodInvSelectedFrame ~= frame then
+                local prevBtn = rodInvSelectedFrame:FindFirstChild("EquipButton")
+                if prevBtn and prevBtn:IsA("TextButton") then
+                    prevBtn.BackgroundColor3 = Color3.fromRGB(70, 90, 130)
+                    prevBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+                    prevBtn.Text = "Equip"
+                end
+            end
+            rodInvSelectedFrame = frame
+            setEquippedStyle(true)
         end)
-    end
 
-    if fishInvCountLabel then
-        local maxFish = 0
-        if fishingConfig and fishingConfig.InventoryLimitSettings then
-            maxFish = fishingConfig.InventoryLimitSettings.maxFishInventory or 0
-        end
-        if maxFish > 0 then
-            fishInvCountLabel.Text = string.format("Fish Inventory: %d / %d", #inventoryFishList, maxFish)
-        else
-            fishInvCountLabel.Text = string.format("Fish Inventory: %d", #inventoryFishList)
+        if currentSel and rodName == currentSel and not isEquipped then
+            invSelectedRodName = rodName
+            rodInvSelectedFrame = frame
+            setEquippedStyle(true)
         end
     end
-
-    if not inventorySelectedFishId and #inventoryFishList > 0 then
-        inventorySelectedFishId = inventoryFishList[1].uniqueId
-    end
-
-    updateFishSelectionHighlight()
 end
 
-local function equipRodFromInventory(rodName)
-    if not rodName or rodName == "" then return end
-    if not inventoryEquipRodRemote then
-        notify("Rod Inventory", "Inventory_EquipRod remote tidak ditemukan.", 3)
+favoriteSelectedFish = function()
+    if not invSelectedFishId then
+        notify("Favorite Fish", "Pilih ikan terlebih dahulu.", 3)
+        return
+    end
+    if not invToggleFavorite then
+        notify("Favorite Fish", "Remote Inventory_ToggleFavorite tidak ditemukan.", 3)
+        return
+    end
+    local id = invSelectedFishId
+    local ok, result = pcall(function()
+        return invToggleFavorite:InvokeServer(id)
+    end)
+    if not ok then
+        warn("[17AxaTab_GalleryBBHY] ToggleFavorite error:", result)
+        return
+    end
+    local fish = invFishById[id]
+    if fish and result ~= nil then
+        fish.isFavorited = result
+    end
+    rebuildFishInventoryUI()
+end
+
+favoriteAllFish = function()
+    if not invToggleFavorite then
+        notify("Favorite All", "Remote Inventory_ToggleFavorite tidak ditemukan.", 3)
+        return
+    end
+    if not invFishList or #invFishList == 0 then
+        notify("Favorite All", "Inventory ikan kosong.", 3)
+        return
+    end
+    for _, fish in ipairs(invFishList) do
+        if not fish.isFavorited and fish.uniqueId then
+            local ok, result = pcall(function()
+                return invToggleFavorite:InvokeServer(fish.uniqueId)
+            end)
+            if ok and result ~= nil then
+                fish.isFavorited = result
+            end
+            task.wait(0.03)
+        end
+    end
+    rebuildFishInventoryUI()
+    notify("Favorite All", "Semua ikan di-set Favorite (jika belum).", 3)
+end
+
+inventorySellAll = function()
+    if not invSellAllRemote then
+        notify("Sell All Inventory", "Remote Inventory_SellAll tidak ditemukan.", 4)
         return
     end
     local ok, err = pcall(function()
-        inventoryEquipRodRemote:FireServer(rodName)
+        return invSellAllRemote:InvokeServer()
     end)
     if not ok then
-        warn("[17AxaTab_GalleryBBHY] Inventory_EquipRod error:", err)
-        notify("Rod Inventory", "Equip rod gagal (cek Output).", 3)
+        warn("[17AxaTab_GalleryBBHY] Inventory_SellAll error:", err)
         return
     end
-    inventoryEquippedRodName = rodName
-    inventorySelectedRodName  = rodName
-    updateRodSelectionHighlight()
-end
-
-local function renderRodInventory()
-    if not rodInvScroll then return end
-
-    for _, child in ipairs(rodInvScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    table.clear(rodInvRows)
-
-    if not inventoryDataLoaded or #inventoryRodList == 0 then
-        local lbl = Instance.new("TextLabel")
-        lbl.Parent = rodInvScroll
-        lbl.BackgroundTransparency = 1
-        lbl.Size = UDim2.new(1, -4, 0, 18)
-        lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 11
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.TextColor3 = Color3.fromRGB(210, 210, 210)
-        lbl.Text = "Inventory Rod kosong / belum diambil dari server."
-        if rodInvCountLabel then
-            rodInvCountLabel.Text = "Rod Inventory: 0"
-        end
-        return
-    end
-
-    -- pastikan kita punya data stats rod
-    if rodGetDataRemote and not rodDataLoaded then
-        fetchRodShopData()
-    end
-
-    local items = {}
-    for _, name in ipairs(inventoryRodList) do
-        local rodData = rodAllData[name]
-        local stats = rodData and rodData.Stats or {}
-        table.insert(items, {
-            name      = name,
-            baseLuck  = stats.baseLuck or 0,
-            maxWeight = stats.maxWeight or 0,
-            maxRarity = stats.maxRarity or "Common",
-            textureId = rodData and rodData.TextureId or ROD_IMAGE_MAP[name],
-        })
-    end
-
-    table.sort(items, function(a, b)
-        if a.baseLuck == b.baseLuck then
-            return a.name < b.name
-        else
-            return a.baseLuck > b.baseLuck
+    notify("Sell All Inventory", "Permintaan Sell All dikirim ke server.", 3)
+    task.delay(0.2, function()
+        if alive then
+            refreshServerInventoryData()
         end
     end)
-
-    for _, info in ipairs(items) do
-        local row = Instance.new("Frame")
-        row.Name = info.name .. "InvRow"
-        row.Parent = rodInvScroll
-        row.Size = UDim2.new(1, -4, 0, 60)
-        row.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-        row.BorderSizePixel = 0
-        row.Active = true
-
-        local corner = Instance.new("UICorner")
-        corner.Parent = row
-        corner.CornerRadius = UDim.new(0, 8)
-
-        local tier = getRodTier(info.baseLuck)
-        local stroke = Instance.new("UIStroke")
-        stroke.Parent = row
-        stroke.Color = tier.color
-        stroke.Thickness = 1
-        stroke.Transparency = 0.4
-
-        local img = Instance.new("ImageLabel")
-        img.Name = "RodImage"
-        img.Parent = row
-        img.BackgroundTransparency = 1
-        img.Size = UDim2.new(0, 44, 0, 44)
-        img.Position = UDim2.new(0, 6, 0.5, 0)
-        img.AnchorPoint = Vector2.new(0, 0.5)
-        img.ScaleType = Enum.ScaleType.Fit
-
-        if info.textureId then
-            local tex = tostring(info.textureId)
-            if tex ~= "" then
-                if tex:sub(1, 13) ~= "rbxassetid://" then
-                    tex = "rbxassetid://" .. tex
-                end
-                img.Image = tex
-            end
-        end
-
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Parent = row
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Position = UDim2.new(0, 56, 0, 4)
-        nameLabel.Size = UDim2.new(1, -140, 0, 18)
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 13
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextColor3 = tier.color
-        nameLabel.Text = string.format("[%s] %s", tier.name:upper(), info.name)
-
-        local statsLabel = Instance.new("TextLabel")
-        statsLabel.Parent = row
-        statsLabel.BackgroundTransparency = 1
-        statsLabel.Position = UDim2.new(0, 56, 0, 24)
-        statsLabel.Size = UDim2.new(1, -140, 0, 32)
-        statsLabel.Font = Enum.Font.Gotham
-        statsLabel.TextSize = 11
-        statsLabel.TextXAlignment = Enum.TextXAlignment.Left
-        statsLabel.TextYAlignment = Enum.TextYAlignment.Top
-        statsLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-        statsLabel.RichText = true
-
-        local luckBase = info.baseLuck
-        local luckText = string.format("Luck: %.1fx", luckBase)
-        if globalLuckMultiplier and typeof(globalLuckMultiplier.Value) == "number" and globalLuckMultiplier.Value > 1 then
-            local combined = luckBase * globalLuckMultiplier.Value
-            luckText = string.format("Luck: <font color='#00FF00'><b>%.1fx</b></font>", combined)
-        end
-
-        statsLabel.Text = string.format(
-            "%s\nWeight: %dkg | Max Rarity: %s",
-            luckText,
-            info.maxWeight or 0,
-            tostring(info.maxRarity or "Common")
-        )
-
-        local equipBtn = Instance.new("TextButton")
-        equipBtn.Name = "EquipButton"
-        equipBtn.Parent = row
-        equipBtn.AnchorPoint = Vector2.new(1, 0.5)
-        equipBtn.Position = UDim2.new(1, -8, 0.5, 0)
-        equipBtn.Size = UDim2.new(0, 80, 0, 26)
-        equipBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 200)
-        equipBtn.Font = Enum.Font.GothamSemibold
-        equipBtn.TextSize = 12
-        equipBtn.TextColor3 = Color3.fromRGB(245, 245, 245)
-        equipBtn.Text = "Equip"
-        equipBtn.AutoButtonColor = true
-
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.Parent = equipBtn
-        btnCorner.CornerRadius = UDim.new(0, 8)
-
-        equipBtn.MouseButton1Click:Connect(function()
-            inventorySelectedRodName = info.name
-            equipRodFromInventory(info.name)
-        end)
-
-        row.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                inventorySelectedRodName = info.name
-                updateRodSelectionHighlight()
-            end
-        end)
-
-        rodInvRows[info.name] = row
-    end
-
-    if rodInvCountLabel then
-        rodInvCountLabel.Text = string.format("Rod Inventory: %d", #inventoryRodList)
-    end
-
-    updateRodSelectionHighlight()
 end
 
-local function fetchInventoryData(showNotify)
-    if not inventoryGetDataRemote then
-        if showNotify then
-            notify("Inventory", "InventoryEvents.Inventory_GetData tidak ditemukan.", 4)
-        end
-        return
-    end
-    if inventoryLoading then return end
-    inventoryLoading = true
-
+ensureInventoryPolling = function()
+    if invPolling or not invGetDataRemote then return end
+    invPolling = true
     task.spawn(function()
-        local ok, data = pcall(function()
-            return inventoryGetDataRemote:InvokeServer()
-        end)
-        inventoryLoading = false
+        while alive and invAlivePoll do
+            refreshServerInventoryData()
 
-        if not ok or not data then
-            if showNotify then
-                notify("Inventory", "Gagal mengambil data inventory dari server.", 4)
+            local limit = invCustomMaxCount or invMaxFromConfig or 0
+            if invSellAllRemote and invCurrentCount and invCurrentCount > 0 then
+                if autoSellAlwaysEnabled then
+                    pcall(function()
+                        invSellAllRemote:InvokeServer()
+                    end)
+                elseif autoSellFullEnabled and limit > 0 and invCurrentCount >= limit then
+                    pcall(function()
+                        invSellAllRemote:InvokeServer()
+                    end)
+                end
             end
-            warn("[17AxaTab_GalleryBBHY] Inventory_GetData error:", data)
-            return
-        end
 
-        inventoryDataLoaded = true
-        inventoryFishList   = data.Fish or {}
-        inventoryRodList    = data.Rods or {}
-        inventoryEquippedRodName = data.LastRod or inventoryEquippedRodName
-
-        if fishInvScroll then
-            renderFishInventory()
+            task.wait(invPollDelay)
         end
-        if rodInvScroll then
-            renderRodInventory()
-        end
-
-        if showNotify then
-            notify("Inventory", "Data inventory diperbarui dari server.", 3)
-        end
+        invPolling = false
     end)
 end
 
@@ -2472,12 +2564,12 @@ progressLabel.TextXAlignment = Enum.TextXAlignment.Left
 progressLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 progressLabel.Text = "Progress Fish: Idle"
 
-------------------- CARD: SELL FISH CONTROLLER (BACKPACK) -------------------
+------------------- CARD: SELL FISH CONTROLLER (TOOL BASED) -------------------
 local sellCard, sellInner = createCard(bodyScroll, "Sell Fish Controller")
 
 createButtonRow(sellInner, "Fish Cache (Scan Backpack 1x)", "Refresh Cache", function()
-    rebuildFishInventoryBackpack()
-    notify("Gallery BBHY", "Cache ikan (Backpack) diperbarui.", 3)
+    rebuildFishInventory()
+    notify("Gallery BBHY", "Cache ikan diperbarui.", 3)
 end)
 
 local sellDropdown = createDropdownRow(sellInner, "Sell Name Fish", sellNameOptions, selectedSellNameIndex, function(idx, value)
@@ -2498,42 +2590,19 @@ local function refreshSellDropdown()
     sellDropdown:setOptions(sellNameOptions, selectedSellNameIndex)
 end
 
--- bungkus ulang supaya dropdown ikut update
-local _rebuildBackpack = rebuildFishInventoryBackpack
-rebuildFishInventoryBackpack = function()
-    _rebuildBackpack()
-    refreshSellDropdown()
+do
+    local _rebuild = rebuildFishInventory
+    rebuildFishInventory = function()
+        _rebuild()
+        refreshSellDropdown()
+    end
 end
 
-------------------- CARD: FISH INVENTORY (SERVER InventoryEvents) -------------------
-local fishInvCard, fishInvInner = createCard(bodyScroll, "Fish Inventory")
-
-local fishInvInfo = Instance.new("TextLabel")
-fishInvInfo.Name = "FishInvInfo"
-fishInvInfo.Parent = fishInvInner
-fishInvInfo.BackgroundTransparency = 1
-fishInvInfo.Size = UDim2.new(1, 0, 0, 32)
-fishInvInfo.Font = Enum.Font.Gotham
-fishInvInfo.TextSize = 12
-fishInvInfo.TextXAlignment = Enum.TextXAlignment.Left
-fishInvInfo.TextYAlignment = Enum.TextYAlignment.Top
-fishInvInfo.TextWrapped = true
-fishInvInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
-fishInvInfo.Text = "Fish Inventory (InventoryEvents): menampilkan Fish dari Inventory_GetData().Fish (server). Klik baris untuk memilih, lalu gunakan EquipFish / UnequipAll / SellAll."
-
-local invDelayInput = createInputRow(fishInvInner, "Init Inventory Delay (sec)", "contoh: 0.5", tostring(inventoryInitDelaySec), function(text)
-    local n = tonumber(text)
-    if n and n >= 0 then
-        inventoryInitDelaySec = n
-    end
-end)
-
-createButtonRow(fishInvInner, "Inventory Data (Server)", "Refresh Inventory", function()
-    fetchInventoryData(true)
-end)
+------------------- CARD: FISH INVENTORY (SERVER) -------------------
+local fishInvCard, fishInvInner = createCard(bodyScroll, "Fish Inventory (Server)")
 
 fishInvCountLabel = Instance.new("TextLabel")
-fishInvCountLabel.Name = "FishInvCountLabel"
+fishInvCountLabel.Name = "InventoryCountLabel"
 fishInvCountLabel.Parent = fishInvInner
 fishInvCountLabel.BackgroundTransparency = 1
 fishInvCountLabel.Size = UDim2.new(1, 0, 0, 18)
@@ -2541,13 +2610,23 @@ fishInvCountLabel.Font = Enum.Font.Gotham
 fishInvCountLabel.TextSize = 12
 fishInvCountLabel.TextXAlignment = Enum.TextXAlignment.Left
 fishInvCountLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-fishInvCountLabel.Text = "Fish Inventory: -"
+fishInvCountLabel.Text = string.format("Inventory: %d / %d", invCurrentCount, invCustomMaxCount or invMaxFromConfig or 0)
+
+createInputRow(fishInvInner, "Custom Size Inventory", "contoh: 500", tostring(invCustomMaxCount or invMaxFromConfig or 500), function(text)
+    local n = tonumber(text)
+    if n and n > 0 then
+        invCustomMaxCount = math.floor(n)
+    else
+        invCustomMaxCount = invMaxFromConfig
+    end
+    updateInventoryCountLabel()
+end)
 
 local fishInvListHolder = Instance.new("Frame")
 fishInvListHolder.Name = "FishInvListHolder"
 fishInvListHolder.Parent = fishInvInner
 fishInvListHolder.BackgroundTransparency = 1
-fishInvListHolder.Size = UDim2.new(1, 0, 0, 180)
+fishInvListHolder.Size = UDim2.new(1, 0, 0, 160)
 
 fishInvScroll = Instance.new("ScrollingFrame")
 fishInvScroll.Name = "FishInvScroll"
@@ -2566,55 +2645,58 @@ local fishInvLayout = Instance.new("UIListLayout")
 fishInvLayout.Parent = fishInvScroll
 fishInvLayout.FillDirection = Enum.FillDirection.Vertical
 fishInvLayout.SortOrder = Enum.SortOrder.LayoutOrder
-fishInvLayout.Padding = UDim.new(0, 4)
+fishInvLayout.Padding = UDim.new(0, 3)
 
-createButtonRow(fishInvInner, "Equip Fish (Selected)", "EquipFish", function()
-    if not inventorySelectedFishId then
+-- Tombol: EquipFish, UnequipAll
+createButtonRow(fishInvInner, "Equip Selected Fish (Server Inventory)", "EquipFish", function()
+    if not invEquipFishRemote then
+        notify("Fish Inventory", "Remote Inventory_EquipFish tidak ditemukan.", 3)
+        return
+    end
+    if not invSelectedFishId then
         notify("Fish Inventory", "Pilih ikan terlebih dahulu.", 3)
         return
     end
-    if not inventoryEquipFishRemote then
-        notify("Fish Inventory", "Inventory_EquipFish remote tidak ditemukan.", 3)
+    pcall(function()
+        invEquipFishRemote:FireServer(invSelectedFishId)
+    end)
+end)
+
+createButtonRow(fishInvInner, "Unequip All (Rod/Fish/Tools)", "UnequipAll", function()
+    if not invUnequipAllRemote then
+        notify("Fish Inventory", "Remote Inventory_UnequipAll tidak ditemukan.", 3)
         return
     end
     pcall(function()
-        inventoryEquipFishRemote:FireServer(inventorySelectedFishId)
+        invUnequipAllRemote:FireServer()
     end)
 end)
 
-createButtonRow(fishInvInner, "Unequip Semua Tool (Rod/Fish/Tools)", "UnequipAll", function()
-    if not inventoryUnequipAllRemote then
-        notify("Fish Inventory", "Inventory_UnequipAll remote tidak ditemukan.", 3)
-        return
-    end
-    pcall(function()
-        inventoryUnequipAllRemote:FireServer()
-    end)
+-- Favorite Fish & Favorite All Fish (di bawah UnequipAll)
+createButtonRow(fishInvInner, "Favorite Selected Fish", "Favorite Fish", function()
+    favoriteSelectedFish()
 end)
 
-createButtonRow(fishInvInner, "SellAll (InventoryEvents)", "SellAll", function()
-    if not inventorySellAllRemote then
-        notify("Fish Inventory", "Inventory_SellAll remote tidak ditemukan.", 3)
-        return
-    end
-    local ok, err = pcall(function()
-        return inventorySellAllRemote:InvokeServer()
-    end)
-    if not ok then
-        warn("[17AxaTab_GalleryBBHY] Inventory_SellAll error:", err)
-        notify("Fish Inventory", "SellAll gagal dikirim ke server.", 3)
-    else
-        notify("Fish Inventory", "SellAll dikirim ke server.", 3)
-        task.delay(0.25, function()
-            if alive then
-                fetchInventoryData(false)
-            end
-        end)
-    end
+createButtonRow(fishInvInner, "Favorite All Fish", "Favorite All", function()
+    favoriteAllFish()
 end)
 
-------------------- CARD: ROD INVENTORY (SERVER InventoryEvents) -------------------
-local rodInvCard, rodInvInner = createCard(bodyScroll, "Rod Inventory")
+-- Sell All + Toggle Auto Sell
+createButtonRow(fishInvInner, "Sell All Inventory Fish (Server)", "Sell All", function()
+    inventorySellAll()
+end)
+
+toggleSellAlwaysUi = createToggleRow(fishInvInner, "Sell All Always (Auto terus)", false, function(state)
+    autoSellAlwaysEnabled = state
+end)
+
+toggleSellFullUi = createToggleRow(fishInvInner, "Sell All Full (Jika >= limit)", true, function(state)
+    autoSellFullEnabled = state
+end)
+autoSellFullEnabled = true
+
+------------------- CARD: ROD INVENTORY (SERVER) -------------------
+local rodInvCard, rodInvInner = createCard(bodyScroll, "Rod Inventory (Server)")
 
 local rodInvInfo = Instance.new("TextLabel")
 rodInvInfo.Name = "RodInvInfo"
@@ -2627,24 +2709,13 @@ rodInvInfo.TextXAlignment = Enum.TextXAlignment.Left
 rodInvInfo.TextYAlignment = Enum.TextYAlignment.Top
 rodInvInfo.TextWrapped = true
 rodInvInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
-rodInvInfo.Text = "Rod Inventory: daftar rod yang dimiliki dari Inventory_GetData().Rods. Menampilkan image, nama, luck, weight, dan max rarity. Gunakan tombol Equip untuk mengganti rod."
-
-rodInvCountLabel = Instance.new("TextLabel")
-rodInvCountLabel.Name = "RodInvCountLabel"
-rodInvCountLabel.Parent = rodInvInner
-rodInvCountLabel.BackgroundTransparency = 1
-rodInvCountLabel.Size = UDim2.new(1, 0, 0, 18)
-rodInvCountLabel.Font = Enum.Font.Gotham
-rodInvCountLabel.TextSize = 12
-rodInvCountLabel.TextXAlignment = Enum.TextXAlignment.Left
-rodInvCountLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-rodInvCountLabel.Text = "Rod Inventory: -"
+rodInvInfo.Text = "Rod Inventory: menampilkan rod dari InventoryEvents. Klik Equip untuk mengganti rod. Rod yang sedang dipakai → tombol hijau 'EQUIPPED'."
 
 local rodInvHolder = Instance.new("Frame")
 rodInvHolder.Name = "RodInvHolder"
 rodInvHolder.Parent = rodInvInner
 rodInvHolder.BackgroundTransparency = 1
-rodInvHolder.Size = UDim2.new(1, 0, 0, 180)
+rodInvHolder.Size = UDim2.new(1, 0, 0, 160)
 
 rodInvScroll = Instance.new("ScrollingFrame")
 rodInvScroll.Name = "RodInvScroll"
@@ -2665,16 +2736,8 @@ rodInvLayout.FillDirection = Enum.FillDirection.Vertical
 rodInvLayout.SortOrder = Enum.SortOrder.LayoutOrder
 rodInvLayout.Padding = UDim.new(0, 4)
 
-createButtonRow(rodInvInner, "Refresh Rod Inventory", "Refresh Rod", function()
-    fetchInventoryData(true)
-end)
-
-createButtonRow(rodInvInner, "Equip Rod (Selected)", "Equip", function()
-    if not inventorySelectedRodName or inventorySelectedRodName == "" then
-        notify("Rod Inventory", "Klik salah satu rod terlebih dahulu.", 3)
-        return
-    end
-    equipRodFromInventory(inventorySelectedRodName)
+createButtonRow(rodInvInner, "Refresh Inventory (Fish & Rod)", "Refresh Inventory", function()
+    refreshServerInventoryData()
 end)
 
 ------------------- CARD: DROP MONEY CONTROLLER -------------------
@@ -2847,7 +2910,7 @@ end
 
 ------------------- INITIAL SCAN & LABEL STATE -------------------
 task.spawn(function()
-    rebuildFishInventoryBackpack()
+    rebuildFishInventory()
 end)
 
 updateProgressLabel()
@@ -2861,14 +2924,12 @@ task.spawn(function()
     end
 end)
 
--- Auto load InventoryEvents (Fish/Rod) sekali di awal, delay bisa diubah via input box
+-- Load Inventory (Server) sekali + jalankan polling auto-update
 task.spawn(function()
-    if inventoryGetDataRemote then
-        local d = tonumber(inventoryInitDelaySec) or 0
-        if d > 0 then
-            task.wait(d)
-        end
-        fetchInventoryData(false)
+    task.wait(0.2)
+    if invGetDataRemote then
+        refreshServerInventoryData()
+        ensureInventoryPolling()
     end
 end)
 
@@ -2889,7 +2950,6 @@ _G.AxaHub.TabCleanup[tabId] = function()
 
     table.clear(fishInventoryCache)
     sellNameOptions = { "ALL" }
-    selectedSellNameIndex = 1
 
     autoDropEnabled    = false
     cooldownEndTime    = 0
@@ -2901,13 +2961,12 @@ _G.AxaHub.TabCleanup[tabId] = function()
     rodAllData        = {}
     rodDataLoaded     = false
 
-    -- reset inventory server-side state
-    inventoryDataLoaded       = false
-    inventoryLoading          = false
-    table.clear(inventoryFishList)
-    table.clear(inventoryRodList)
-    inventorySelectedFishId   = nil
-    inventorySelectedRodName  = nil
-    inventoryEquippedRodName  = nil
-    inventoryInitDelaySec     = 0.5
+    invAlivePoll           = false
+    autoSellAlwaysEnabled  = false
+    autoSellFullEnabled    = true
+    invSelectedFishId      = nil
+    invSelectedRodName     = nil
+    invCurrentCount        = 0
+    invCustomMaxCount      = invMaxFromConfig
+    updateInventoryCountLabel()
 end
