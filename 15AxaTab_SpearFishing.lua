@@ -28,22 +28,24 @@ frame.BorderSizePixel = 0
 local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 ------------------- GLOBAL STATE / AXAHUB -------------------
-_G.AxaHub        = _G.AxaHub or {}
-_G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
+_G.AxaHub              = _G.AxaHub or {}
+_G.AxaHub.TabCleanup   = _G.AxaHub.TabCleanup or {}
 
-local alive           = true
-local autoFarm        = false      -- AutoFarm Fish v1: default OFF
-local autoEquip       = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode  = "Left"   -- "Left" / "Center"
-local autoDailyReward = true       -- Auto Daily Reward: default ON
+local alive            = true
+local autoFarm         = false      -- AutoFarm Fish v1: default OFF
+local autoEquip        = false      -- AutoEquip Harpoon: default OFF
+local autoFarmV2       = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarmV2Mode   = "Center"   -- "Left" / "Center"
+local autoDailyReward  = true       -- Auto Daily Reward: default ON
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
-local connections = {}
-local ToolsData   = nil           -- akan diisi setelah WaitPlayerData siap
-local DailyData   = nil           -- WaitPlayerData("Daily")
+local connections     = {}
+local ToolsData       = nil           -- WaitPlayerData("Tools")
+local DailyData       = nil           -- WaitPlayerData("Daily")
+local SpearFishData   = nil           -- WaitPlayerData(...) / Folder spearfish
+local spearInitTried  = false
 
 ------------------- REMOTES & GAME INSTANCES -------------------
 local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
@@ -504,8 +506,107 @@ local function doAutoTapV2()
     tapScreenPosition(pos)
 end
 
+------------------- SPEAR FISH DATA + UIDS HELPER -------------------
+local function ensureSpearFishData()
+    if SpearFishData or spearInitTried or not alive then
+        return SpearFishData
+    end
+    spearInitTried = true
+
+    -- Coba lewat shared.WaitPlayerData
+    local waitFn
+    local okFn, fn = pcall(function()
+        return shared and shared.WaitPlayerData
+    end)
+    if okFn and typeof(fn) == "function" then
+        waitFn = fn
+    end
+
+    if waitFn then
+        local keys = {
+            "SpearFish",
+            "Spearfish",
+            "SpearFishing",
+            "SpearFishBag",
+            "FishSpear",
+            "FishSpearBag",
+        }
+        for _, key in ipairs(keys) do
+            local ok, result = pcall(function()
+                return waitFn(key)
+            end)
+            if ok and result and typeof(result) == "Instance" then
+                SpearFishData = result
+                break
+            end
+        end
+    end
+
+    -- Fallback: cari folder di LocalPlayer
+    if not SpearFishData then
+        local keys2 = {
+            "SpearFish",
+            "Spearfish",
+            "SpearFishBag",
+            "FishSpear",
+            "FishBag",
+        }
+        for _, name in ipairs(keys2) do
+            local inst = LocalPlayer:FindFirstChild(name)
+            if inst and inst:IsA("Folder") then
+                SpearFishData = inst
+                break
+            end
+        end
+    end
+
+    return SpearFishData
+end
+
+local function collectAllSpearFishUIDs()
+    local data = ensureSpearFishData()
+    if not data then
+        return nil
+    end
+
+    local list = {}
+
+    for _, child in ipairs(data:GetChildren()) do
+        local uidValue
+
+        -- Prioritas Attribute "UID"
+        local attrUID = child:GetAttribute("UID")
+        if attrUID ~= nil then
+            uidValue = attrUID
+        else
+            -- Kalau ada ValueObject bernama "UID"
+            local uidObj = child:FindFirstChild("UID")
+            if uidObj and uidObj.Value then
+                uidValue = uidObj.Value
+            end
+        end
+
+        -- Fallback: pakai Name kalau numeric panjang
+        if uidValue == nil then
+            if #child.Name >= 12 and tonumber(child.Name) then
+                uidValue = child.Name
+            end
+        end
+
+        if uidValue ~= nil then
+            table.insert(list, tostring(uidValue))
+        end
+    end
+
+    if #list == 0 then
+        return nil
+    end
+
+    return list
+end
+
 ------------------- SELL ALL FISH (SPEAR FISHING) -------------------
-local lastSellClock = 0
+local lastSellClock  = 0
 local SELL_COOLDOWN = 2
 
 local function sellAllFish()
@@ -519,14 +620,29 @@ local function sellAllFish()
         notify("Spear Fishing", "Sell All terlalu cepat, tunggu beberapa detik.", 2)
         return
     end
+
+    local uids = collectAllSpearFishUIDs()
+    if not uids or #uids == 0 then
+        lastSellClock = now
+        notify("Spear Fishing", "Tidak ada ikan spear yang bisa dijual.", 3)
+        return
+    end
+
     lastSellClock = now
 
+    local args = {
+        [1] = "SellAll",
+        [2] = {
+            ["UIDs"] = uids
+        }
+    }
+
     local ok, err = pcall(function()
-        FishRE:FireServer("SellAll")
+        FishRE:FireServer(unpack(args))
     end)
 
     if ok then
-        notify("Spear Fishing", "Sell All Fish request dikirim.", 3)
+        notify("Spear Fishing", "Sell All Fish (" .. tostring(#uids) .. " ekor) dikirim.", 3)
     else
         warn("[SpearFishing] SellAll gagal:", err)
         notify("Spear Fishing", "Sell All gagal, cek Output/Console.", 4)
@@ -1529,7 +1645,7 @@ local function initDailyDataWatcher()
             pcall(refreshDailyUI)
         end
 
-        -- Listener child existing
+        -- Listener existing child
         for _, child in ipairs(DailyData:GetChildren()) do
             if child.AttributeChanged then
                 local c = child.AttributeChanged:Connect(function()
@@ -1564,7 +1680,7 @@ local function buildDailyRewardCard(parent)
         "Auto Daily Reward",
         "Auto claim + manual claim Daily Reward (Day 1 ~ 30).",
         2,     -- setelah Spear Controls
-        320    -- DIPERPANJANG supaya tulisan CLAIMED tidak kepotong
+        320    -- dipanjangkan supaya tulisan CLAIMED tidak kepotong
     )
 
     local content = Instance.new("Frame")
@@ -1613,16 +1729,16 @@ local function buildDailyRewardCard(parent)
 
     local padding = Instance.new("UIPadding")
     padding.Parent = scroll
-    padding.PaddingLeft = UDimNew(0, 4)
-    padding.PaddingRight = UDimNew(0, 4)
-    padding.PaddingTop = UDimNew(0, 4)
-    padding.PaddingBottom = UDimNew(0, 4)
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingBottom = UDim.new(0, 4)
 
     local layout = Instance.new("UIListLayout")
     layout.Parent = scroll
     layout.FillDirection = Enum.FillDirection.Horizontal
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim2.new(0, 8)
+    layout.Padding = UDim.new(0, 8)
 
     -- Bangun item Day berdasarkan ResDailyReward, maksimal 30
     local totalDays = 0
@@ -1864,7 +1980,7 @@ local controlsLayout = Instance.new("UIListLayout")
 controlsLayout.Parent = controlsFrame
 controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-controlsLayout.Padding = UDim2.new(0, 6)
+controlsLayout.Padding = UDim.new(0, 6)
 
 local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", false)
 local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", false)
@@ -1884,7 +2000,7 @@ v2ModeButton.TextWrapped = true
 v2ModeButton.Size = UDim2.new(1, 0, 0, 26)
 
 local v2ModeCorner = Instance.new("UICorner")
-v2ModeCorner.CornerRadius = UDim2.new(0, 8)
+v2ModeCorner.CornerRadius = UDim.new(0, 8)
 v2ModeCorner.Parent = v2ModeButton
 
 local function updateV2ModeButton()
@@ -1905,7 +2021,7 @@ sellButton.Text = "Sell All Fish (Spear)"
 sellButton.Size = UDim2.new(1, 0, 0, 30)
 
 local sellCorner = Instance.new("UICorner")
-sellCorner.CornerRadius = UDim2.new(0, 8)
+sellCorner.CornerRadius = UDim.new(0, 8)
 sellCorner.Parent = sellButton
 
 local statusLabel = Instance.new("TextLabel")
