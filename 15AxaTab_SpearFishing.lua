@@ -1,20 +1,20 @@
 --==========================================================
---  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop)"
+--  20AxaTab_SpearFishing.lua
+--  TAB 20: "Spear Fishing PRO++ (AutoFarm + Harpoon Shop + Basket Shop + Bait Shop + Auto Daily Reward)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
 local frame   = TAB_FRAME
 local tabId   = TAB_ID or "spearfishing"
 
-local Players             = Players             or game:GetService("Players")
-local LocalPlayer         = LocalPlayer         or Players.LocalPlayer
-local RunService          = RunService          or game:GetService("RunService")
-local TweenService        = TweenService        or game:GetService("TweenService")
-local HttpService         = HttpService         or game:GetService("HttpService")
-local ReplicatedStorage   = game:GetService("ReplicatedStorage")
-local UserInputService    = UserInputService    or game:GetService("UserInputService")
-local StarterGui          = StarterGui          or game:GetService("StarterGui")
+local Players           = Players           or game:GetService("Players")
+local LocalPlayer       = LocalPlayer       or Players.LocalPlayer
+local RunService        = RunService        or game:GetService("RunService")
+local TweenService      = TweenService      or game:GetService("TweenService")
+local HttpService       = HttpService       or game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService  = UserInputService  or game:GetService("UserInputService")
+local StarterGui        = StarterGui        or game:GetService("StarterGui")
 local VirtualInputManager = VirtualInputManager or game:GetService("VirtualInputManager")
 
 if not (frame and LocalPlayer) then
@@ -28,30 +28,28 @@ frame.BorderSizePixel = 0
 local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 ------------------- GLOBAL STATE / AXAHUB -------------------
-_G.AxaHub        = _G.AxaHub or {}
+_G.AxaHub = _G.AxaHub or {}
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
 
-local alive          = true
-local autoFarm       = false      -- AutoFarm Fish v1: default OFF
-local autoEquip      = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2     = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode = "Center"   -- "Left" / "Center"
+local alive              = true
+local autoFarm           = false      -- AutoFarm Fish v1: default OFF
+local autoEquip          = false      -- AutoEquip Harpoon: default OFF
+local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarmV2Mode     = "Center"   -- "Left" / "Center"
+local autoDailyReward    = false      -- Auto claim daily reward
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
 local connections = {}
-local ToolsData   = nil           -- akan diisi setelah WaitPlayerData siap
 
-------------------- REMOTES & GAME INSTANCES -------------------
-local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
-local FireRE         = Remotes and Remotes:FindFirstChild("FireRE")   -- Fire harpoon
-local ToolRE         = Remotes and Remotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
-local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish
-local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bait
-
-local GameFolder     = ReplicatedStorage:FindFirstChild("Game")
-local FishBaitShop   = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
+------------------- REMOTES (SPEAR FISHING / SHOP / DAILY) -------------------
+local Remotes    = ReplicatedStorage:FindFirstChild("Remotes")
+local FireRE     = Remotes and Remotes:FindFirstChild("FireRE")     -- Fire harpoon
+local ToolRE     = Remotes and Remotes:FindFirstChild("ToolRE")     -- Buy / Switch harpoon & basket
+local FishRE     = Remotes and Remotes:FindFirstChild("FishRE")     -- Sell spear-fish
+local BaitRE     = Remotes and Remotes:FindFirstChild("BaitRE")     -- Buy bait
+local DailyRE    = Remotes and Remotes:FindFirstChild("DailyRE")    -- Daily reward
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
 local UtilityFolder = ReplicatedStorage:FindFirstChild("Utility")
@@ -73,9 +71,54 @@ local ItemUtil      = safeRequire(UtilityFolder, "ItemUtil")
 local ToolUtil      = safeRequire(UtilityFolder, "ToolUtil")
 local FormatUtil    = safeRequire(UtilityFolder, "Format")
 local PurchaseUtil  = safeRequire(UtilityFolder, "PurchaseUtil")
-local ResFishBasket = safeRequire(ConfigFolder,  "ResFishBasket") -- Luck/Frequency
-local ResFishBait   = safeRequire(ConfigFolder,  "ResFishBait")
+local ColorUtil     = safeRequire(UtilityFolder, "ColorUtil")
+local UIUtil        = safeRequire(UtilityFolder, "UIUtil")
 local MathUtil      = safeRequire(UtilityFolder, "MathUtil")
+
+local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket")   -- Luck/Frequency basket
+local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")     -- Bait config
+local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")  -- Daily reward config
+
+-- PlayerData Tools (untuk status Owned) - aman, tanpa infinite loop
+local ToolsData
+do
+    local ok, has = pcall(function()
+        return shared and shared.WaitPlayerData
+    end)
+    if ok and typeof(has) == "function" then
+        local ok2, result = pcall(function()
+            return shared.WaitPlayerData("Tools")
+        end)
+        if ok2 and result then
+            ToolsData = result
+        end
+    end
+end
+
+-- PlayerData Daily untuk auto-claim
+local DailyData
+do
+    local ok, has = pcall(function()
+        return shared and shared.WaitPlayerData
+    end)
+    if ok and typeof(has) == "function" then
+        local ok2, result = pcall(function()
+            return shared.WaitPlayerData("Daily")
+        end)
+        if ok2 and result then
+            DailyData = result
+        end
+    end
+end
+
+-- FishBaitShop object (stock + timer)
+local FishBaitShop
+do
+    local gameFolder = ReplicatedStorage:FindFirstChild("Game")
+    if gameFolder then
+        FishBaitShop = gameFolder:FindFirstChild("FishBaitShop")
+    end
+end
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -88,7 +131,7 @@ local function notify(title, text, dur)
     end)
 end
 
-------------------- ID LIST -------------------
+------------------- HARPOON & BASKET ID LIST -------------------
 local HARPOON_IDS = {
     "Harpoon01",
     "Harpoon02",
@@ -107,6 +150,7 @@ local HARPOON_IDS = {
 }
 
 local BASKET_IDS = {
+    "FishBasket1",
     "FishBasket2",
     "FishBasket3",
     "FishBasket4",
@@ -115,12 +159,23 @@ local BASKET_IDS = {
     "FishBasket8",
 }
 
-local BAIT_IDS = {
-    "Bait1",
-    "Bait2",
-    "Bait3",
-    "Bait4",
-    "Bait5",
+local BAIT_IDS = { "Bait1", "Bait2", "Bait3", "Bait4", "Bait5" }
+
+-- Beberapa harpoon/basket default sudah dimiliki (tidak perlu Buy)
+local DEFAULT_HARPOON_OWNED = {
+    Harpoon01 = true,
+    Harpoon02 = true,
+    Harpoon03 = true,
+    Harpoon04 = true,
+    Harpoon09 = true,
+    Harpoon10 = true,
+    Harpoon11 = true,
+}
+
+local DEFAULT_BASKET_OWNED = {
+    FishBasket1 = true,
+    FishBasket2 = true,
+    FishBasket3 = true,
 }
 
 ------------------- TOOL / HARPOON / BASKET DETECTION -------------------
@@ -129,10 +184,25 @@ local function isHarpoonTool(tool)
     return tool.Name:match("^Harpoon(%d+)$") ~= nil
 end
 
+local function isBasketTool(tool)
+    if not tool or not tool:IsA("Tool") then return false end
+    return tool.Name:match("^FishBasket(%d+)$") ~= nil
+end
+
 local function getEquippedHarpoonTool()
     if not character then return nil end
     for _, child in ipairs(character:GetChildren()) do
         if isHarpoonTool(child) then
+            return child
+        end
+    end
+    return nil
+end
+
+local function getEquippedBasketTool()
+    if not character then return nil end
+    for _, child in ipairs(character:GetChildren()) do
+        if isBasketTool(child) then
             return child
         end
     end
@@ -172,7 +242,7 @@ local function ensureHarpoonEquipped()
 end
 
 local function isToolOwnedGeneric(id)
-    -- via PlayerData Tools (jika sudah siap)
+    -- via PlayerData Tools
     if ToolsData and ToolsData:FindFirstChild(id) then
         return true
     end
@@ -196,17 +266,38 @@ local function isToolOwnedGeneric(id)
 end
 
 local function isHarpoonOwned(id)
+    if DEFAULT_HARPOON_OWNED[id] then
+        return true
+    end
     return isToolOwnedGeneric(id)
 end
 
 local function isBasketOwned(id)
+    if DEFAULT_BASKET_OWNED[id] then
+        return true
+    end
     return isToolOwnedGeneric(id)
 end
 
+local function requestToolSwitch(id)
+    if not ToolRE then
+        notify("Spear Fishing", "Remote ToolRE tidak ditemukan.", 4)
+        return
+    end
+    local ok, err = pcall(function()
+        ToolRE:FireServer("Switch", { ID = id })
+    end)
+    if not ok then
+        warn("[SpearFishing] ToolRE:Switch gagal:", err)
+        notify("Spear Fishing", "Gagal mengirim request Equip, cek Output.", 4)
+    end
+end
+
 ------------------- UI HELPERS (TAHOE STYLE LIGHT) -------------------
-local harpoonCardsById = {}  -- id -> {frame, buyButton, assetType}
-local basketCardsById  = {}  -- id -> {frame, buyButton, assetType}
-local baitCardsById    = {}  -- id -> {frame, buyButton, stockLabel, noStockLabel}
+local harpoonCardsById = {}  -- id -> {frame, actionButton, assetType}
+local basketCardsById  = {}  -- id -> {frame, actionButton, assetType}
+local baitCardsById    = {}  -- id -> {frame, button, id}
+local dailyCardsByIdx  = {}  -- idx -> {frame, button, claimedLabel}
 
 local function createMainLayout()
     -- Header
@@ -238,7 +329,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V1"
+    title.Text = "Spear Fishing V4"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -250,7 +341,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon/Basket/Bait Shop + Auto Daily Reward"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -407,7 +498,7 @@ local function doFireHarpoon()
         return
     end
 
-    -- Aim mengikuti pusat layar (GunAim)
+    -- Aim mengikuti pusat GunAim UI (center screen -> ScreenPointToRay)
     local viewport = camera.ViewportSize
     local centerX, centerY = viewport.X / 2, viewport.Y / 2
 
@@ -417,19 +508,14 @@ local function doFireHarpoon()
 
     local destination = origin + direction * 300
 
-    local args = {
-        [1] = "Fire",
-        [2] = {
-            ["cameraOrigin"] = origin,
-            ["player"]       = LocalPlayer,
-            ["toolInstance"] = harpoon,
-            ["destination"]  = destination,
-            ["isCharge"]     = false
-        }
-    }
-
     local ok, err = pcall(function()
-        FireRE:FireServer(unpack(args))
+        FireRE:FireServer("Fire", {
+            cameraOrigin = origin,
+            player       = LocalPlayer,
+            toolInstance = harpoon,
+            destination  = destination,
+            isCharge     = false
+        })
     end)
     if not ok then
         warn("[SpearFishing] FireRE:FireServer gagal:", err)
@@ -458,7 +544,7 @@ end
 local function tapScreenPosition(pos)
     if not pos or not VirtualInputManager then return end
 
-    -- Jangan ganggu kalau sedang mengetik
+    -- Jangan ganggu kalau sedang mengetik di chat / TextBox lain
     if UserInputService:GetFocusedTextBox() then
         return
     end
@@ -613,20 +699,32 @@ local function getHarpoonDisplayData(id)
 end
 
 local function refreshHarpoonOwnership()
+    local equippedTool = getEquippedHarpoonTool()
+    local equippedName = equippedTool and equippedTool.Name or nil
+
     for id, entry in pairs(harpoonCardsById) do
-        local btn = entry.buyButton
+        local btn = entry.actionButton
         if btn then
-            local owned = isHarpoonOwned(id)
-            if owned then
-                btn.Text = "Owned"
-                btn.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
-                btn.TextColor3 = Color3.fromRGB(230, 230, 230)
-                btn.AutoButtonColor = false
-            else
+            local owned    = isHarpoonOwned(id)
+            local equipped = owned and (equippedName == id)
+
+            if not owned then
                 btn.Text = "Buy"
                 btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
                 btn.TextColor3 = Color3.fromRGB(235, 235, 235)
                 btn.AutoButtonColor = true
+            else
+                if equipped then
+                    btn.Text = "EQUIPPED"
+                    btn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+                    btn.TextColor3 = Color3.fromRGB(255, 230, 230)
+                    btn.AutoButtonColor = false
+                else
+                    btn.Text = "EQUIP"
+                    btn.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
+                    btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+                    btn.AutoButtonColor = true
+                end
             end
         end
     end
@@ -636,9 +734,9 @@ local function buildHarpoonShopCard(parent)
     local card, _, _ = createCard(
         parent,
         "Harpoon Shop",
-        "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
+        "Toko Harpoon (Image + DMG + CRT + Charge + Price + Equip).",
         2,
-        280 -- diperbesar agar tombol terlihat penuh
+        280
     )
 
     local scroll = Instance.new("ScrollingFrame")
@@ -647,10 +745,9 @@ local function buildHarpoonShopCard(parent)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.Position = UDim2.new(0, 0, 0, 40)
-    scroll.Size = UDim2.new(1, 0, 1, -44)
+    scroll.Size = UDim2.new(1, 0, 1, -48)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     scroll.ScrollingDirection = Enum.ScrollingDirection.XY
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
 
@@ -667,6 +764,11 @@ local function buildHarpoonShopCard(parent)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
+    local conn = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, layout.AbsoluteContentSize.X + 8, 0, 0)
+    end)
+    table.insert(connections, conn)
+
     for index, id in ipairs(HARPOON_IDS) do
         local data = getHarpoonDisplayData(id)
 
@@ -676,7 +778,7 @@ local function buildHarpoonShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 160, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -694,7 +796,7 @@ local function buildHarpoonShopCard(parent)
         img.BackgroundTransparency = 1
         img.BorderSizePixel = 0
         img.Position = UDim2.new(0, 6, 0, 6)
-        img.Size = UDim2.new(1, -12, 0, 70)
+        img.Size = UDim2.new(1, -12, 0, 80)
         img.Image = data.icon or ""
         img.ScaleType = Enum.ScaleType.Fit
 
@@ -706,7 +808,7 @@ local function buildHarpoonShopCard(parent)
         nameLabel.TextSize = 12
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Position = UDim2.new(0, 6, 0, 80)
+        nameLabel.Position = UDim2.new(0, 6, 0, 90)
         nameLabel.Size = UDim2.new(1, -12, 0, 16)
         nameLabel.Text = data.name or id
 
@@ -720,8 +822,8 @@ local function buildHarpoonShopCard(parent)
         stats.TextYAlignment = Enum.TextYAlignment.Top
         stats.TextColor3 = Color3.fromRGB(190, 190, 190)
         stats.TextWrapped = true
-        stats.Position = UDim2.new(0, 6, 0, 98)
-        stats.Size = UDim2.new(1, -12, 0, 72)
+        stats.Position = UDim2.new(0, 6, 0, 108)
+        stats.Size = UDim2.new(1, -12, 0, 64)
         stats.Text = string.format(
             "DMG: %s~%s\nCRT: %s\nCharge: %s\nPrice: %s",
             tostring(data.dmgMin),
@@ -731,33 +833,38 @@ local function buildHarpoonShopCard(parent)
             tostring(data.priceText)
         )
 
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        buyBtn.BorderSizePixel = 0
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamSemibold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        buyBtn.Text = "Buy"
-        buyBtn.Position = UDim2.new(0, 6, 1, -30)
-        buyBtn.Size = UDim2.new(1, -12, 0, 24)
+        local actionBtn = Instance.new("TextButton")
+        actionBtn.Name = "ActionButton"
+        actionBtn.Parent = item
+        actionBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        actionBtn.BorderSizePixel = 0
+        actionBtn.AutoButtonColor = true
+        actionBtn.Font = Enum.Font.GothamSemibold
+        actionBtn.TextSize = 12
+        actionBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
+        actionBtn.Text = "Buy"
+        actionBtn.Position = UDim2.new(0, 6, 1, -32)
+        actionBtn.Size = UDim2.new(1, -12, 0, 26)
 
         local cornerBtn = Instance.new("UICorner")
         cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = buyBtn
+        cornerBtn.Parent = actionBtn
 
         harpoonCardsById[id] = {
-            frame     = item,
-            buyButton = buyBtn,
-            assetType = data.assetType or "Currency",
+            frame        = item,
+            actionButton = actionBtn,
+            assetType    = data.assetType or "Currency",
         }
 
-        local function onBuy()
-            if isHarpoonOwned(id) then
-                notify("Spear Fishing", (data.name or id) .. " sudah dimiliki.", 3)
-                refreshHarpoonOwnership()
+        local function onAction()
+            local owned = isHarpoonOwned(id)
+            if owned then
+                requestToolSwitch(id)
+                task.delay(0.6, function()
+                    if alive then
+                        refreshHarpoonOwnership()
+                    end
+                end)
                 return
             end
 
@@ -777,17 +884,17 @@ local function buildHarpoonShopCard(parent)
                     notify("Spear Fishing", "Gagal membuka purchase Robux.", 4)
                 end
             else
-                local args = {
-                    [1] = "Buy",
-                    [2] = { ["ID"] = id }
-                }
-
                 local ok, err = pcall(function()
-                    ToolRE:FireServer(unpack(args))
+                    ToolRE:FireServer("Buy", { ID = id })
                 end)
 
                 if ok then
                     notify("Spear Fishing", "Request beli " .. (data.name or id) .. " dikirim.", 4)
+                    task.delay(0.7, function()
+                        if alive then
+                            refreshHarpoonOwnership()
+                        end
+                    end)
                 else
                     warn("[SpearFishing] ToolRE:Buy gagal:", err)
                     notify("Spear Fishing", "Gagal mengirim request beli, cek Output.", 4)
@@ -795,17 +902,52 @@ local function buildHarpoonShopCard(parent)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        local connBtn = actionBtn.MouseButton1Click:Connect(onAction)
+        table.insert(connections, connBtn)
     end
 
-    -- pertama kali
     refreshHarpoonOwnership()
+
+    if ToolsData then
+        local c1 = ToolsData.AttributeChanged:Connect(refreshHarpoonOwnership)
+        local c2 = ToolsData.ChildAdded:Connect(refreshHarpoonOwnership)
+        local c3 = ToolsData.ChildRemoved:Connect(refreshHarpoonOwnership)
+        table.insert(connections, c1)
+        table.insert(connections, c2)
+        table.insert(connections, c3)
+    end
 
     return card
 end
 
 ------------------- BASKET SHOP: DATA & UI -------------------
+local function getBasketConfig(id)
+    if not ResFishBasket or type(ResFishBasket) ~= "table" then
+        return nil
+    end
+
+    -- Coba akses langsung dengan key string
+    if type(ResFishBasket[id]) == "table" then
+        return ResFishBasket[id]
+    end
+
+    -- Pola umum: __index = { "FishBasket1", ... }, dan data di indeks numerik
+    local idxList = ResFishBasket.__index
+    if type(idxList) == "table" then
+        for i, key in pairs(idxList) do
+            if key == id then
+                local cfg = ResFishBasket[i]
+                if type(cfg) == "table" then
+                    return cfg
+                end
+                break
+            end
+        end
+    end
+
+    return nil
+end
+
 local function getBasketDisplayData(id)
     local name      = id
     local icon      = ""
@@ -856,36 +998,22 @@ local function getBasketDisplayData(id)
     end
 
     -- Ambil Luck & Frequency dari ResFishBasket jika tersedia
-    if ResFishBasket then
-        local okCfg, cfg = pcall(function()
-            return ResFishBasket[id] or (ResFishBasket.__index and ResFishBasket.__index[id])
-        end)
-        if okCfg and type(cfg) == "table" then
-            local function pickNumber(tbl, keys)
-                for _, key in ipairs(keys) do
-                    local v = tbl[key]
-                    if type(v) == "number" then
-                        return v
-                    end
-                end
-                -- fallback: cari angka pertama
-                for _, v in pairs(tbl) do
-                    if type(v) == "number" then
-                        return v
-                    end
-                end
-                return nil
-            end
+    local cfg = getBasketConfig(id)
+    if cfg and type(cfg) == "table" then
+        if cfg.Luck ~= nil then
+            luck = tostring(cfg.Luck)
+        elseif cfg.luck ~= nil then
+            luck = tostring(cfg.luck)
+        end
 
-            local luckVal = pickNumber(cfg, {"Luck", "LuckRate", "LuckValue"})
-            if luckVal then
-                luck = tostring(luckVal)
-            end
-
-            local freqVal = pickNumber(cfg, {"Frequency", "Freq", "FrequencySec", "Cooldown", "CoolDown", "Interval", "Time"})
-            if freqVal then
-                frequency = tostring(freqVal) .. "s"
-            end
+        if cfg.Frequency ~= nil then
+            frequency = tostring(cfg.Frequency) .. "s"
+        elseif cfg.Freq ~= nil then
+            frequency = tostring(cfg.Freq) .. "s"
+        elseif cfg.Time ~= nil then
+            frequency = tostring(cfg.Time) .. "s"
+        elseif cfg.Cooldown ~= nil then
+            frequency = tostring(cfg.Cooldown) .. "s"
         end
     end
 
@@ -900,20 +1028,32 @@ local function getBasketDisplayData(id)
 end
 
 local function refreshBasketOwnership()
+    local equippedTool = getEquippedBasketTool()
+    local equippedName = equippedTool and equippedTool.Name or nil
+
     for id, entry in pairs(basketCardsById) do
-        local btn = entry.buyButton
+        local btn = entry.actionButton
         if btn then
-            local owned = isBasketOwned(id)
-            if owned then
-                btn.Text = "Owned"
-                btn.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
-                btn.TextColor3 = Color3.fromRGB(230, 230, 230)
-                btn.AutoButtonColor = false
-            else
+            local owned    = isBasketOwned(id)
+            local equipped = owned and (equippedName == id)
+
+            if not owned then
                 btn.Text = "Buy"
                 btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
                 btn.TextColor3 = Color3.fromRGB(235, 235, 235)
                 btn.AutoButtonColor = true
+            else
+                if equipped then
+                    btn.Text = "EQUIPPED"
+                    btn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+                    btn.TextColor3 = Color3.fromRGB(255, 230, 230)
+                    btn.AutoButtonColor = false
+                else
+                    btn.Text = "EQUIP"
+                    btn.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
+                    btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+                    btn.AutoButtonColor = true
+                end
             end
         end
     end
@@ -923,9 +1063,9 @@ local function buildBasketShopCard(parent)
     local card, _, _ = createCard(
         parent,
         "Basket Shop",
-        "Toko Basket (Icon + Luck + Frequency + Price).",
+        "Toko Basket (Icon + Luck + Frequency + Price + Equip).",
         3,
-        280 -- diperbesar
+        280
     )
 
     local scroll = Instance.new("ScrollingFrame")
@@ -934,10 +1074,9 @@ local function buildBasketShopCard(parent)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.Position = UDim2.new(0, 0, 0, 40)
-    scroll.Size = UDim2.new(1, 0, 1, -44)
+    scroll.Size = UDim2.new(1, 0, 1, -48)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     scroll.ScrollingDirection = Enum.ScrollingDirection.XY
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
 
@@ -954,6 +1093,11 @@ local function buildBasketShopCard(parent)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
+    local conn = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, layout.AbsoluteContentSize.X + 8, 0, 0)
+    end)
+    table.insert(connections, conn)
+
     for index, id in ipairs(BASKET_IDS) do
         local data = getBasketDisplayData(id)
 
@@ -963,7 +1107,7 @@ local function buildBasketShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 160, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -981,7 +1125,7 @@ local function buildBasketShopCard(parent)
         img.BackgroundTransparency = 1
         img.BorderSizePixel = 0
         img.Position = UDim2.new(0, 6, 0, 6)
-        img.Size = UDim2.new(1, -12, 0, 70)
+        img.Size = UDim2.new(1, -12, 0, 80)
         img.Image = data.icon or ""
         img.ScaleType = Enum.ScaleType.Fit
 
@@ -993,7 +1137,7 @@ local function buildBasketShopCard(parent)
         nameLabel.TextSize = 12
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Position = UDim2.new(0, 6, 0, 80)
+        nameLabel.Position = UDim2.new(0, 6, 0, 90)
         nameLabel.Size = UDim2.new(1, -12, 0, 16)
         nameLabel.Text = data.name or id
 
@@ -1007,8 +1151,8 @@ local function buildBasketShopCard(parent)
         stats.TextYAlignment = Enum.TextYAlignment.Top
         stats.TextColor3 = Color3.fromRGB(190, 190, 190)
         stats.TextWrapped = true
-        stats.Position = UDim2.new(0, 6, 0, 98)
-        stats.Size = UDim2.new(1, -12, 0, 72)
+        stats.Position = UDim2.new(0, 6, 0, 108)
+        stats.Size = UDim2.new(1, -12, 0, 64)
         stats.Text = string.format(
             "Luck: %s\nFrequency: %s\nPrice: %s",
             tostring(data.luck),
@@ -1016,33 +1160,38 @@ local function buildBasketShopCard(parent)
             tostring(data.priceText)
         )
 
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        buyBtn.BorderSizePixel = 0
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamSemibold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        buyBtn.Text = "Buy"
-        buyBtn.Position = UDim2.new(0, 6, 1, -30)
-        buyBtn.Size = UDim2.new(1, -12, 0, 24)
+        local actionBtn = Instance.new("TextButton")
+        actionBtn.Name = "ActionButton"
+        actionBtn.Parent = item
+        actionBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        actionBtn.BorderSizePixel = 0
+        actionBtn.AutoButtonColor = true
+        actionBtn.Font = Enum.Font.GothamSemibold
+        actionBtn.TextSize = 12
+        actionBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
+        actionBtn.Text = "Buy"
+        actionBtn.Position = UDim2.new(0, 6, 1, -32)
+        actionBtn.Size = UDim2.new(1, -12, 0, 26)
 
         local cornerBtn = Instance.new("UICorner")
         cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = buyBtn
+        cornerBtn.Parent = actionBtn
 
         basketCardsById[id] = {
-            frame     = item,
-            buyButton = buyBtn,
-            assetType = data.assetType or "Currency",
+            frame        = item,
+            actionButton = actionBtn,
+            assetType    = data.assetType or "Currency",
         }
 
-        local function onBuy()
-            if isBasketOwned(id) then
-                notify("Spear Fishing", (data.name or id) .. " sudah dimiliki.", 3)
-                refreshBasketOwnership()
+        local function onAction()
+            local owned = isBasketOwned(id)
+            if owned then
+                requestToolSwitch(id)
+                task.delay(0.6, function()
+                    if alive then
+                        refreshBasketOwnership()
+                    end
+                end)
                 return
             end
 
@@ -1058,21 +1207,21 @@ local function buildBasketShopCard(parent)
                     PurchaseUtil:getPurchase(id)
                 end)
                 if not ok then
-                    warn("[SpearFishing] PurchaseUtil:getPurchase gagal:", err)
+                    warn("[SpearFishing] PurchaseUtil:getPurchase Basket gagal:", err)
                     notify("Spear Fishing", "Gagal membuka purchase Robux.", 4)
                 end
             else
-                local args = {
-                    [1] = "Buy",
-                    [2] = { ["ID"] = id }
-                }
-
                 local ok, err = pcall(function()
-                    ToolRE:FireServer(unpack(args))
+                    ToolRE:FireServer("Buy", { ID = id })
                 end)
 
                 if ok then
                     notify("Spear Fishing", "Request beli " .. (data.name or id) .. " dikirim.", 4)
+                    task.delay(0.7, function()
+                        if alive then
+                            refreshBasketOwnership()
+                        end
+                    end)
                 else
                     warn("[SpearFishing] ToolRE:Buy Basket gagal:", err)
                     notify("Spear Fishing", "Gagal mengirim request beli basket, cek Output.", 4)
@@ -1080,81 +1229,78 @@ local function buildBasketShopCard(parent)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        local connBtn = actionBtn.MouseButton1Click:Connect(onAction)
+        table.insert(connections, connBtn)
     end
 
     refreshBasketOwnership()
+
+    if ToolsData then
+        local c1 = ToolsData.AttributeChanged:Connect(refreshBasketOwnership)
+        local c2 = ToolsData.ChildAdded:Connect(refreshBasketOwnership)
+        local c3 = ToolsData.ChildRemoved:Connect(refreshBasketOwnership)
+        table.insert(connections, c1)
+        table.insert(connections, c2)
+        table.insert(connections, c3)
+    end
 
     return card
 end
 
 ------------------- BAIT SHOP: DATA & UI -------------------
-local function refreshBaitStock()
-    if not FishBaitShop then return end
-    for id, entry in pairs(baitCardsById) do
-        local stockVal = FishBaitShop:GetAttribute(id)
-        if typeof(stockVal) ~= "number" then
-            stockVal = 0
+local function getBaitIds()
+    if ResFishBait and type(ResFishBait.__index) == "table" then
+        local list = {}
+        for _, id in pairs(ResFishBait.__index) do
+            table.insert(list, id)
         end
-        if entry.stockLabel then
-            entry.stockLabel.Text = "Stock: " .. stockVal
-        end
-        local hasStock = stockVal > 0
-        if entry.buyButton then
-            entry.buyButton.Visible = hasStock
-        end
-        if entry.noStockLabel then
-            entry.noStockLabel.Visible = not hasStock
-        end
+        return list
     end
+    return BAIT_IDS
 end
 
 local function buildBaitShopCard(parent)
-    -- subtitle sengaja kosong, kita buat label sendiri agar muat Time Reset
     local card, _, _ = createCard(
         parent,
         "Bait Shop",
-        "",
+        "Beli Bait (Icon + Attracts Rarity + Stock/NoStock + Price + Reset timer).",
         4,
-        280 -- diperbesar
+        260
     )
 
-    -- Info + Reset time baris bawah title
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "Info"
     infoLabel.Parent = card
     infoLabel.BackgroundTransparency = 1
     infoLabel.Font = Enum.Font.Gotham
     infoLabel.TextSize = 11
-    infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+    infoLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    infoLabel.Text = "Beli Bait (Stock + Attracts Rarity Fish + Price)."
-    infoLabel.Position = UDim2.new(0, 0, 0, 20)
+    infoLabel.Text = "Auto update Stock & Reset timer mengikuti FishBaitShop."
+    infoLabel.Position = UDim2.new(0, 0, 0, 22)
     infoLabel.Size = UDim2.new(0.6, 0, 0, 18)
 
     local timeLabel = Instance.new("TextLabel")
-    timeLabel.Name = "ResetLabel"
+    timeLabel.Name = "Timer"
     timeLabel.Parent = card
     timeLabel.BackgroundTransparency = 1
     timeLabel.Font = Enum.Font.Gotham
     timeLabel.TextSize = 11
-    timeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    timeLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
     timeLabel.TextXAlignment = Enum.TextXAlignment.Right
-    timeLabel.Text = "Reset in: --:--"
-    timeLabel.Position = UDim2.new(0.4, 0, 0, 20)
-    timeLabel.Size = UDim2.new(0.6, -2, 0, 18)
+    timeLabel.Text = ""
+    timeLabel.Position = UDim2.new(0.45, 0, 0, 22)
+    timeLabel.Size = UDim2.new(0.55, -4, 0, 18)
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "BaitScroll"
     scroll.Parent = card
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
-    scroll.Position = UDim2.new(0, 0, 0, 44)
-    scroll.Size = UDim2.new(1, 0, 1, -48)
+    scroll.Position = UDim2.new(0, 0, 0, 46)
+    scroll.Size = UDim2.new(1, 0, 1, -54)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     scroll.ScrollingDirection = Enum.ScrollingDirection.XY
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
 
@@ -1171,54 +1317,53 @@ local function buildBaitShopCard(parent)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
-    for index, id in ipairs(BAIT_IDS) do
-        local name   = id
-        local icon   = ""
-        local rarityName = "?"
-        local priceText  = "N/A"
+    local conn = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, layout.AbsoluteContentSize.X + 8, 0, 0)
+    end)
+    table.insert(connections, conn)
 
+    local baitIds = getBaitIds()
+
+    local function updateStockVisual()
+        if not FishBaitShop then return end
+        for _, id in ipairs(baitIds) do
+            local entry = baitCardsById[id]
+            if entry and entry.stockLabel and entry.noStockLabel and entry.button then
+                local stock = FishBaitShop:GetAttribute(id) or 0
+                entry.stockLabel.Text = tostring(stock) .. " Stock"
+                local hasStock = stock > 0
+                entry.button.Visible   = hasStock
+                entry.noStockLabel.Visible = not hasStock
+            end
+        end
+    end
+
+    for index, id in ipairs(baitIds) do
+        local def
         if ItemUtil then
-            local okName, resName = pcall(function()
-                return ItemUtil:getName(id)
-            end)
-            if okName and resName then
-                name = resName
-            end
-
-            local okIcon, resIcon = pcall(function()
-                return ItemUtil:getIcon(id)
-            end)
-            if okIcon and resIcon then
-                icon = resIcon
-            end
-
-            local okDef, def = pcall(function()
+            local okDef, resDef = pcall(function()
                 return ItemUtil:GetDef(id)
             end)
-            if okDef and def then
-                local okRarName, rName = pcall(function()
-                    return ItemUtil:getRarityName(def.Rarity)
-                end)
-                if okRarName and rName then
-                    rarityName = rName
-                end
+            if okDef then
+                def = resDef
             end
+        end
 
-            local okPrice, priceVal = pcall(function()
-                return ItemUtil:getPrice(id)
-            end)
-            if okPrice and priceVal then
-                if FormatUtil then
-                    local okFmt, fmtText = pcall(function()
-                        return FormatUtil:DesignNumberShort(priceVal)
-                    end)
-                    if okFmt and fmtText then
-                        priceText = fmtText
-                    else
-                        priceText = tostring(priceVal)
-                    end
-                else
-                    priceText = tostring(priceVal)
+        local rarityName, rarityColorSeq
+        if def and ItemUtil then
+            local rarity = def.Rarity
+            if rarity then
+                local okName, resName = pcall(function()
+                    return ItemUtil:getRarityName(rarity)
+                end)
+                if okName then
+                    rarityName = resName
+                end
+                local okColor, colorSeq = pcall(function()
+                    return ItemUtil:getTipRarityColorSeq(rarity)
+                end)
+                if okColor then
+                    rarityColorSeq = colorSeq
                 end
             end
         end
@@ -1229,7 +1374,7 @@ local function buildBaitShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210)
+        item.Size = UDim2.new(0, 170, 0, 190)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1241,15 +1386,14 @@ local function buildBaitShopCard(parent)
         stroke.Thickness = 1
         stroke.Parent = item
 
-        local img = Instance.new("ImageLabel")
-        img.Name = "Icon"
-        img.Parent = item
-        img.BackgroundTransparency = 1
-        img.BorderSizePixel = 0
-        img.Position = UDim2.new(0, 6, 0, 6)
-        img.Size = UDim2.new(1, -12, 0, 70)
-        img.Image = icon or ""
-        img.ScaleType = Enum.ScaleType.Fit
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "Icon"
+        icon.Parent = item
+        icon.BackgroundTransparency = 1
+        icon.BorderSizePixel = 0
+        icon.Position = UDim2.new(0, 6, 0, 6)
+        icon.Size = UDim2.new(1, -12, 0, 64)
+        icon.Image = (ItemUtil and ItemUtil:getIcon(id)) or ""
 
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "Name"
@@ -1259,23 +1403,39 @@ local function buildBaitShopCard(parent)
         nameLabel.TextSize = 12
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Position = UDim2.new(0, 6, 0, 80)
+        nameLabel.Position = UDim2.new(0, 6, 0, 74)
         nameLabel.Size = UDim2.new(1, -12, 0, 16)
-        nameLabel.Text = name
+        nameLabel.Text = (def and def.Name) or (ItemUtil and ItemUtil:getName(id)) or id
 
-        local attrLabel = Instance.new("TextLabel")
-        attrLabel.Name = "Attr"
-        attrLabel.Parent = item
-        attrLabel.BackgroundTransparency = 1
-        attrLabel.Font = Enum.Font.Gotham
-        attrLabel.TextSize = 11
-        attrLabel.TextXAlignment = Enum.TextXAlignment.Left
-        attrLabel.TextYAlignment = Enum.TextYAlignment.Top
-        attrLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-        attrLabel.TextWrapped = true
-        attrLabel.Position = UDim2.new(0, 6, 0, 98)
-        attrLabel.Size = UDim2.new(1, -12, 0, 36)
-        attrLabel.Text = "Attracts " .. tostring(rarityName) .. " fish"
+        local desc = Instance.new("TextLabel")
+        desc.Name = "Desc"
+        desc.Parent = item
+        desc.BackgroundTransparency = 1
+        desc.Font = Enum.Font.Gotham
+        desc.TextSize = 11
+        desc.TextXAlignment = Enum.TextXAlignment.Left
+        desc.TextYAlignment = Enum.TextYAlignment.Top
+        desc.TextColor3 = Color3.fromRGB(190, 190, 190)
+        desc.TextWrapped = true
+        desc.Position = UDim2.new(0, 6, 0, 92)
+        desc.Size = UDim2.new(1, -12, 0, 48)
+
+        if rarityName then
+            if ColorUtil and rarityColorSeq then
+                local ok, txt = pcall(function()
+                    return ColorUtil:createGradientText(rarityName, rarityColorSeq)
+                end)
+                if ok and txt then
+                    desc.Text = "Attracts " .. txt .. " fish"
+                else
+                    desc.Text = "Attracts " .. rarityName .. " fish"
+                end
+            else
+                desc.Text = "Attracts " .. rarityName .. " fish"
+            end
+        else
+            desc.Text = "Special bait untuk menarik ikan rare."
+        end
 
         local stockLabel = Instance.new("TextLabel")
         stockLabel.Name = "Stock"
@@ -1284,22 +1444,10 @@ local function buildBaitShopCard(parent)
         stockLabel.Font = Enum.Font.Gotham
         stockLabel.TextSize = 11
         stockLabel.TextXAlignment = Enum.TextXAlignment.Left
-        stockLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        stockLabel.Position = UDim2.new(0, 6, 0, 136)
-        stockLabel.Size = UDim2.new(1, -12, 0, 16)
-        stockLabel.Text = "Stock: -"
-
-        local priceLabel = Instance.new("TextLabel")
-        priceLabel.Name = "Price"
-        priceLabel.Parent = item
-        priceLabel.BackgroundTransparency = 1
-        priceLabel.Font = Enum.Font.Gotham
-        priceLabel.TextSize = 11
-        priceLabel.TextXAlignment = Enum.TextXAlignment.Left
-        priceLabel.TextColor3 = Color3.fromRGB(200, 200, 0)
-        priceLabel.Position = UDim2.new(0, 6, 0, 154)
-        priceLabel.Size = UDim2.new(1, -12, 0, 16)
-        priceLabel.Text = "Price: " .. priceText
+        stockLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+        stockLabel.Position = UDim2.new(0, 6, 0, 142)
+        stockLabel.Size = UDim2.new(0.6, 0, 0, 16)
+        stockLabel.Text = "0 Stock"
 
         local noStockLabel = Instance.new("TextLabel")
         noStockLabel.Name = "NoStock"
@@ -1307,33 +1455,33 @@ local function buildBaitShopCard(parent)
         noStockLabel.BackgroundTransparency = 1
         noStockLabel.Font = Enum.Font.GothamSemibold
         noStockLabel.TextSize = 11
-        noStockLabel.TextXAlignment = Enum.TextXAlignment.Center
-        noStockLabel.TextColor3 = Color3.fromRGB(220, 100, 100)
-        noStockLabel.Position = UDim2.new(0, 6, 1, -46)
-        noStockLabel.Size = UDim2.new(1, -12, 0, 18)
-        noStockLabel.Text = "No Stock"
+        noStockLabel.TextXAlignment = Enum.TextXAlignment.Right
+        noStockLabel.TextColor3 = Color3.fromRGB(230, 100, 100)
+        noStockLabel.Position = UDim2.new(0.4, 0, 0, 142)
+        noStockLabel.Size = UDim2.new(0.6, -6, 0, 16)
+        noStockLabel.Text = "NO STOCK"
         noStockLabel.Visible = false
 
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        buyBtn.BorderSizePixel = 0
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamSemibold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        buyBtn.Text = "Buy"
-        buyBtn.Position = UDim2.new(0, 6, 1, -26)
-        buyBtn.Size = UDim2.new(1, -12, 0, 22)
+        local btn = Instance.new("TextButton")
+        btn.Name = "BuyButton"
+        btn.Parent = item
+        btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.GothamSemibold
+        btn.TextSize = 12
+        btn.TextColor3 = Color3.fromRGB(235, 235, 235)
+        btn.Text = "Buy"
+        btn.Position = UDim2.new(0, 6, 1, -30)
+        btn.Size = UDim2.new(1, -12, 0, 24)
 
         local cornerBtn = Instance.new("UICorner")
         cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = buyBtn
+        cornerBtn.Parent = btn
 
         baitCardsById[id] = {
             frame       = item,
-            buyButton   = buyBtn,
+            button      = btn,
             stockLabel  = stockLabel,
             noStockLabel= noStockLabel,
         }
@@ -1343,107 +1491,314 @@ local function buildBaitShopCard(parent)
                 notify("Spear Fishing", "Remote BaitRE tidak ditemukan.", 4)
                 return
             end
-
-            local args = {
-                [1] = "Buy",
-                [2] = { ["ID"] = id }
-            }
-
             local ok, err = pcall(function()
-                BaitRE:FireServer(unpack(args))
+                BaitRE:FireServer("Buy", { ID = id })
             end)
-
-            if ok then
-                notify("Spear Fishing", "Request beli " .. name .. " dikirim.", 4)
-            else
+            if not ok then
                 warn("[SpearFishing] BaitRE:Buy gagal:", err)
                 notify("Spear Fishing", "Gagal mengirim request beli bait, cek Output.", 4)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        local connBtn = btn.MouseButton1Click:Connect(onBuy)
+        table.insert(connections, connBtn)
+
+        if UIUtil then
+            pcall(function()
+                UIUtil:onGuiObjectRegisterMouseEnterLeaveTweenScale(item)
+            end)
+        end
     end
 
-    -- stock awal
-    refreshBaitStock()
-
-    -- update reset time & stok
     if FishBaitShop then
-        local connChanged = FishBaitShop.Changed:Connect(function(value)
-            if not alive then return end
-            local txt
-            if MathUtil and type(value) == "number" then
-                local okFmt, mmss = pcall(function()
-                    return MathUtil:secondsToMMSS(value)
-                end)
-                txt = okFmt and mmss or tostring(value) .. "s"
-            else
-                txt = tostring(value)
-            end
-            timeLabel.Text = "Reset in: " .. txt
-        end)
-        table.insert(connections, connChanged)
-
-        local connAttr = FishBaitShop.AttributeChanged:Connect(function()
-            if not alive then return end
-            refreshBaitStock()
-        end)
+        updateStockVisual()
+        local connAttr = FishBaitShop.AttributeChanged:Connect(updateStockVisual)
         table.insert(connections, connAttr)
+
+        local function updateTimer()
+            if not MathUtil then return end
+            local value = FishBaitShop.Value or FishBaitShop:GetAttribute("ResetTime")
+            if typeof(value) ~= "number" then
+                timeLabel.Text = ""
+                return
+            end
+            local ok, txt = pcall(function()
+                return MathUtil:secondsToMMSS(value)
+            end)
+            if ok and txt then
+                timeLabel.Text = "Reset in " .. txt
+            else
+                timeLabel.Text = ""
+            end
+        end
+
+        local connChanged = FishBaitShop.Changed:Connect(updateTimer)
+        table.insert(connections, connChanged)
+        updateTimer()
     end
 
     return card
 end
 
-------------------- TOOLSDATA INIT (UNTUK OWNERSHIP REFRESH) -------------------
-local function initToolsDataWatcher()
-    task.spawn(function()
-        if ToolsData then return end
+------------------- DAILY REWARD: UI CARD + AUTO CLAIM -------------------
+local function refreshDailyVisual()
+    if not ResDailyReward or not dailyCardsByIdx then return end
 
-        -- tunggu sampai shared.WaitPlayerData siap
-        local waitFn
-        while alive and not waitFn do
-            local ok, fn = pcall(function()
-                return shared and shared.WaitPlayerData
-            end)
-            if ok and typeof(fn) == "function" then
-                waitFn = fn
-                break
-            end
-            task.wait(0.2)
+    for idx, entry in pairs(dailyCardsByIdx) do
+        local btn        = entry.button
+        local claimedLbl = entry.claimedLabel
+
+        local node
+        if DailyData then
+            node = DailyData:FindFirstChild(idx) or DailyData:FindFirstChild(tostring(idx))
         end
 
-        if not alive or not waitFn then
-            return
+        local claimed   = false
+        local canClaim  = false
+
+        if node then
+            claimed  = node:GetAttribute("claimed") == true
+            canClaim = not claimed
         end
 
-        local ok2, result = pcall(function()
-            return waitFn("Tools")
-        end)
-        if not ok2 or not result then
-            warn("[SpearFishing] Gagal WaitPlayerData('Tools'):", ok2 and "no result" or result)
-            return
+        if btn then
+            btn.Visible = canClaim
         end
-
-        ToolsData = result
-
-        local function onToolsChanged()
-            if not alive then return end
-            refreshHarpoonOwnership()
-            refreshBasketOwnership()
+        if claimedLbl then
+            claimedLbl.Visible = claimed
         end
+    end
+end
 
-        if ToolsData.AttributeChanged then
-            local c1 = ToolsData.AttributeChanged:Connect(onToolsChanged)
-            table.insert(connections, c1)
-        end
-        local c2 = ToolsData.ChildAdded:Connect(onToolsChanged)
-        local c3 = ToolsData.ChildRemoved:Connect(onToolsChanged)
-        table.insert(connections, c2)
-        table.insert(connections, c3)
+local function buildDailyRewardCard(parent)
+    local card, _, _ = createCard(
+        parent,
+        "Auto Daily Reward",
+        "",
+        5,
+        260
+    )
 
-        onToolsChanged()
+    local autoBtn, updateAutoUI = createToggleButton(card, "Auto Claim Daily Reward", false)
+    autoBtn.Size     = UDim2.new(0.5, -6, 0, 26)
+    autoBtn.Position = UDim2.new(0, 0, 0, 22)
+
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name = "Info"
+    infoLabel.Parent = card
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.TextSize = 11
+    infoLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    infoLabel.TextWrapped = true
+    infoLabel.Position = UDim2.new(0, 0, 0, 52)
+    infoLabel.Size = UDim2.new(1, 0, 0, 28)
+    infoLabel.Text = "Tampilkan reward harian (Day 1, Day 2, ...) + tombol Claim. Auto Claim akan menekan DailyRE jika reward tersedia."
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "DailyScroll"
+    scroll.Parent = card
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.Position = UDim2.new(0, 0, 0, 82)
+    scroll.Size = UDim2.new(1, 0, 1, -90)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollingDirection = Enum.ScrollingDirection.XY
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
+
+    local padding = Instance.new("UIPadding")
+    padding.Parent = scroll
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingBottom = UDim.new(0, 4)
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
+
+    local connLayout = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, layout.AbsoluteContentSize.X + 8, 0, 0)
     end)
+    table.insert(connections, connLayout)
+
+    if ResDailyReward and type(ResDailyReward) == "table" then
+        for idx = 1, #ResDailyReward do
+            local def = ResDailyReward[idx]
+            local btnFrame = Instance.new("Frame")
+            btnFrame.Name = "Day" .. idx
+            btnFrame.Parent = scroll
+            btnFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            btnFrame.BackgroundTransparency = 0.1
+            btnFrame.BorderSizePixel = 0
+            btnFrame.Size = UDim2.new(0, 170, 0, 190)
+            btnFrame.LayoutOrder = idx
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = btnFrame
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = Color3.fromRGB(70, 70, 70)
+            stroke.Thickness = 1
+            stroke.Parent = btnFrame
+
+            local dayLabel = Instance.new("TextLabel")
+            dayLabel.Name = "DayLabel"
+            dayLabel.Parent = btnFrame
+            dayLabel.BackgroundTransparency = 1
+            dayLabel.Font = Enum.Font.GothamSemibold
+            dayLabel.TextSize = 12
+            dayLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
+            dayLabel.TextXAlignment = Enum.TextXAlignment.Left
+            dayLabel.Position = UDim2.new(0, 6, 0, 4)
+            dayLabel.Size = UDim2.new(1, -12, 0, 16)
+            dayLabel.Text = "Day " .. tostring(idx)
+
+            local icon = Instance.new("ImageLabel")
+            icon.Name = "Icon"
+            icon.Parent = btnFrame
+            icon.BackgroundTransparency = 1
+            icon.BorderSizePixel = 0
+            icon.Position = UDim2.new(0, 6, 0, 24)
+            icon.Size = UDim2.new(0, 48, 0, 48)
+            icon.Image = ""
+
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "Name"
+            nameLabel.Parent = btnFrame
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Font = Enum.Font.GothamSemibold
+            nameLabel.TextSize = 12
+            nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.Position = UDim2.new(0, 60, 0, 28)
+            nameLabel.Size = UDim2.new(1, -66, 0, 18)
+            nameLabel.Text = "Reward"
+
+            local countLabel = Instance.new("TextLabel")
+            countLabel.Name = "Count"
+            countLabel.Parent = btnFrame
+            countLabel.BackgroundTransparency = 1
+            countLabel.Font = Enum.Font.Gotham
+            countLabel.TextSize = 11
+            countLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+            countLabel.TextXAlignment = Enum.TextXAlignment.Left
+            countLabel.Position = UDim2.new(0, 60, 0, 46)
+            countLabel.Size = UDim2.new(1, -66, 0, 16)
+            countLabel.Text = ""
+
+            local claimedLabel = Instance.new("TextLabel")
+            claimedLabel.Name = "Claimed"
+            claimedLabel.Parent = btnFrame
+            claimedLabel.BackgroundTransparency = 1
+            claimedLabel.Font = Enum.Font.GothamSemibold
+            claimedLabel.TextSize = 11
+            claimedLabel.TextColor3 = Color3.fromRGB(120, 220, 120)
+            claimedLabel.TextXAlignment = Enum.TextXAlignment.Left
+            claimedLabel.Position = UDim2.new(0, 6, 0, 70)
+            claimedLabel.Size = UDim2.new(1, -12, 0, 18)
+            claimedLabel.Text = "Claimed"
+            claimedLabel.Visible = false
+
+            local btn = Instance.new("TextButton")
+            btn.Name = "ClaimButton"
+            btn.Parent = btnFrame
+            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            btn.BorderSizePixel = 0
+            btn.AutoButtonColor = true
+            btn.Font = Enum.Font.GothamSemibold
+            btn.TextSize = 12
+            btn.TextColor3 = Color3.fromRGB(235, 235, 235)
+            btn.Text = "Claim"
+            btn.Position = UDim2.new(0, 6, 1, -30)
+            btn.Size = UDim2.new(1, -12, 0, 24)
+
+            local cornerBtn = Instance.new("UICorner")
+            cornerBtn.CornerRadius = UDim.new(0, 6)
+            cornerBtn.Parent = btn
+
+            -- Isi data reward
+            local thingId  = def.ThingId
+            local thingCnt = def.ThingCount
+            local iconName = def.IconName
+            local displayName = def.Name
+
+            if ItemUtil then
+                if not displayName then
+                    local okName, nm = pcall(function()
+                        return ItemUtil:getName(thingId)
+                    end)
+                    if okName then
+                        displayName = nm
+                    end
+                end
+                local iconId = iconName or thingId
+                local okIcon, ic = pcall(function()
+                    return ItemUtil:getIcon(iconId)
+                end)
+                if okIcon then
+                    icon.Image = ic
+                end
+            end
+
+            nameLabel.Text = displayName or tostring(thingId)
+            countLabel.Text = "x" .. tostring(thingCnt or 1)
+
+            dailyCardsByIdx[idx] = {
+                frame        = btnFrame,
+                button       = btn,
+                claimedLabel = claimedLabel,
+            }
+
+            local function claim()
+                if not DailyRE then
+                    notify("Spear Fishing", "Remote DailyRE tidak ditemukan.", 4)
+                    return
+                end
+                local ok, err = pcall(function()
+                    DailyRE:FireServer({ index = idx })
+                end)
+                if not ok then
+                    warn("[SpearFishing] DailyRE:FireServer gagal:", err)
+                    notify("Spear Fishing", "Gagal claim daily reward, cek Output.", 4)
+                end
+            end
+
+            local connBtn = btn.MouseButton1Click:Connect(claim)
+            table.insert(connections, connBtn)
+        end
+
+        refreshDailyVisual()
+
+        if DailyData then
+            for _, child in ipairs(DailyData:GetChildren()) do
+                local connAttr = child.AttributeChanged:Connect(refreshDailyVisual)
+                table.insert(connections, connAttr)
+            end
+            local connAdd = DailyData.ChildAdded:Connect(function(newChild)
+                local connAttr = newChild.AttributeChanged:Connect(refreshDailyVisual)
+                table.insert(connections, connAttr)
+                refreshDailyVisual()
+            end)
+            table.insert(connections, connAdd)
+            local connRem = DailyData.ChildRemoved:Connect(refreshDailyVisual)
+            table.insert(connections, connRem)
+        end
+    end
+
+    local connToggle = autoBtn.MouseButton1Click:Connect(function()
+        autoDailyReward = not autoDailyReward
+        updateAutoUI(autoDailyReward)
+        notify("Spear Fishing", "Auto Daily Reward: " .. (autoDailyReward and "ON" or "OFF"), 2)
+    end)
+    table.insert(connections, connToggle)
+
+    return card
 end
 
 ------------------- BUILD UI: CONTROL CARD -------------------
@@ -1454,7 +1809,7 @@ local controlCard, _, _ = createCard(
     "Spear Controls",
     "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All.",
     1,
-    230
+    250
 )
 
 local controlsFrame = Instance.new("Frame")
@@ -1578,7 +1933,6 @@ local function onInputBegan(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if input.KeyCode ~= Enum.KeyCode.F then return end
-    if UserInputService:GetFocusedTextBox() then return end
 
     autoFarmV2 = not autoFarmV2
     updateAutoFarmV2UI(autoFarmV2)
@@ -1591,13 +1945,11 @@ do
     table.insert(connections, connInput)
 end
 
-------------------- BUILD UI: SHOP CARDS -------------------
+------------------- BUILD UI: HARPOON, BASKET, BAIT, DAILY CARDS -------------------
 buildHarpoonShopCard(bodyScroll)
 buildBasketShopCard(bodyScroll)
 buildBaitShopCard(bodyScroll)
-
--- setelah semua card terbentuk, inisialisasi ToolsData watcher
-initToolsDataWatcher()
+buildDailyRewardCard(bodyScroll)
 
 ------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP -------------------
 do
@@ -1676,12 +2028,30 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Daily Reward (ringan, cek tiap 5 detik)
+task.spawn(function()
+    while alive do
+        if autoDailyReward and DailyRE and DailyData and ResDailyReward and type(ResDailyReward) == "table" then
+            for idx = 1, #ResDailyReward do
+                local node = DailyData:FindFirstChild(idx) or DailyData:FindFirstChild(tostring(idx))
+                if node and not node:GetAttribute("claimed") then
+                    pcall(function()
+                        DailyRE:FireServer({ index = idx })
+                    end)
+                end
+            end
+        end
+        task.wait(5)
+    end
+end)
+
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive       = false
-    autoFarm    = false
-    autoEquip   = false
-    autoFarmV2  = false
+    alive             = false
+    autoFarm          = false
+    autoEquip         = false
+    autoFarmV2        = false
+    autoDailyReward   = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
