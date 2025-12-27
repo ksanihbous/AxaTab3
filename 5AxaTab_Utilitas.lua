@@ -1332,7 +1332,7 @@ do
             notify("ShiftRun","Speed harus angka (contoh: 40).",2)
             return
         end
-        num = math.clamp(num, 16, 200)
+        num = math.clamp(num, 16, 1000)
         SR_RunningSpeed = num
         speedBox.Text = tostring(num)
 
@@ -1424,7 +1424,7 @@ do
         end
         -- clamp & bulatkan biar aman
         num = math.floor(num + 0.5)
-        num = math.clamp(num, 0, 50)
+        num = math.clamp(num, 0, 1000)
         IJ_Settings.ExtraJumps = num
         IJ_JumpsDone = 0
         extraBox.Text = tostring(num)
