@@ -1164,7 +1164,7 @@ do
         TextSize = 15,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextColor3 = Color3.fromRGB(40,40,70),
-        Text = "⚙️ Utilitas V2 - Invisible"
+        Text = "⚙️ Utilitas V1 - Invisible"
     }, TAB)
 
     -- ScrollingFrame vertikal berisi checkbox checklist
@@ -1324,6 +1324,7 @@ do
     }, srConfigRow)
     ui("UICorner", {CornerRadius = UDim.new(0,6)}, fovBox)
 
+    -- TANPA BATAS MAX: hanya minimal 0 utk speed, minimal 1 utk FOV
     speedBox.FocusLost:Connect(function()
         local txt = speedBox.Text
         local num = tonumber(txt)
@@ -1332,7 +1333,9 @@ do
             notify("ShiftRun","Speed harus angka (contoh: 40).",2)
             return
         end
-        num = math.clamp(num, 16, 1000)
+        if num < 0 then
+            num = 0
+        end
         SR_RunningSpeed = num
         speedBox.Text = tostring(num)
 
@@ -1350,7 +1353,9 @@ do
             notify("ShiftRun","Run FOV harus angka (contoh: 80).",2)
             return
         end
-        num = math.clamp(num, 60, 120)
+        if num < 1 then
+            num = 1
+        end
         SR_RunFOV = num
         fovBox.Text = tostring(num)
 
@@ -1380,7 +1385,7 @@ do
     end)
 
     ----------------------------------------------------------------
-    -- INPUT BOX: EXTRA JUMPS (DIBAWAH INFINITE JUMP)
+    -- INPUT BOX: EXTRA JUMPS (DIBAWAH INFINITE JUMP) - TANPA BATAS MAX
     ----------------------------------------------------------------
     local ijConfigRow = ui("Frame", {
         Name = "2_InfiniteJumpConfig",
@@ -1422,9 +1427,12 @@ do
             notify("Infinite Jump","ExtraJumps harus angka (contoh: 5).",2)
             return
         end
-        -- clamp & bulatkan biar aman
+        -- TANPA BATAS MAX: hanya paksa minimal 0 dan bulatkan
         num = math.floor(num + 0.5)
-        num = math.clamp(num, 0, 1000)
+        if num < 0 then
+            num = 0
+        end
+
         IJ_Settings.ExtraJumps = num
         IJ_JumpsDone = 0
         extraBox.Text = tostring(num)
