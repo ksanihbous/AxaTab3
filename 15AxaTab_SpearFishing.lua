@@ -31,12 +31,12 @@ local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardE
 _G.AxaHub        = _G.AxaHub or {}
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
 
-local alive          = true
-local autoFarm       = false      -- AutoFarm Fish v1: default OFF
-local autoEquip      = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2     = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode = "Left"   -- "Left" / "Center"
-local autoDailyReward = true     -- Auto Daily Reward: default OFF
+local alive           = true
+local autoFarm        = false      -- AutoFarm Fish v1: default OFF
+local autoEquip       = false      -- AutoEquip Harpoon: default OFF
+local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarmV2Mode  = "Left"   -- "Left" / "Center"
+local autoDailyReward = true       -- Auto Daily Reward: default ON
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
@@ -1440,7 +1440,6 @@ end
 
 local function refreshDailyUI()
     if not ResDailyReward then
-        -- Kalau config tidak ada, tidak usah apa-apa
         updateDailyStatusLabel()
         return
     end
@@ -1483,7 +1482,6 @@ local function claimDailyReward(index)
     local payload = { index = index }
 
     local ok, err = pcall(function()
-        -- Mengikuti contoh UI original: DailyRE:FireServer({ index = idx })
         DailyRE:FireServer(payload)
     end)
 
@@ -1564,9 +1562,9 @@ local function buildDailyRewardCard(parent)
     local card, _, _ = createCard(
         parent,
         "Auto Daily Reward",
-        "Auto claim + manual claim Daily Reward (Day 1 ~ N).",
+        "Auto claim + manual claim Daily Reward (Day 1 ~ 30).",
         2,     -- setelah Spear Controls
-        260
+        320    -- DIPERPANJANG supaya tulisan CLAIMED tidak kepotong
     )
 
     local content = Instance.new("Frame")
@@ -1577,12 +1575,12 @@ local function buildDailyRewardCard(parent)
     content.Position = UDim2.new(0, 0, 0, 40)
     content.Size = UDim2.new(1, 0, 1, -40)
 
-    -- Toggle Auto Daily Reward
-    local autoBtn, updateFn = createToggleButton(content, "Auto Daily Reward", false)
+    -- Toggle Auto Daily Reward (default ON)
+    local autoBtn, updateFn = createToggleButton(content, "Auto Daily Reward", autoDailyReward)
     autoBtn.Position = UDim2.new(0, 0, 0, 0)
     autoBtn.Size     = UDim2.new(1, 0, 0, 30)
     updateAutoDailyUI = updateFn
-    updateAutoDailyUI(false)
+    updateAutoDailyUI(autoDailyReward)
 
     -- Status label (next klaim day ke berapa)
     local status = Instance.new("TextLabel")
@@ -1599,7 +1597,7 @@ local function buildDailyRewardCard(parent)
     status.Text = "Next klaim tersedia: --."
     dailyStatusLabel = status
 
-    -- Scroll berisi list Day 1..N
+    -- Scroll berisi list Day 1..N (maksimal 30)
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "DailyScroll"
     scroll.Parent = content
@@ -1615,19 +1613,25 @@ local function buildDailyRewardCard(parent)
 
     local padding = Instance.new("UIPadding")
     padding.Parent = scroll
-    padding.PaddingLeft = UDim.new(0, 4)
-    padding.PaddingRight = UDim.new(0, 4)
-    padding.PaddingTop = UDim.new(0, 4)
-    padding.PaddingBottom = UDim.new(0, 4)
+    padding.PaddingLeft = UDimNew(0, 4)
+    padding.PaddingRight = UDimNew(0, 4)
+    padding.PaddingTop = UDimNew(0, 4)
+    padding.PaddingBottom = UDimNew(0, 4)
 
     local layout = Instance.new("UIListLayout")
     layout.Parent = scroll
     layout.FillDirection = Enum.FillDirection.Horizontal
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 8)
+    layout.Padding = UDim2.new(0, 8)
 
-    -- Bangun item Day berdasarkan ResDailyReward
-    local totalDays = (ResDailyReward and #ResDailyReward) or 0
+    -- Bangun item Day berdasarkan ResDailyReward, maksimal 30
+    local totalDays = 0
+    if ResDailyReward then
+        totalDays = math.min(30, #ResDailyReward)
+    else
+        totalDays = 0
+    end
+
     for index = 1, totalDays do
         local cfg = ResDailyReward[index]
         local thingId    = cfg and cfg.ThingId
@@ -1860,7 +1864,7 @@ local controlsLayout = Instance.new("UIListLayout")
 controlsLayout.Parent = controlsFrame
 controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-controlsLayout.Padding = UDim.new(0, 6)
+controlsLayout.Padding = UDim2.new(0, 6)
 
 local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", false)
 local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", false)
@@ -1880,7 +1884,7 @@ v2ModeButton.TextWrapped = true
 v2ModeButton.Size = UDim2.new(1, 0, 0, 26)
 
 local v2ModeCorner = Instance.new("UICorner")
-v2ModeCorner.CornerRadius = UDim.new(0, 8)
+v2ModeCorner.CornerRadius = UDim2.new(0, 8)
 v2ModeCorner.Parent = v2ModeButton
 
 local function updateV2ModeButton()
@@ -1901,7 +1905,7 @@ sellButton.Text = "Sell All Fish (Spear)"
 sellButton.Size = UDim2.new(1, 0, 0, 30)
 
 local sellCorner = Instance.new("UICorner")
-sellCorner.CornerRadius = UDim.new(0, 8)
+sellCorner.CornerRadius = UDim2.new(0, 8)
 sellCorner.Parent = sellButton
 
 local statusLabel = Instance.new("TextLabel")
@@ -1992,7 +1996,7 @@ buildBaitShopCard(bodyScroll)
 initToolsDataWatcher()
 initDailyDataWatcher()
 
-------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP -------------------
+------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
 do
     local connCharAdded = LocalPlayer.CharacterAdded:Connect(function(newChar)
         character = newChar
@@ -2085,10 +2089,10 @@ end)
 
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive          = false
-    autoFarm       = false
-    autoEquip      = false
-    autoFarmV2     = false
+    alive           = false
+    autoFarm        = false
+    autoEquip       = false
+    autoFarmV2      = false
     autoDailyReward = false
 
     for _, conn in ipairs(connections) do
