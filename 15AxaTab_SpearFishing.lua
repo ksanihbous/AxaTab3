@@ -1,6 +1,6 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + AimLock + ESP + WalkTo)"
+--  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -27,33 +27,25 @@ frame.BorderSizePixel = 0
 
 local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
-local PlayerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-if not PlayerGui then
-    pcall(function()
-        PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5)
-    end)
-end
-
 ------------------- GLOBAL STATE / AXAHUB -------------------
-_G.AxaHub            = _G.AxaHub or {}
-_G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
+_G.AxaHub              = _G.AxaHub or {}
+_G.AxaHub.TabCleanup   = _G.AxaHub.TabCleanup or {}
 
-local alive              = true
-local autoFarm           = false      -- AutoFarm Fish v1
-local autoEquip          = false      -- AutoEquip Harpoon
-local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad)
-local autoFarmV2Mode     = "Center"   -- "Left" / "Center"
-local aimLockNearest     = false      -- Aim Lock ke ikan terdekat
-local fishESPEnabled     = false      -- ESP ikan
-local walkToNearestFish  = false      -- WalkTo ikan terdekat
-
-local AIM_MAX_DISTANCE = 300 -- studs
+local alive            = true
+local autoFarm         = false      -- AutoFarm Fish v1: default OFF
+local autoEquip        = false      -- AutoEquip Harpoon: default OFF
+local autoFarmV2       = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarmV2Mode   = "Center"   -- "Left" / "Center"
+local autoDailyReward  = true       -- Auto Daily Reward: default ON
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
-local connections = {}
-local ToolsData   = nil           -- diisi setelah WaitPlayerData siap
+local connections     = {}
+local ToolsData       = nil           -- WaitPlayerData("Tools")
+local DailyData       = nil           -- WaitPlayerData("Daily")
+local SpearFishData   = nil           -- WaitPlayerData(...) / Folder spearfish
+local spearInitTried  = false
 
 ------------------- REMOTES & GAME INSTANCES -------------------
 local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
@@ -61,12 +53,10 @@ local FireRE         = Remotes and Remotes:FindFirstChild("FireRE")   -- Fire ha
 local ToolRE         = Remotes and Remotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
 local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish
 local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bait
+local DailyRE        = Remotes and Remotes:FindFirstChild("DailyRE")  -- Daily reward claim
 
 local GameFolder     = ReplicatedStorage:FindFirstChild("Game")
 local FishBaitShop   = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
-
--- Folder ikan di dunia (WorldSea -> Sea1/Sea2/Sea3 -> Fish*)
-local WorldSea = workspace:FindFirstChild("WorldSea")
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
 local UtilityFolder = ReplicatedStorage:FindFirstChild("Utility")
@@ -84,13 +74,14 @@ local function safeRequire(folder, name)
     return result
 end
 
-local ItemUtil      = safeRequire(UtilityFolder, "ItemUtil")
-local ToolUtil      = safeRequire(UtilityFolder, "ToolUtil")
-local FormatUtil    = safeRequire(UtilityFolder, "Format")
-local PurchaseUtil  = safeRequire(UtilityFolder, "PurchaseUtil")
-local ResFishBasket = safeRequire(ConfigFolder,  "ResFishBasket")
-local ResFishBait   = safeRequire(ConfigFolder,  "ResFishBait")
-local MathUtil      = safeRequire(UtilityFolder, "MathUtil")
+local ItemUtil       = safeRequire(UtilityFolder, "ItemUtil")
+local ToolUtil       = safeRequire(UtilityFolder, "ToolUtil")
+local FormatUtil     = safeRequire(UtilityFolder, "Format")
+local PurchaseUtil   = safeRequire(UtilityFolder, "PurchaseUtil")
+local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket") -- Luck/Frequency
+local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")
+local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")
+local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -105,18 +96,37 @@ end
 
 ------------------- ID LIST -------------------
 local HARPOON_IDS = {
-    "Harpoon01","Harpoon02","Harpoon03","Harpoon04","Harpoon05","Harpoon06",
-    "Harpoon07","Harpoon08","Harpoon09","Harpoon10","Harpoon11","Harpoon12",
-    "Harpoon20","Harpoon21",
+    "Harpoon01",
+    "Harpoon02",
+    "Harpoon03",
+    "Harpoon04",
+    "Harpoon05",
+    "Harpoon06",
+    "Harpoon07",
+    "Harpoon08",
+    "Harpoon09",
+    "Harpoon10",
+    "Harpoon11",
+    "Harpoon12",
+    "Harpoon20",
+    "Harpoon21",
 }
 
 local BASKET_IDS = {
-    "FishBasket2","FishBasket3","FishBasket4",
-    "FishBasket5","FishBasket7","FishBasket8",
+    "FishBasket2",
+    "FishBasket3",
+    "FishBasket4",
+    "FishBasket5",
+    "FishBasket7",
+    "FishBasket8",
 }
 
 local BAIT_IDS = {
-    "Bait1","Bait2","Bait3","Bait4","Bait5",
+    "Bait1",
+    "Bait2",
+    "Bait3",
+    "Bait4",
+    "Bait5",
 }
 
 ------------------- TOOL / HARPOON / BASKET DETECTION -------------------
@@ -168,10 +178,12 @@ local function ensureHarpoonEquipped()
 end
 
 local function isToolOwnedGeneric(id)
+    -- via PlayerData Tools (jika sudah siap)
     if ToolsData and ToolsData:FindFirstChild(id) then
         return true
     end
 
+    -- Fallback: cek di Character / Backpack
     local function hasIn(container)
         if not container then return false end
         for _, tool in ipairs(container:GetChildren()) do
@@ -197,177 +209,18 @@ local function isBasketOwned(id)
     return isToolOwnedGeneric(id)
 end
 
-------------------- AIM LOCK: NEAREST FISH DI WORLDSEA -------------------
--- Cari ikan terdekat dari posisi tertentu
-local function getNearestFishFromPosition(origin, maxDistance)
-    maxDistance = maxDistance or AIM_MAX_DISTANCE
-    if maxDistance <= 0 then return nil end
-    if not WorldSea then return nil end
-    if not origin then return nil end
-
-    local nearestPart
-    local nearestDist = maxDistance
-
-    for _, sea in ipairs(WorldSea:GetChildren()) do
-        for _, child in ipairs(sea:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:sub(1, 4) == "Fish" then
-                local dist = (child.Position - origin).Magnitude
-                if dist < nearestDist then
-                    nearestDist = dist
-                    nearestPart = child
-                end
-            end
-        end
-    end
-
-    return nearestPart, nearestDist
-end
-
--- Versi untuk AimLock (pakai kamera)
-local function getNearestFish(maxDistance)
-    local camera = workspace.CurrentCamera
-    if not camera then return nil end
-    return getNearestFishFromPosition(camera.CFrame.Position, maxDistance)
-end
-
-local function getNearestFishWorldPos(maxDistance)
-    local part = getNearestFish(maxDistance)
-    return part and part.Position or nil
-end
-
-------------------- FISH ESP (BILLBOARD + JARAK STUDS) -------------------
-local fishESPMap = {} -- [BasePart] = {gui = BillboardGui, label = TextLabel}
-
-local function destroyFishESP(part)
-    local info = fishESPMap[part]
-    if info then
-        if info.gui then
-            pcall(function()
-                info.gui:Destroy()
-            end)
-        end
-        fishESPMap[part] = nil
-    end
-end
-
-local function createFishESPForPart(part)
-    if not part or not part:IsA("BasePart") then return end
-    if fishESPMap[part] then return end
-    if not PlayerGui then return end
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "AxaFishESP"
-    billboard.Adornee = part
-    billboard.Size = UDim2.new(0, 140, 0, 22)
-    billboard.AlwaysOnTop = true
-    billboard.MaxDistance = AIM_MAX_DISTANCE + 50
-    billboard.Enabled = false
-    billboard.Parent = PlayerGui
-
-    local bg = Instance.new("Frame")
-    bg.Name = "BG"
-    bg.Parent = billboard
-    bg.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    bg.BackgroundTransparency = 0.3
-    bg.BorderSizePixel = 0
-    bg.Size = UDim2.new(1, 0, 1, 0)
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = bg
-
-    local label = Instance.new("TextLabel")
-    label.Name = "Label"
-    label.Parent = bg
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.GothamSemibold
-    label.TextSize = 11
-    label.TextColor3 = Color3.fromRGB(0, 255, 200)
-    label.TextStrokeTransparency = 0.5
-    label.TextXAlignment = Enum.TextXAlignment.Center
-    label.TextYAlignment = Enum.TextYAlignment.Center
-    label.Size = UDim2.new(1, -4, 1, 0)
-    label.Position = UDim2.new(0, 2, 0, 0)
-    label.Text = part.Name
-
-    fishESPMap[part] = {
-        gui   = billboard,
-        label = label,
-    }
-end
-
-local function initFishESPWatcher()
-    if not WorldSea then return end
-
-    local function handleSea(sea)
-        if not sea then return end
-
-        for _, child in ipairs(sea:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:sub(1, 4) == "Fish" then
-                createFishESPForPart(child)
-            end
-        end
-
-        local cAdd = sea.ChildAdded:Connect(function(child)
-            if not alive then return end
-            if child:IsA("BasePart") and child.Name:sub(1, 4) == "Fish" then
-                createFishESPForPart(child)
-            end
-        end)
-        table.insert(connections, cAdd)
-
-        local cRem = sea.ChildRemoved:Connect(function(child)
-            destroyFishESP(child)
-        end)
-        table.insert(connections, cRem)
-    end
-
-    for _, sea in ipairs(WorldSea:GetChildren()) do
-        handleSea(sea)
-    end
-
-    local connSeaAdded = WorldSea.ChildAdded:Connect(function(child)
-         if not alive then return end
-         handleSea(child)
-    end)
-    table.insert(connections, connSeaAdded)
-end
-
--- Loop update teks ESP (nama + jarak ke kamera)
-task.spawn(function()
-    while alive do
-        if fishESPEnabled then
-            local camera = workspace.CurrentCamera
-            if camera then
-                local camPos = camera.CFrame.Position
-                for part, info in pairs(fishESPMap) do
-                    if part and part.Parent and info.gui and info.label then
-                        local dist = (part.Position - camPos).Magnitude
-                        local studs = math.floor(dist + 0.5)
-                        info.label.Text = string.format("%s, %d studs", part.Name, studs)
-                        info.gui.Enabled = true
-                    else
-                        destroyFishESP(part)
-                    end
-                end
-            end
-        else
-            for _, info in pairs(fishESPMap) do
-                if info.gui then
-                    info.gui.Enabled = false
-                end
-            end
-        end
-        task.wait(0.1)
-    end
-end)
-
 ------------------- UI HELPERS (TAHOE STYLE LIGHT) -------------------
-local harpoonCardsById = {}
-local basketCardsById  = {}
-local baitCardsById    = {}
+local harpoonCardsById = {}  -- id -> {frame, buyButton, assetType}
+local basketCardsById  = {}  -- id -> {frame, buyButton, assetType}
+local baitCardsById    = {}  -- id -> {frame, buyButton, stockLabel, noStockLabel}
+
+-- Daily reward UI state
+local dailyCardsByIndex = {} -- index -> {frame, claimButton, claimedLabel, dayLabel, nameLabel, countLabel}
+local dailyStatusLabel  = nil
+local updateAutoDailyUI = nil
 
 local function createMainLayout()
+    -- Header
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Parent = frame
@@ -396,7 +249,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V1"
+    title.Text = "Spear Fishing V2"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -408,8 +261,9 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm v1 + v2 (Trackpad) + AutoEquip + Harpoon/Basket/Bait Shop + AimLock + Fish ESP + WalkTo."
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Auto Daily Reward"
 
+    -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
     bodyScroll.Parent = frame
@@ -425,6 +279,8 @@ local function createMainLayout()
     padding.Parent = bodyScroll
     padding.PaddingTop = UDim.new(0, 8)
     padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 0)
+    padding.PaddingRight = UDim.new(0, 0)
 
     local layout = Instance.new("UIListLayout")
     layout.Parent = bodyScroll
@@ -532,9 +388,9 @@ local function createToggleButton(parent, labelText, initialState)
     return button, update
 end
 
-------------------- AUTO FARM V1 (FIRE HARPOON + AIM LOCK) -------------------
+------------------- AUTO FARM V1 (FIRE HARPOON) -------------------
 local lastShotClock = 0
-local FIRE_INTERVAL = 0.35
+local FIRE_INTERVAL = 0.35  -- detik antar tembakan
 
 local function doFireHarpoon()
     if not alive or not autoFarm then return end
@@ -547,6 +403,7 @@ local function doFireHarpoon()
     end
     lastShotClock = now
 
+    -- Pastikan harpoon ter-equip
     local harpoon = getEquippedHarpoonTool()
     if (not harpoon) and autoEquip then
         ensureHarpoonEquipped()
@@ -561,25 +418,15 @@ local function doFireHarpoon()
         return
     end
 
-    local origin = camera.CFrame.Position
-    local direction
+    -- Aim mengikuti pusat layar (GunAim)
+    local viewport = camera.ViewportSize
+    local centerX, centerY = viewport.X / 2, viewport.Y / 2
 
-    if aimLockNearest then
-        local targetPos = getNearestFishWorldPos(AIM_MAX_DISTANCE)
-        if targetPos then
-            direction = (targetPos - origin).Unit
-        end
-    end
+    local ray = camera:ScreenPointToRay(centerX, centerY, 0)
+    local origin = ray.Origin
+    local direction = ray.Direction
 
-    if not direction then
-        local viewport = camera.ViewportSize
-        local centerX, centerY = viewport.X / 2, viewport.Y / 2
-        local ray = camera:ScreenPointToRay(centerX, centerY, 0)
-        origin = ray.Origin
-        direction = ray.Direction
-    end
-
-    local destination = origin + direction * AIM_MAX_DISTANCE
+    local destination = origin + direction * 300
 
     local args = {
         [1] = "Fire",
@@ -608,11 +455,12 @@ local function getTapPositionForMode(mode)
     local camera = workspace.CurrentCamera
     if not camera then return nil end
     local v = camera.ViewportSize
-    local y = v.Y * 0.8
+    local y = v.Y * 0.8 -- dekat bawah layar (area trackpad)
     local x
     if mode == "Left" then
         x = v.X * 0.3
     else
+        -- default Center
         x = v.X * 0.5
     end
     return Vector2.new(x, y)
@@ -620,6 +468,8 @@ end
 
 local function tapScreenPosition(pos)
     if not pos or not VirtualInputManager then return end
+
+    -- Jangan ganggu kalau sedang mengetik
     if UserInputService:GetFocusedTextBox() then
         return
     end
@@ -627,11 +477,13 @@ local function tapScreenPosition(pos)
     local x, y = pos.X, pos.Y
 
     if isTouch then
+        -- Mobile / HP (touch)
         pcall(function()
             VirtualInputManager:SendTouchEvent(x, y, 0, true, workspace.CurrentCamera, 0)
             VirtualInputManager:SendTouchEvent(x, y, 0, false, workspace.CurrentCamera, 0)
         end)
     else
+        -- PC / Laptop / Mac (mouse/trackpad)
         pcall(function()
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
@@ -654,56 +506,107 @@ local function doAutoTapV2()
     tapScreenPosition(pos)
 end
 
-------------------- WALKTO NEAREST FISH -------------------
-local lastWalkDebugClock = 0
-
-local function debugWalk(msg)
-    local now = os.clock()
-    if now - lastWalkDebugClock > 3 then
-        lastWalkDebugClock = now
-        notify("Spear Fishing", "WalkTo: " .. msg, 3)
+------------------- SPEAR FISH DATA + UIDS HELPER -------------------
+local function ensureSpearFishData()
+    if SpearFishData or spearInitTried or not alive then
+        return SpearFishData
     end
+    spearInitTried = true
+
+    -- Coba lewat shared.WaitPlayerData
+    local waitFn
+    local okFn, fn = pcall(function()
+        return shared and shared.WaitPlayerData
+    end)
+    if okFn and typeof(fn) == "function" then
+        waitFn = fn
+    end
+
+    if waitFn then
+        local keys = {
+            "SpearFish",
+            "Spearfish",
+            "SpearFishing",
+            "SpearFishBag",
+            "FishSpear",
+            "FishSpearBag",
+        }
+        for _, key in ipairs(keys) do
+            local ok, result = pcall(function()
+                return waitFn(key)
+            end)
+            if ok and result and typeof(result) == "Instance" then
+                SpearFishData = result
+                break
+            end
+        end
+    end
+
+    -- Fallback: cari folder di LocalPlayer
+    if not SpearFishData then
+        local keys2 = {
+            "SpearFish",
+            "Spearfish",
+            "SpearFishBag",
+            "FishSpear",
+            "FishBag",
+        }
+        for _, name in ipairs(keys2) do
+            local inst = LocalPlayer:FindFirstChild(name)
+            if inst and inst:IsA("Folder") then
+                SpearFishData = inst
+                break
+            end
+        end
+    end
+
+    return SpearFishData
 end
 
-local function doWalkToNearestFish()
-    if not alive or not walkToNearestFish then return end
-    if not character then
-        debugWalk("Character tidak ada.")
-        return
+local function collectAllSpearFishUIDs()
+    local data = ensureSpearFishData()
+    if not data then
+        return nil
     end
 
-    if not WorldSea then
-        debugWalk("Folder WorldSea tidak ditemukan.")
-        return
+    local list = {}
+
+    for _, child in ipairs(data:GetChildren()) do
+        local uidValue
+
+        -- Prioritas Attribute "UID"
+        local attrUID = child:GetAttribute("UID")
+        if attrUID ~= nil then
+            uidValue = attrUID
+        else
+            -- Kalau ada ValueObject bernama "UID"
+            local uidObj = child:FindFirstChild("UID")
+            if uidObj and uidObj.Value then
+                uidValue = uidObj.Value
+            end
+        end
+
+        -- Fallback: pakai Name kalau numeric panjang
+        if uidValue == nil then
+            if #child.Name >= 12 and tonumber(child.Name) then
+                uidValue = child.Name
+            end
+        end
+
+        if uidValue ~= nil then
+            table.insert(list, tostring(uidValue))
+        end
     end
 
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then
-        debugWalk("Humanoid tidak ditemukan.")
-        return
+    if #list == 0 then
+        return nil
     end
 
-    if humanoid.Sit or humanoid.SeatPart then
-        humanoid.Sit = false
-    end
-
-    local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("LowerTorso")
-    if not root then
-        debugWalk("HumanoidRootPart tidak ditemukan.")
-        return
-    end
-
-    local fishPart, dist = getNearestFishFromPosition(root.Position, AIM_MAX_DISTANCE)
-    if fishPart and fishPart.Parent then
-        humanoid:MoveTo(fishPart.Position)
-        debugWalk(string.format("Menuju %s (%.0f studs).", fishPart.Name, dist or 0))
-    else
-        debugWalk("Tidak ada ikan dalam " .. tostring(AIM_MAX_DISTANCE) .. " studs.")
-    end
+    return list
 end
 
 ------------------- SELL ALL FISH (SPEAR FISHING) -------------------
-local lastSellClock = 0
+local lastSellClock  = 0
 local SELL_COOLDOWN = 2
 
 local function sellAllFish()
@@ -717,14 +620,29 @@ local function sellAllFish()
         notify("Spear Fishing", "Sell All terlalu cepat, tunggu beberapa detik.", 2)
         return
     end
+
+    local uids = collectAllSpearFishUIDs()
+    if not uids or #uids == 0 then
+        lastSellClock = now
+        notify("Spear Fishing", "Tidak ada ikan spear yang bisa dijual.", 3)
+        return
+    end
+
     lastSellClock = now
 
+    local args = {
+        [1] = "SellAll",
+        [2] = {
+            ["UIDs"] = uids
+        }
+    }
+
     local ok, err = pcall(function()
-        FishRE:FireServer("SellAll")
+        FishRE:FireServer(unpack(args))
     end)
 
     if ok then
-        notify("Spear Fishing", "Sell All Fish request dikirim.", 3)
+        notify("Spear Fishing", "Sell All Fish (" .. tostring(#uids) .. " ekor) dikirim.", 3)
     else
         warn("[SpearFishing] SellAll gagal:", err)
         notify("Spear Fishing", "Sell All gagal, cek Output/Console.", 4)
@@ -840,13 +758,13 @@ local function refreshHarpoonOwnership()
 end
 
 local function buildHarpoonShopCard(parent)
-    local card = select(1, createCard(
+    local card, _, _ = createCard(
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
-        2,
-        280
-    ))
+        3,       -- setelah Spear Controls (1) & Auto Daily Reward (2)
+        280      -- diperbesar agar tombol terlihat penuh
+    )
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "HarpoonScroll"
@@ -883,7 +801,7 @@ local function buildHarpoonShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210)
+        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1006,7 +924,9 @@ local function buildHarpoonShopCard(parent)
         table.insert(connections, conn)
     end
 
+    -- pertama kali
     refreshHarpoonOwnership()
+
     return card
 end
 
@@ -1060,6 +980,7 @@ local function getBasketDisplayData(id)
         end
     end
 
+    -- Ambil Luck & Frequency dari ResFishBasket jika tersedia
     if ResFishBasket then
         local okCfg, cfg = pcall(function()
             return ResFishBasket[id] or (ResFishBasket.__index and ResFishBasket.__index[id])
@@ -1072,6 +993,7 @@ local function getBasketDisplayData(id)
                         return v
                     end
                 end
+                -- fallback: cari angka pertama
                 for _, v in pairs(tbl) do
                     if type(v) == "number" then
                         return v
@@ -1085,7 +1007,7 @@ local function getBasketDisplayData(id)
                 luck = tostring(luckVal)
             end
 
-            local freqVal = pickNumber(cfg, {"Frequency","Freq","FrequencySec","Cooldown","CoolDown","Interval","Time"})
+            local freqVal = pickNumber(cfg, {"Frequency", "Freq", "FrequencySec", "Cooldown", "CoolDown", "Interval", "Time"})
             if freqVal then
                 frequency = tostring(freqVal) .. "s"
             end
@@ -1123,13 +1045,13 @@ local function refreshBasketOwnership()
 end
 
 local function buildBasketShopCard(parent)
-    local card = select(1, createCard(
+    local card, _, _ = createCard(
         parent,
         "Basket Shop",
         "Toko Basket (Icon + Luck + Frequency + Price).",
-        3,
-        280
-    ))
+        4,       -- setelah Harpoon Shop
+        280      -- diperbesar
+    )
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "BasketScroll"
@@ -1166,7 +1088,7 @@ local function buildBasketShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210)
+        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1288,6 +1210,7 @@ local function buildBasketShopCard(parent)
     end
 
     refreshBasketOwnership()
+
     return card
 end
 
@@ -1313,14 +1236,16 @@ local function refreshBaitStock()
 end
 
 local function buildBaitShopCard(parent)
-    local card = select(1, createCard(
+    -- subtitle sengaja kosong, kita buat label sendiri agar muat Time Reset
+    local card, _, _ = createCard(
         parent,
         "Bait Shop",
         "",
-        4,
-        280
-    ))
+        5,       -- setelah Basket Shop
+        280      -- diperbesar
+    )
 
+    -- Info + Reset time baris bawah title
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "Info"
     infoLabel.Parent = card
@@ -1565,8 +1490,10 @@ local function buildBaitShopCard(parent)
         table.insert(connections, conn)
     end
 
+    -- stock awal
     refreshBaitStock()
 
+    -- update reset time & stok
     if FishBaitShop then
         local connChanged = FishBaitShop.Changed:Connect(function(value)
             if not alive then return end
@@ -1593,11 +1520,398 @@ local function buildBaitShopCard(parent)
     return card
 end
 
+------------------- DAILY REWARD: DATA & UI -------------------
+local function findNextClaimableDailyIndex()
+    if not ResDailyReward then return nil end
+    if not DailyData then return nil end
+
+    for index = 1, #ResDailyReward do
+        local child = DailyData:FindFirstChild(tostring(index))
+        if child then
+            local claimedAttr = child:GetAttribute("claimed")
+            if not claimedAttr then
+                return index
+            end
+        end
+    end
+
+    return nil
+end
+
+local function updateDailyStatusLabel()
+    if not dailyStatusLabel then return end
+
+    if not ResDailyReward then
+        dailyStatusLabel.Text = "Config ResDailyReward tidak ditemukan."
+        return
+    end
+
+    local idx = findNextClaimableDailyIndex()
+    if idx then
+        dailyStatusLabel.Text = "Next klaim tersedia: Day " .. tostring(idx) .. "."
+    else
+        dailyStatusLabel.Text = "Next klaim tersedia: - (menunggu reset harian)."
+    end
+end
+
+local function refreshDailyUI()
+    if not ResDailyReward then
+        updateDailyStatusLabel()
+        return
+    end
+
+    for index, entry in pairs(dailyCardsByIndex) do
+        local claimBtn   = entry.claimButton
+        local claimedLbl = entry.claimedLabel
+
+        local child = DailyData and DailyData:FindFirstChild(tostring(index)) or nil
+        local claimed  = false
+        local claimable = false
+
+        if child then
+            local claimedAttr = child:GetAttribute("claimed")
+            claimed = (claimedAttr == true)
+            claimable = not claimed
+        else
+            claimed = false
+            claimable = false
+        end
+
+        if claimBtn then
+            claimBtn.Visible = claimable
+            claimBtn.Active  = claimable
+        end
+        if claimedLbl then
+            claimedLbl.Visible = claimed
+        end
+    end
+
+    updateDailyStatusLabel()
+end
+
+local function claimDailyReward(index)
+    if not DailyRE then
+        notify("Spear Fishing", "Remote DailyRE tidak ditemukan.", 4)
+        return
+    end
+
+    local payload = { index = index }
+
+    local ok, err = pcall(function()
+        DailyRE:FireServer(payload)
+    end)
+
+    if ok then
+        notify("Spear Fishing", "Claim Daily Reward Day " .. tostring(index) .. " dikirim.", 3)
+    else
+        warn("[SpearFishing] DailyRE:FireServer gagal:", err)
+        notify("Spear Fishing", "Gagal claim Daily Reward (Day " .. tostring(index) .. ").", 4)
+    end
+end
+
+local function initDailyDataWatcher()
+    task.spawn(function()
+        if DailyData then return end
+
+        -- tunggu sampai shared.WaitPlayerData siap
+        local waitFn
+        while alive and not waitFn do
+            local ok, fn = pcall(function()
+                return shared and shared.WaitPlayerData
+            end)
+            if ok and typeof(fn) == "function" then
+                waitFn = fn
+                break
+            end
+            task.wait(0.2)
+        end
+
+        if not alive or not waitFn then
+            return
+        end
+
+        local ok2, result = pcall(function()
+            return waitFn("Daily")
+        end)
+        if not ok2 or not result then
+            warn("[SpearFishing] Gagal WaitPlayerData('Daily'):", ok2 and "no result" or result)
+            return
+        end
+
+        DailyData = result
+
+        local function onDailyChanged()
+            if not alive then return end
+            pcall(refreshDailyUI)
+        end
+
+        -- Listener existing child
+        for _, child in ipairs(DailyData:GetChildren()) do
+            if child.AttributeChanged then
+                local c = child.AttributeChanged:Connect(function()
+                    onDailyChanged()
+                end)
+                table.insert(connections, c)
+            end
+        end
+
+        -- Listener child added
+        if DailyData.ChildAdded then
+            local cAdd = DailyData.ChildAdded:Connect(function(child)
+                if not alive then return end
+                onDailyChanged()
+                if child and child.AttributeChanged then
+                    local c = child.AttributeChanged:Connect(function()
+                        onDailyChanged()
+                    end)
+                    table.insert(connections, c)
+                end
+            end)
+            table.insert(connections, cAdd)
+        end
+
+        onDailyChanged()
+    end)
+end
+
+local function buildDailyRewardCard(parent)
+    local card, _, _ = createCard(
+        parent,
+        "Auto Daily Reward",
+        "Auto claim + manual claim Daily Reward (Day 1 ~ 30).",
+        2,     -- setelah Spear Controls
+        320    -- dipanjangkan supaya tulisan CLAIMED tidak kepotong
+    )
+
+    local content = Instance.new("Frame")
+    content.Name = "DailyContent"
+    content.Parent = card
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.Position = UDim2.new(0, 0, 0, 40)
+    content.Size = UDim2.new(1, 0, 1, -40)
+
+    -- Toggle Auto Daily Reward (default ON)
+    local autoBtn, updateFn = createToggleButton(content, "Auto Daily Reward", autoDailyReward)
+    autoBtn.Position = UDim2.new(0, 0, 0, 0)
+    autoBtn.Size     = UDim2.new(1, 0, 0, 30)
+    updateAutoDailyUI = updateFn
+    updateAutoDailyUI(autoDailyReward)
+
+    -- Status label (next klaim day ke berapa)
+    local status = Instance.new("TextLabel")
+    status.Name = "DailyStatus"
+    status.Parent = content
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 11
+    status.TextColor3 = Color3.fromRGB(185, 185, 185)
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.TextWrapped = true
+    status.Position = UDim2.new(0, 0, 0, 34)
+    status.Size = UDim2.new(1, 0, 0, 24)
+    status.Text = "Next klaim tersedia: --."
+    dailyStatusLabel = status
+
+    -- Scroll berisi list Day 1..N (maksimal 30)
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "DailyScroll"
+    scroll.Parent = content
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.Position = UDim2.new(0, 0, 0, 62)
+    scroll.Size = UDim2.new(1, 0, 1, -66)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    scroll.ScrollingDirection = Enum.ScrollingDirection.XY
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
+
+    local padding = Instance.new("UIPadding")
+    padding.Parent = scroll
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingBottom = UDim.new(0, 4)
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
+
+    -- Bangun item Day berdasarkan ResDailyReward, maksimal 30
+    local totalDays = 0
+    if ResDailyReward then
+        totalDays = math.min(30, #ResDailyReward)
+    else
+        totalDays = 0
+    end
+
+    for index = 1, totalDays do
+        local cfg = ResDailyReward[index]
+        local thingId    = cfg and cfg.ThingId
+        local thingCount = cfg and cfg.ThingCount or 1
+        local iconName   = cfg and cfg.IconName
+        local rewardName = cfg and cfg.Name
+
+        local iconImage = ""
+        if ItemUtil then
+            if not rewardName and thingId then
+                local okName, nameRes = pcall(function()
+                    return ItemUtil:getName(thingId)
+                end)
+                if okName and nameRes then
+                    rewardName = nameRes
+                end
+            end
+
+            local iconKey = iconName or thingId
+            if iconKey then
+                local okIcon, iconRes = pcall(function()
+                    return ItemUtil:getIcon(iconKey)
+                end)
+                if okIcon and iconRes then
+                    iconImage = iconRes
+                end
+            end
+        end
+
+        rewardName = rewardName or ("Reward Day " .. tostring(index))
+
+        local item = Instance.new("Frame")
+        item.Name = "Day" .. index
+        item.Parent = scroll
+        item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        item.BackgroundTransparency = 0.1
+        item.BorderSizePixel = 0
+        item.Size = UDim2.new(0, 150, 0, 190)
+        item.LayoutOrder = index
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = item
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(70, 70, 70)
+        stroke.Thickness = 1
+        stroke.Parent = item
+
+        local dayLabel = Instance.new("TextLabel")
+        dayLabel.Name = "DayLabel"
+        dayLabel.Parent = item
+        dayLabel.BackgroundTransparency = 1
+        dayLabel.Font = Enum.Font.GothamSemibold
+        dayLabel.TextSize = 11
+        dayLabel.TextXAlignment = Enum.TextXAlignment.Left
+        dayLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        dayLabel.Position = UDim2.new(0, 6, 0, 6)
+        dayLabel.Size = UDim2.new(1, -12, 0, 16)
+        dayLabel.Text = "Day " .. tostring(index)
+
+        local img = Instance.new("ImageLabel")
+        img.Name = "Icon"
+        img.Parent = item
+        img.BackgroundTransparency = 1
+        img.BorderSizePixel = 0
+        img.Position = UDim2.new(0, 6, 0, 26)
+        img.Size = UDim2.new(1, -12, 0, 60)
+        img.Image = iconImage or ""
+        img.ScaleType = Enum.ScaleType.Fit
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "Name"
+        nameLabel.Parent = item
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Font = Enum.Font.GothamSemibold
+        nameLabel.TextSize = 12
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextYAlignment = Enum.TextYAlignment.Top
+        nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
+        nameLabel.TextWrapped = true
+        nameLabel.Position = UDim2.new(0, 6, 0, 88)
+        nameLabel.Size = UDim2.new(1, -12, 0, 30)
+        nameLabel.Text = rewardName
+
+        local countLabel = Instance.new("TextLabel")
+        countLabel.Name = "Count"
+        countLabel.Parent = item
+        countLabel.BackgroundTransparency = 1
+        countLabel.Font = Enum.Font.Gotham
+        countLabel.TextSize = 11
+        countLabel.TextXAlignment = Enum.TextXAlignment.Left
+        countLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+        countLabel.Position = UDim2.new(0, 6, 0, 120)
+        countLabel.Size = UDim2.new(1, -12, 0, 16)
+        countLabel.Text = "x" .. tostring(thingCount)
+
+        local claimedLabel = Instance.new("TextLabel")
+        claimedLabel.Name = "Claimed"
+        claimedLabel.Parent = item
+        claimedLabel.BackgroundTransparency = 1
+        claimedLabel.Font = Enum.Font.GothamSemibold
+        claimedLabel.TextSize = 11
+        claimedLabel.TextXAlignment = Enum.TextXAlignment.Center
+        claimedLabel.TextColor3 = Color3.fromRGB(120, 210, 120)
+        claimedLabel.Position = UDim2.new(0, 6, 0, 138)
+        claimedLabel.Size = UDim2.new(1, -12, 0, 18)
+        claimedLabel.Text = "CLAIMED"
+        claimedLabel.Visible = false
+
+        local claimBtn = Instance.new("TextButton")
+        claimBtn.Name = "ClaimButton"
+        claimBtn.Parent = item
+        claimBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        claimBtn.BorderSizePixel = 0
+        claimBtn.AutoButtonColor = true
+        claimBtn.Font = Enum.Font.GothamSemibold
+        claimBtn.TextSize = 12
+        claimBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
+        claimBtn.Text = "Claim"
+        claimBtn.Position = UDim2.new(0, 6, 1, -26)
+        claimBtn.Size = UDim2.new(1, -12, 0, 22)
+
+        local cornerBtn = Instance.new("UICorner")
+        cornerBtn.CornerRadius = UDim.new(0, 6)
+        cornerBtn.Parent = claimBtn
+
+        dailyCardsByIndex[index] = {
+            frame        = item,
+            claimButton  = claimBtn,
+            claimedLabel = claimedLabel,
+            dayLabel     = dayLabel,
+            nameLabel    = nameLabel,
+            countLabel   = countLabel,
+        }
+
+        local conn = claimBtn.MouseButton1Click:Connect(function()
+            claimDailyReward(index)
+        end)
+        table.insert(connections, conn)
+    end
+
+    -- Toggle handler
+    local connToggle = autoBtn.MouseButton1Click:Connect(function()
+        autoDailyReward = not autoDailyReward
+        if updateAutoDailyUI then
+            updateAutoDailyUI(autoDailyReward)
+        end
+        updateDailyStatusLabel()
+        notify("Spear Fishing", "Auto Daily Reward: " .. (autoDailyReward and "ON" or "OFF"), 2)
+    end)
+    table.insert(connections, connToggle)
+
+    updateDailyStatusLabel()
+
+    return card
+end
+
 ------------------- TOOLSDATA INIT (UNTUK OWNERSHIP REFRESH) -------------------
 local function initToolsDataWatcher()
     task.spawn(function()
         if ToolsData then return end
 
+        -- tunggu sampai shared.WaitPlayerData siap
         local waitFn
         while alive and not waitFn do
             local ok, fn = pcall(function()
@@ -1643,54 +1957,39 @@ local function initToolsDataWatcher()
     end)
 end
 
-------------------- BUILD UI: CONTROL CARD (DENGAN SCROLLINGFRAME) -------------------
+------------------- BUILD UI: CONTROL CARD -------------------
 local header, bodyScroll = createMainLayout()
 
-local controlCard = select(1, createCard(
+local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1/v2 + AutoEquip + Sell All + AimLock Nearest + Fish ESP + WalkTo Nearest.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All.",
     1,
-    260
-))
+    230
+)
 
-local controlsScroll = Instance.new("ScrollingFrame")
-controlsScroll.Name = "ControlsScroll"
-controlsScroll.Parent = controlCard
-controlsScroll.BackgroundTransparency = 1
-controlsScroll.BorderSizePixel = 0
-controlsScroll.Position = UDim2.new(0, 0, 0, 40)
-controlsScroll.Size = UDim2.new(1, 0, 1, -40)
-controlsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-controlsScroll.ScrollBarThickness = 4
-controlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-
-local controlsPadding = Instance.new("UIPadding")
-controlsPadding.Parent = controlsScroll
-controlsPadding.PaddingTop = UDim.new(0, 2)
-controlsPadding.PaddingBottom = UDim.new(0, 4)
+local controlsFrame = Instance.new("Frame")
+controlsFrame.Name = "Controls"
+controlsFrame.Parent = controlCard
+controlsFrame.BackgroundTransparency = 1
+controlsFrame.BorderSizePixel = 0
+controlsFrame.Position = UDim2.new(0, 0, 0, 40)
+controlsFrame.Size = UDim2.new(1, 0, 1, -40)
 
 local controlsLayout = Instance.new("UIListLayout")
-controlsLayout.Parent = controlsScroll
+controlsLayout.Parent = controlsFrame
 controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 controlsLayout.Padding = UDim.new(0, 6)
 
-local connControls = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    controlsScroll.CanvasSize = UDim2.new(0, 0, 0, controlsLayout.AbsoluteContentSize.Y + 4)
-end)
-table.insert(connections, connControls)
+local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", false)
+local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", false)
+local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsFrame, "AutoFarm Fish V2", false)
 
-local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, "AutoFarm Fish", false)
-local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", false)
-local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsScroll, "AutoFarm Fish V2", false)
-local aimLockButton,    updateAimLockUI    = createToggleButton(controlsScroll, "Aim Lock Nearest", false)
-local fishESPButton,    updateFishESPUI    = createToggleButton(controlsScroll, "Fish ESP", false)
-local walkToButton,     updateWalkToUI     = createToggleButton(controlsScroll, "WalkTo Nearest Fish", false)
-
+-- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
 v2ModeButton.Name = "AutoFarmV2ModeButton"
-v2ModeButton.Parent = controlsScroll
+v2ModeButton.Parent = controlsFrame
 v2ModeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 v2ModeButton.BorderSizePixel = 0
 v2ModeButton.AutoButtonColor = true
@@ -1711,7 +2010,7 @@ updateV2ModeButton()
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
-sellButton.Parent = controlsScroll
+sellButton.Parent = controlsFrame
 sellButton.BackgroundColor3 = Color3.fromRGB(70, 50, 50)
 sellButton.BorderSizePixel = 0
 sellButton.AutoButtonColor = true
@@ -1727,7 +2026,7 @@ sellCorner.Parent = sellButton
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "Status"
-statusLabel.Parent = controlsScroll
+statusLabel.Parent = controlsFrame
 statusLabel.BackgroundTransparency = 1
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextSize = 11
@@ -1735,18 +2034,15 @@ statusLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
 statusLabel.Size = UDim2.new(1, 0, 0, 40)
-statusLabel.Text = "Status: AutoFarm OFF, AutoEquip OFF, AutoFarm V2 OFF (Center), AimLock OFF, ESP OFF, WalkTo OFF."
+statusLabel.Text = "Status: AutoFarm OFF, AutoEquip OFF, AutoFarm V2 OFF (Center)."
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s), AimLock %s, ESP %s, WalkTo %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s).",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
-        autoFarmV2Mode,
-        aimLockNearest and "ON" or "OFF",
-        fishESPEnabled and "ON" or "OFF",
-        walkToNearestFish and "ON" or "OFF"
+        autoFarmV2Mode
     )
 end
 
@@ -1774,27 +2070,6 @@ do
         updateStatusLabel()
     end)
     table.insert(connections, connV2)
-
-    local connAim = aimLockButton.MouseButton1Click:Connect(function()
-        aimLockNearest = not aimLockNearest
-        updateAimLockUI(aimLockNearest)
-        updateStatusLabel()
-    end)
-    table.insert(connections, connAim)
-
-    local connESP = fishESPButton.MouseButton1Click:Connect(function()
-        fishESPEnabled = not fishESPEnabled
-        updateFishESPUI(fishESPEnabled)
-        updateStatusLabel()
-    end)
-    table.insert(connections, connESP)
-
-    local connWalk = walkToButton.MouseButton1Click:Connect(function()
-        walkToNearestFish = not walkToNearestFish
-        updateWalkToUI(walkToNearestFish)
-        updateStatusLabel()
-    end)
-    table.insert(connections, connWalk)
 
     local connMode = v2ModeButton.MouseButton1Click:Connect(function()
         autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
@@ -1827,15 +2102,17 @@ do
     table.insert(connections, connInput)
 end
 
-------------------- BUILD UI: SHOP CARDS -------------------
+------------------- BUILD UI: DAILY REWARD + SHOP CARDS -------------------
+buildDailyRewardCard(bodyScroll)
 buildHarpoonShopCard(bodyScroll)
 buildBasketShopCard(bodyScroll)
 buildBaitShopCard(bodyScroll)
 
+-- setelah semua card terbentuk, inisialisasi ToolsData & DailyData watcher
 initToolsDataWatcher()
-initFishESPWatcher()
+initDailyDataWatcher()
 
-------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP -------------------
+------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
 do
     local connCharAdded = LocalPlayer.CharacterAdded:Connect(function(newChar)
         character = newChar
@@ -1844,6 +2121,7 @@ do
                 ensureHarpoonEquipped()
                 refreshHarpoonOwnership()
                 refreshBasketOwnership()
+                refreshDailyUI()
             end
         end)
     end)
@@ -1882,6 +2160,7 @@ do
 end
 
 ------------------- BACKGROUND LOOPS (RINGAN) -------------------
+-- Loop AutoEquip (cek 0.3s sekali)
 task.spawn(function()
     while alive do
         if autoEquip then
@@ -1891,6 +2170,7 @@ task.spawn(function()
     end
 end)
 
+-- Loop AutoFarm v1 (tembak harpoon)
 task.spawn(function()
     while alive do
         if autoFarm then
@@ -1900,6 +2180,7 @@ task.spawn(function()
     end
 end)
 
+-- Loop AutoFarm v2 (tap trackpad Left/Center)
 task.spawn(function()
     while alive do
         if autoFarmV2 then
@@ -1909,24 +2190,26 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Daily Reward (cek periodik, sangat ringan)
 task.spawn(function()
     while alive do
-        if walkToNearestFish then
-            pcall(doWalkToNearestFish)
+        if autoDailyReward then
+            local idx = findNextClaimableDailyIndex()
+            if idx then
+                claimDailyReward(idx)
+            end
         end
-        task.wait(0.2)
+        task.wait(5) -- cukup jarang agar tidak berat
     end
 end)
 
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive              = false
-    autoFarm           = false
-    autoEquip          = false
-    autoFarmV2         = false
-    aimLockNearest     = false
-    fishESPEnabled     = false
-    walkToNearestFish  = false
+    alive           = false
+    autoFarm        = false
+    autoEquip       = false
+    autoFarmV2      = false
+    autoDailyReward = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
@@ -1936,15 +2219,6 @@ _G.AxaHub.TabCleanup[tabId] = function()
         end
     end
     connections = {}
-
-    for _, info in pairs(fishESPMap) do
-        if info.gui then
-            pcall(function()
-                info.gui:Destroy()
-            end)
-        end
-    end
-    fishESPMap = {}
 
     if frame then
         pcall(function()
