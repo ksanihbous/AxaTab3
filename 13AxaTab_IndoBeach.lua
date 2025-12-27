@@ -22,7 +22,7 @@ frame:ClearAllChildren()
 frame.BackgroundTransparency = 1
 
 ------------------- CONFIG -------------------
--- Argumen untuk GiveFishFunction (contoh dari user)
+-- Argumen untuk GiveFishFunction / GiveCrystal (contoh dari user)
 local FISH_CODE = "safsafwaetqw3fsa"
 
 -- Remote Indo Beach
@@ -30,13 +30,30 @@ local GiveFishFunction    = ReplicatedStorage:WaitForChild("GiveFishFunction", 5
 local SellAllFishFunction = ReplicatedStorage:WaitForChild("SellAllFishFunction", 5)
 local Sell1FishFunction   = ReplicatedStorage:WaitForChild("Sell1FishFunction", 5)
 
+-- Remote Mining Indo Beach
+local GiveCrystalFunction = ReplicatedStorage:WaitForChild("GiveCrystal", 5)
+
+-- Nilai Mining 1-7 (dari contoh user)
+local MINING_VALUES = {
+    [1] = 6.621987458333024, -- MINING 1
+    [2] = 5.556782250001561, -- MINING 2
+    [3] = 7.002904208333348, -- MINING 3
+    [4] = 5.65479554166086,  -- MINING 4
+    [5] = 7.983959916673484, -- MINING 5
+    [6] = 8.025635291676736, -- MINING 6
+    [7] = 5.65479554166086,  -- MINING 7
+}
+
 -- TUNING: agar lebih ringan ke server
-local INPUT_DELAY          = 0.01   -- Get Fish Input (N kali) 0.03
-local NONSTOP_DELAY        = 0.01   -- Get Fish Nonstop (lebih ringan 0.08 ke server)
+local INPUT_DELAY          = 0.01   -- Get Fish Input (N kali)
+local NONSTOP_DELAY        = 0.01   -- Get Fish Nonstop (lebih ringan)
 local AUTO_SELL_COOLDOWN   = 0.75   -- minimal jeda antar SellAllFish (≤X Kg / All)
 
 -- Sell This Fish agar lebih gesit (lebih kecil dari 3 detik, tapi tetap ada delay)
 local SELL_THIS_FISH_DELAY = 0.4    -- jeda antar Sell1Fish saat Sell This Fish batch
+
+-- Mining: jeda antar panggilan GiveCrystal
+local MINING_DELAY         = 0.1    -- agar tetap ringan
 
 ------------------- STATE UTAMA -------------------
 local alive                  = true
@@ -88,6 +105,12 @@ local logRawEnabled = false -- default: tidak log supaya ringan
 local nonstopLoopId      = 0
 local sellThisFishLoopId = 0
 
+-- FARM MINING STATE
+local autoMiningEnabled   = false
+local autoMiningLoopId    = 0
+local miningTargetLoops   = 0   -- 0 = Nonstop
+local miningCurrentLoop   = 0   -- jumlah loop 1→7 yang sudah selesai
+
 ------------------- UI REFERENCES -------------------
 local headerFrame
 local bodyFrame
@@ -95,6 +118,7 @@ local bodyFrame
 local fishCard
 local sellCard
 local logCard
+local miningCard
 
 local getFishInputToggleBtn
 local getFishNonstopToggleBtn
@@ -114,6 +138,12 @@ local logToggleBtn
 
 -- KEY saat ini untuk highlight dropdown ("__DISABLE__" atau nama fish)
 local currentDropdownKey = "__DISABLE__"
+
+-- FARM MINING UI
+local autoMiningToggleBtn
+local miningCountInputBox
+local miningProgressLabel
+local miningButtons = {} -- [1..7] = button
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -156,7 +186,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "Get Fish Input / Nonstop + Auto Sell Mode"
+    desc.Text = "Get Fish Input / Nonstop + Auto Sell Mode + Farm Mining"
 
     return h
 end
@@ -546,6 +576,108 @@ local function createFishLogCard(parent, order)
     return card, logFrame, toggleBtn
 end
 
+--==================== FARM MINING CARD ====================
+local function createMiningCard(parent, order)
+    local card = createCard(
+        parent,
+        "Farm Mining",
+        "Mining 1–7 instan + Auto Mining loop 1→7 (ringan ke server)",
+        order
+    )
+
+    -- Frame tombol Mining 1-7 (grid)
+    local btnFrame = Instance.new("Frame")
+    btnFrame.Name = "MiningButtonsFrame"
+    btnFrame.Parent = card
+    btnFrame.BackgroundTransparency = 1
+    btnFrame.Size = UDim2.new(1, 0, 0, 0)
+    btnFrame.AutomaticSize = Enum.AutomaticSize.Y
+
+    local grid = Instance.new("UIGridLayout")
+    grid.Parent = btnFrame
+    grid.FillDirection = Enum.FillDirection.Horizontal
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.CellPadding = UDim2.new(0, 6, 0, 6)
+    grid.CellSize = UDim2.new(0.33, -4, 0, 26)
+
+    local pad = Instance.new("UIPadding")
+    pad.Parent = btnFrame
+    pad.PaddingTop = UDim.new(0, 2)
+    pad.PaddingBottom = UDim.new(0, 4)
+    pad.PaddingLeft = UDim.new(0, 2)
+    pad.PaddingRight = UDim.new(0, 2)
+
+    local function addMiningButton(idx)
+        local btn = Instance.new("TextButton")
+        btn.Name = "Mining" .. idx
+        btn.Parent = btnFrame
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 12
+        btn.TextColor3 = Color3.fromRGB(235, 235, 245)
+        btn.Text = "Mining " .. idx
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 6)
+        c.Parent = btn
+
+        local s = Instance.new("UIStroke")
+        s.Parent = btn
+        s.Thickness = 1
+        s.Transparency = 0.4
+        s.Color = Color3.fromRGB(60, 60, 85)
+
+        miningButtons[idx] = btn
+    end
+
+    for i = 1, 7 do
+        addMiningButton(i)
+    end
+
+    -- Toggle Auto Mining 1-7
+    local _, toggleMining = createToggleButton(card, "Auto Mining 1-7 (Loop 1→7)")
+
+    -- Input jumlah loop
+    local input = Instance.new("TextBox")
+    input.Name = "MiningLoopInput"
+    input.Parent = card
+    input.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    input.Size = UDim2.new(1, 0, 0, 26)
+    input.ClearTextOnFocus = false
+    input.Font = Enum.Font.Gotham
+    input.TextSize = 13
+    input.TextColor3 = Color3.fromRGB(225, 225, 235)
+    input.TextXAlignment = Enum.TextXAlignment.Left
+    input.Text = "0"
+    input.PlaceholderText = "Jumlah loop 1→7 (0 = Nonstop, 1 = satu putaran, dst)"
+    input.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 6)
+    inputCorner.Parent = input
+
+    local inputStroke = Instance.new("UIStroke")
+    inputStroke.Parent = input
+    inputStroke.Thickness = 1
+    inputStroke.Transparency = 0.3
+    inputStroke.Color = Color3.fromRGB(60, 60, 85)
+
+    -- Progress Auto Mining
+    local prog = Instance.new("TextLabel")
+    prog.Name = "MiningProgressLabel"
+    prog.Parent = card
+    prog.BackgroundTransparency = 1
+    prog.Size = UDim2.new(1, 0, 0, 18)
+    prog.Font = Enum.Font.Gotham
+    prog.TextSize = 11
+    prog.TextXAlignment = Enum.TextXAlignment.Left
+    prog.TextColor3 = Color3.fromRGB(170, 200, 255)
+    prog.Text = "Mining Progress: -"
+
+    return card, toggleMining, input, prog
+end
+
 ------------------- BUILD UI -------------------
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
@@ -556,7 +688,10 @@ fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, las
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel =
     createSellFishCard(bodyFrame, 2)
 
-logCard, logScrollFrame, logToggleBtn = createFishLogCard(bodyFrame, 3)
+miningCard, autoMiningToggleBtn, miningCountInputBox, miningProgressLabel =
+    createMiningCard(bodyFrame, 3)
+
+logCard, logScrollFrame, logToggleBtn = createFishLogCard(bodyFrame, 4)
 
 ------------------- HELPER: TOGGLE VISUAL -------------------
 local function updateToggleVisual(button, state)
@@ -574,6 +709,7 @@ end
 updateToggleVisual(getFishInputToggleBtn, false)
 updateToggleVisual(getFishNonstopToggleBtn, false)
 updateToggleVisual(logToggleBtn, false) -- LOG RAW default OFF
+updateToggleVisual(autoMiningToggleBtn, false) -- Auto Mining default OFF
 
 ------------------- HELPER: LOG -------------------
 local function appendLog(text)
@@ -634,6 +770,25 @@ local function updateSellProgressLabel()
 
     local count = sellFishCountByCategory[selectedFishCategory] or 0
     sellProgressLabel.Text = string.format("Sell Progress: %d %s", count, selectedFishCategory)
+end
+
+------------------- HELPER: PROGRESS LABEL (AUTO MINING) -------------------
+local function updateMiningProgressLabel()
+    if not miningProgressLabel then return end
+
+    if not autoMiningEnabled then
+        miningProgressLabel.Text = "Mining Progress: -"
+        return
+    end
+
+    if miningTargetLoops > 0 then
+        local shown = math.min(miningCurrentLoop, miningTargetLoops)
+        miningProgressLabel.Text =
+            string.format("Mining Progress: loop %d/%d (1→7)", shown, miningTargetLoops)
+    else
+        miningProgressLabel.Text =
+            string.format("Mining Progress: loop %d (Nonstop 1→7)", miningCurrentLoop)
+    end
 end
 
 ------------------- HELPER: CLEAN NAMA IKAN (KATEGORI) -------------------
@@ -806,7 +961,10 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
+    if not backpack then
+        backpack = LocalPlayer:FindFirstChild("Backpack")
+    end
     local char     = LocalPlayer.Character
 
     countInContainer(char)
@@ -1305,6 +1463,99 @@ local function startGetFishNonstop()
     scheduleNonstopStep(thisLoopId)
 end
 
+------------------- LOGIC: FARM MINING -------------------
+local function doMining(index)
+    if not alive then return end
+    if not GiveCrystalFunction then
+        appendLog("[Mining] GiveCrystal remote tidak ditemukan.")
+        return
+    end
+
+    local v = MINING_VALUES[index]
+    if not v then
+        appendLog("[Mining] Index mining tidak valid: " .. tostring(index))
+        return
+    end
+
+    local ok, res = pcall(function()
+        -- Sesuai contoh:
+        -- local args = { [1] = "safsafwaetqw3fsa", [2] = <value> }
+        -- GiveCrystal:InvokeServer(unpack(args))
+        return GiveCrystalFunction:InvokeServer(FISH_CODE, v)
+    end)
+
+    if not ok then
+        appendLog(string.format("[Mining] Error Mining %d: %s", index, tostring(res)))
+    else
+        appendLog(string.format("[Mining] Mining %d OK (%.3f)", index, v))
+    end
+end
+
+local function scheduleAutoMiningStep(loopId, currentIndex)
+    task.spawn(function()
+        if not alive then return end
+        if not autoMiningEnabled then return end
+        if loopId ~= autoMiningLoopId then return end
+
+        -- Jalankan Mining index saat ini
+        doMining(currentIndex)
+
+        -- Hitung index berikutnya & loop
+        local nextIndex = currentIndex + 1
+        local nextLoop  = miningCurrentLoop
+
+        if nextIndex > 7 then
+            nextIndex = 1
+            nextLoop  = nextLoop + 1
+            miningCurrentLoop = nextLoop
+            updateMiningProgressLabel()
+
+            -- Jika ada target loop & sudah tercapai
+            if miningTargetLoops > 0 and nextLoop >= miningTargetLoops then
+                autoMiningEnabled = false
+                updateToggleVisual(autoMiningToggleBtn, false)
+                notify("Indo Beach - Mining", "Auto Mining 1-7 selesai.", 4)
+                return
+            end
+        end
+
+        task.wait(MINING_DELAY)
+
+        if not alive then return end
+        if not autoMiningEnabled then return end
+        if loopId ~= autoMiningLoopId then return end
+
+        scheduleAutoMiningStep(loopId, nextIndex)
+    end)
+end
+
+local function startAutoMining()
+    if not alive then return end
+
+    local loops = 0
+    if miningCountInputBox and miningCountInputBox.Text and miningCountInputBox.Text ~= "" then
+        local n = tonumber(miningCountInputBox.Text)
+        if n and n > 0 then
+            loops = math.floor(n)
+        end
+    end
+
+    miningTargetLoops = loops   -- 0 = Nonstop
+    miningCurrentLoop = 0
+    updateMiningProgressLabel()
+
+    autoMiningLoopId = autoMiningLoopId + 1
+    local thisLoopId = autoMiningLoopId
+
+    if loops > 0 then
+        notify("Indo Beach - Mining", "Auto Mining 1-7 x" .. tostring(loops) .. " loop dimulai.", 4)
+    else
+        notify("Indo Beach - Mining", "Auto Mining 1-7 Nonstop dimulai.", 4)
+    end
+
+    scheduleAutoMiningStep(thisLoopId, 1)
+end
+
 ------------------- UI EVENTS -------------------
 -- Inisialisasi dropdown (scan Backpack sekali diawal)
 initFishDropdown()
@@ -1390,6 +1641,48 @@ for mode, btn in pairs(sellModeButtons) do
     end)
 end
 
+-- Validasi input Mining Loop
+if miningCountInputBox then
+    miningCountInputBox.FocusLost:Connect(function()
+        local txt = miningCountInputBox.Text
+        local n = tonumber(txt)
+        if not n or n < 0 then
+            miningCountInputBox.Text = "0"
+        else
+            -- biarkan n >= 0, 0 = Nonstop
+            miningCountInputBox.Text = tostring(math.floor(n))
+        end
+    end)
+end
+
+-- Event tombol Mining 1-7 (manual)
+for idx, btn in pairs(miningButtons) do
+    if btn then
+        btn.MouseButton1Click:Connect(function()
+            if not alive then return end
+            doMining(idx)
+        end)
+    end
+end
+
+-- Toggle Auto Mining 1-7
+if autoMiningToggleBtn then
+    autoMiningToggleBtn.MouseButton1Click:Connect(function()
+        if not alive then return end
+
+        autoMiningEnabled = not autoMiningEnabled
+        updateToggleVisual(autoMiningToggleBtn, autoMiningEnabled)
+
+        if autoMiningEnabled then
+            startAutoMining()
+        else
+            autoMiningLoopId = autoMiningLoopId + 1 -- matikan loop generasi lama
+            updateMiningProgressLabel()
+            notify("Indo Beach - Mining", "Auto Mining 1-7 dihentikan oleh user.", 3)
+        end
+    end)
+end
+
 -- Set default sell mode = Disable
 setSellMode(SellMode.Disable)
 
@@ -1404,4 +1697,7 @@ _G.AxaHub.TabCleanup[tabId] = function()
     isSellingThisFish     = false
     sellThisFishLoopId    = sellThisFishLoopId + 1
     nonstopLoopId         = nonstopLoopId + 1
+
+    autoMiningEnabled     = false
+    autoMiningLoopId      = autoMiningLoopId + 1
 end
