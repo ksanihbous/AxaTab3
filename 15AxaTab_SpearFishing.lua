@@ -35,8 +35,8 @@ local alive          = true
 local autoFarm       = false      -- AutoFarm Fish v1: default OFF
 local autoEquip      = false      -- AutoEquip Harpoon: default OFF
 local autoFarmV2     = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode = "Center"   -- "Left" / "Center"
-local autoDailyReward = false     -- Auto Daily Reward: default OFF
+local autoFarmV2Mode = "Left"   -- "Left" / "Center"
+local autoDailyReward = true     -- Auto Daily Reward: default OFF
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
