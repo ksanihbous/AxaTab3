@@ -199,7 +199,7 @@ local function createHeader(parent)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.TextColor3 = Color3.fromRGB(235, 235, 245)
+    title.TextColor3 = Color3.fromRGB(0, 0, 0)
     title.Text = "Indo Beach - Fish Giver V2"
 
     local desc = Instance.new("TextLabel")
