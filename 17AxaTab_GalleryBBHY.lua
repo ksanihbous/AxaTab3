@@ -1,6 +1,6 @@
 --==========================================================
 --  17AxaTab_GalleryBBHY.lua
---  TAB 17: "Gallery BBHY - Fish Giver V3+"
+--  TAB 17: "Gallery BBHY - Fish Giver V2"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -727,7 +727,7 @@ local invCustomMaxCount        = invMaxFromConfig
 local invPollDelay             = 2.0  -- detik
 local invPolling               = false
 local autoSellAlwaysEnabled    = false    -- Sell All Always
-local autoSellFullEnabled      = true     -- Sell All Full (jika >= limit)
+local autoSellFullEnabled      = true     -- Sell All Full (jika Inventory full)
 
 -- UI refs inventory
 local fishInvCountLabel    = nil
@@ -757,9 +757,9 @@ local function round(num)
 end
 
 local function getCoinsAmount()
-    local ls = LocalPlayer:FindChild("leaderstats") or LocalPlayer:FindFirstChild("leaderstats")
+    local ls = LocalPlayer:FindFirstChild("leaderstats")
     if not ls then return 0 end
-    local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Coin")
+    local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Coin") or ls:FindFirstChild("Cash")
     if coins and type(coins.Value) == "number" then
         return coins.Value
     end
@@ -790,13 +790,27 @@ local function createMainLayout(parent)
     header.TextSize = 16
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.TextColor3 = Color3.fromRGB(0, 0, 0)
-    header.Text = "Gallery BBHY - Fish Giver V3+"
+    header.Text = "Gallery BBHY - Fish Giver V2"
+
+    -- Label total Coins di bawah header
+    local coinsLabel = Instance.new("TextLabel")
+    coinsLabel.Name = "CoinsLabel"
+    coinsLabel.Parent = main
+    coinsLabel.BackgroundTransparency = 1
+    coinsLabel.Position = UDim2.new(0, 0, 0, 26)
+    coinsLabel.Size = UDim2.new(1, 0, 0, 20)
+    coinsLabel.Font = Enum.Font.Gotham
+    coinsLabel.TextSize = 13
+    coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    coinsLabel.TextColor3 = Color3.fromRGB(255, 253, 228)
+    coinsLabel.Text = "🪙 Coins 0"
+    coinsLabel.Visible = false
 
     local body = Instance.new("ScrollingFrame")
     body.Name = "BodyScroll"
     body.Parent = main
-    body.Position = UDim2.new(0, 0, 0, 30)
-    body.Size = UDim2.new(1, 0, 1, -30)
+    body.Position = UDim2.new(0, 0, 0, 50) -- geser ke bawah karena ada CoinsLabel
+    body.Size = UDim2.new(1, 0, 1, -50)
     body.BackgroundTransparency = 1
     body.BorderSizePixel = 0
     body.ScrollBarThickness = 4
@@ -812,7 +826,7 @@ local function createMainLayout(parent)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
-    return main, body
+    return main, body, coinsLabel
 end
 
 local function createCard(parent, titleText)
@@ -1099,7 +1113,7 @@ local function createButtonRow(parent, labelText, buttonText, callback)
     }
 end
 
-------------------- LOGIC: PROGRESS FISH LABEL -------------------
+------------------- PROGRESS LABEL -------------------
 local function updateProgressLabel()
     if not progressLabel then return end
 
@@ -1117,7 +1131,7 @@ local function updateProgressLabel()
     progressLabel.Text = "Progress Fish: " .. modeText
 end
 
-------------------- LOGIC: DROP MONEY HELPERS -------------------
+------------------- DROP MONEY HELPERS -------------------
 local function parseDropAmount(text)
     text = tostring(text or "")
     local digits = text:gsub("[^%d]", "")
@@ -1154,10 +1168,10 @@ local function performDropMoney(amount)
     end
 
     local ok, err = pcall(function()
-        if dropMoneyRemote.FireServer then
-            dropMoneyRemote:FireServer(amount)
-        else
+        if dropMoneyRemote:IsA("RemoteFunction") then
             dropMoneyRemote:InvokeServer(amount)
+        else
+            dropMoneyRemote:FireServer(amount)
         end
     end)
 
@@ -1210,7 +1224,7 @@ local function parseWeight(text)
     return nil
 end
 
-------------------- LOGIC: HOOK POSITION DINAMIS -------------------
+------------------- HOOK POSITION DINAMIS -------------------
 local function getDynamicHookPosition()
     local character = LocalPlayer.Character
     if not character then
@@ -1230,7 +1244,7 @@ local function getDynamicHookPosition()
     return Vector3.new(pos.X, pos.Y, pos.Z)
 end
 
-------------------- LOGIC: BUILD FISH REQUEST -------------------
+------------------- BUILD FISH REQUEST -------------------
 local function buildFishRequest()
     if not fishGiverRemote then
         return nil, "FishGiver remote tidak ada"
@@ -1278,7 +1292,7 @@ local function requestOneFish()
     end
 end
 
-------------------- LOGIC: GET FISH WORKER -------------------
+------------------- GET FISH WORKER -------------------
 local function workerLoop()
     workerRunning = true
 
@@ -1322,7 +1336,7 @@ local function ensureWorker()
     end
 end
 
-------------------- LOGIC: INVENTORY SCAN UNTUK SELL (TOOL BASED) -------------------
+------------------- INVENTORY SCAN TOOL-BASED (BACKPACK) -------------------
 local function extractFishInfoFromTool(tool)
     if not tool then return nil end
     local source = tool
@@ -1499,8 +1513,6 @@ local function sellAllByName(targetName)
 end
 
 ------------------- ROD SHOP LOGIC -------------------
-
--- Tier / rarity rod berdasarkan baseLuck (mengikuti script GUI asli)
 local ROD_TIERS = {
     {
         name     = "Secret",
@@ -1653,6 +1665,20 @@ local function buildSortedRodList(allData)
     return list
 end
 
+local function firePurchaseRemote(rodName)
+    if not rodPurchaseRemote then return end
+    local ok, err = pcall(function()
+        if rodPurchaseRemote:IsA("RemoteFunction") then
+            rodPurchaseRemote:InvokeServer(rodName)
+        else
+            rodPurchaseRemote:FireServer(rodName)
+        end
+    end)
+    if not ok then
+        warn("[17AxaTab_GalleryBBHY] RequestPurchase error:", err)
+    end
+end
+
 local function createRodItemFrame(rodName, rodData, order)
     if not rodScroll or not rodName or not rodData then return end
 
@@ -1789,7 +1815,6 @@ local function createRodItemFrame(rodName, rodData, order)
     btn.Size = UDim2.new(0, 90, 0, 30)
     btn.Font = Enum.Font.GothamSemibold
     btn.TextSize = 12
-    btn.AutoButtonColor = true
     btn.BorderSizePixel = 0
 
     local btnCorner = Instance.new("UICorner")
@@ -1801,7 +1826,6 @@ local function createRodItemFrame(rodName, rodData, order)
     local shopValue = shopInfo.Value
 
     if owned then
-        -- Sudah dimiliki / ada di backpack
         priceLabel.Text = "OWNED"
         priceLabel.TextColor3 = Color3.fromRGB(80, 170, 80)
 
@@ -1833,21 +1857,16 @@ local function createRodItemFrame(rodName, rodData, order)
                 end
 
                 notify("Rod Shop", "Request purchase: " .. rodName, 3)
-                pcall(function()
-                    rodPurchaseRemote:FireServer(rodName)
-                end)
+                firePurchaseRemote(rodName)
 
                 task.delay(0.5, function()
-                    if alive then
-                        -- refresh agar status OWNED ter-update setelah server respon
-                        if rodGetDataRemote then
-                            local okRefresh, _ = fetchRodShopData()
-                            if okRefresh then
-                                clearRodScroll()
-                                local sorted = buildSortedRodList(rodAllData)
-                                for idx2, info2 in ipairs(sorted) do
-                                    createRodItemFrame(info2.name, info2.data, idx2)
-                                end
+                    if alive and rodGetDataRemote then
+                        local okRefresh = fetchRodShopData()
+                        if okRefresh then
+                            clearRodScroll()
+                            local sorted = buildSortedRodList(rodAllData)
+                            for idx2, info2 in ipairs(sorted) do
+                                createRodItemFrame(info2.name, info2.data, idx2)
                             end
                         end
                     end
@@ -1868,9 +1887,7 @@ local function createRodItemFrame(rodName, rodData, order)
                     return
                 end
                 notify("Rod Shop", "Request gamepass: " .. rodName, 3)
-                pcall(function()
-                    rodPurchaseRemote:FireServer(rodName)
-                end)
+                firePurchaseRemote(rodName)
             end)
         elseif shopType == "None" then
             priceLabel.Text = "Not Purchasable"
@@ -1896,7 +1913,7 @@ local function createRodItemFrame(rodName, rodData, order)
     return frame
 end
 
-local refreshRodShop -- forward declaration
+local refreshRodShop
 
 refreshRodShop = function()
     clearRodScroll()
@@ -1948,7 +1965,6 @@ refreshRodShop = function()
     end
 end
 
--- Jika server kirim PurchaseSuccess, refresh juga
 if rodPurchaseSuccess then
     rodPurchaseSuccess.OnClientEvent:Connect(function()
         if not alive then return end
@@ -1960,7 +1976,7 @@ if rodPurchaseSuccess then
     end)
 end
 
-------------------- INVENTORY (SERVER) LOGIC: FISH & ROD -------------------
+------------------- INVENTORY (SERVER) LOGIC -------------------
 local rebuildFishInventoryUI
 local rebuildRodInventoryUI
 local refreshServerInventoryData
@@ -2320,11 +2336,11 @@ rebuildRodInventoryUI = function()
         infoLabel.TextWrapped = true
         infoLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 
-        local globalMult = 1
+        local globalMultR = 1
         if globalLuckMultiplier and typeof(globalLuckMultiplier.Value) == "number" then
-            globalMult = globalLuckMultiplier.Value
+            globalMultR = globalLuckMultiplier.Value
         end
-        local effectiveLuck = baseLuck * globalMult
+        local effectiveLuck = baseLuck * globalMultR
         infoLabel.Text = string.format(
             "Luck: %.1fx\nWeight: %dkg\nMax Rarity: %s",
             effectiveLuck,
@@ -2488,11 +2504,95 @@ ensureInventoryPolling = function()
     end)
 end
 
-------------------- BUILD UI -------------------
-local main, bodyScroll = createMainLayout(frame)
+------------------- COINS LABEL LOGIC -------------------
+local function setupCoinsLabel(coinsLabel)
+    if not coinsLabel then return end
 
--- CARD: GALLERY BBHY - FISH GIVER V1 (GET CONTROLLER)
-local getCard, getInner = createCard(bodyScroll, "Gallery BBHY - Fish Giver V1")
+    local leaderstats = LocalPlayer:WaitForChild("leaderstats", 10)
+    if not leaderstats then
+        warn("[17AxaTab_GalleryBBHY] leaderstats not found for coins label.")
+        return
+    end
+
+    local coinsVal = leaderstats:FindFirstChild("Coins") or leaderstats:FindFirstChild("Coin") or leaderstats:FindFirstChild("Cash")
+    if not coinsVal then
+        warn("[17AxaTab_GalleryBBHY] Coins/Coin/Cash not found in leaderstats.")
+        return
+    end
+
+    coinsLabel.Visible = true
+    local baseColor = Color3.fromRGB(255, 253, 228)
+    coinsLabel.TextColor3 = baseColor
+
+    local lastValue = coinsVal.Value
+    coinsLabel.Text = "🪙 Coins " .. formatMoney(lastValue)
+
+    local activeTween
+
+    coinsVal:GetPropertyChangedSignal("Value"):Connect(function()
+        local newVal = coinsVal.Value
+        local diff = newVal - lastValue
+
+        if activeTween then
+            activeTween:Cancel()
+            activeTween = nil
+        end
+
+        local numVal = Instance.new("NumberValue")
+        numVal.Value = lastValue
+
+        activeTween = TweenService:Create(
+            numVal,
+            TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { Value = newVal }
+        )
+
+        local conn
+        conn = numVal:GetPropertyChangedSignal("Value"):Connect(function()
+            coinsLabel.Text = "🪙 Coins " .. formatMoney(numVal.Value)
+        end)
+
+        activeTween.Completed:Connect(function()
+            if conn then conn:Disconnect() end
+            coinsLabel.Text = "🪙 Coins " .. formatMoney(newVal)
+            numVal:Destroy()
+        end)
+
+        activeTween:Play()
+
+        if diff > 0 then
+            coinsLabel.TextColor3 = Color3.fromRGB(99, 203, 61)
+            local originalSize = coinsLabel.Size
+            TweenService:Create(
+                coinsLabel,
+                TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                { Size = originalSize + UDim2.new(0.02, 0, 0.02, 0) }
+            ):Play()
+            task.delay(0.1, function()
+                TweenService:Create(
+                    coinsLabel,
+                    TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    { Size = originalSize }
+                ):Play()
+            end)
+        elseif diff < 0 then
+            coinsLabel.TextColor3 = Color3.fromRGB(212, 62, 62)
+        end
+
+        task.delay(0.5, function()
+            coinsLabel.TextColor3 = baseColor
+        end)
+
+        lastValue = newVal
+    end)
+end
+
+------------------- BUILD UI -------------------
+local main, bodyScroll, coinsLabel = createMainLayout(frame)
+setupCoinsLabel(coinsLabel)
+
+-- CARD: GALLERY BBHY - FISH GIVER V2 (GET CONTROLLER)
+local getCard, getInner = createCard(bodyScroll, "Gallery BBHY - Fish Giver V2")
 
 local infoLabel = Instance.new("TextLabel")
 infoLabel.Name = "InfoLabel"
@@ -2629,7 +2729,6 @@ createInputRow(fishInvInner, "Custom Size Inventory", "contoh: 500", tostring(in
     updateInventoryCountLabel()
 end)
 
--- Tombol manual Refresh Fish inventory (server)
 createButtonRow(fishInvInner, "Manual Refresh Fish Inventory", "Refresh Fish", function()
     refreshServerInventoryData()
 end)
@@ -2659,7 +2758,6 @@ fishInvLayout.FillDirection = Enum.FillDirection.Vertical
 fishInvLayout.SortOrder = Enum.SortOrder.LayoutOrder
 fishInvLayout.Padding = UDim.new(0, 3)
 
--- Tombol: EquipFish, UnequipAll
 createButtonRow(fishInvInner, "Equip Selected Fish (Server Inventory)", "EquipFish", function()
     if not invEquipFishRemote then
         notify("Fish Inventory", "Remote Inventory_EquipFish tidak ditemukan.", 3)
@@ -2684,7 +2782,6 @@ createButtonRow(fishInvInner, "Unequip All (Rod/Fish/Tools)", "UnequipAll", func
     end)
 end)
 
--- Favorite Fish & Favorite All Fish (di bawah UnequipAll)
 createButtonRow(fishInvInner, "Favorite Selected Fish", "Favorite Fish", function()
     favoriteSelectedFish()
 end)
@@ -2693,7 +2790,6 @@ createButtonRow(fishInvInner, "Favorite All Fish", "Favorite All", function()
     favoriteAllFish()
 end)
 
--- Sell All + Toggle Auto Sell
 createButtonRow(fishInvInner, "Sell All Inventory Fish (Server)", "Sell All", function()
     inventorySellAll()
 end)
@@ -2810,7 +2906,7 @@ dropCountdownLabel.TextXAlignment = Enum.TextXAlignment.Left
 dropCountdownLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 dropCountdownLabel.Text = "Drop Ready"
 
-------------------- CARD: GALLERY BBHY - ROD SHOP -------------------
+------------------- CARD: ROD SHOP -------------------
 local rodCard, rodInner = createCard(bodyScroll, "Gallery BBHY - Rod Shop")
 
 local rodInfo = Instance.new("TextLabel")
@@ -2824,7 +2920,7 @@ rodInfo.TextXAlignment = Enum.TextXAlignment.Left
 rodInfo.TextYAlignment = Enum.TextYAlignment.Top
 rodInfo.TextWrapped = true
 rodInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
-rodInfo.Text = "Rod Shop: data diambil dari FishingSystem.RodShopEvents (GetShopData/RequestPurchase). Setiap rod menampilkan Tier (berdasarkan Luck), Luck*GlobalMultiplier, Weight (maxWeight), dan Max Rarity. Jika sudah dibeli atau ada di backpack, status menjadi OWNED."
+rodInfo.Text = "Rod Shop: data diambil dari FishingSystem.RodShopEvents (GetShopData/RequestPurchase). Setiap rod menampilkan Tier, Luck*GlobalMultiplier, Weight (maxWeight), dan Max Rarity. Jika sudah dibeli/di-backpack → OWNED."
 
 createButtonRow(rodInner, "Rod Shop Data", "Refresh Rod Shop", function()
     if refreshRodShop then
@@ -2920,7 +3016,7 @@ for _, fish in ipairs(FISH_TABLE) do
     )
 end
 
-------------------- INITIAL SCAN & LABEL STATE -------------------
+------------------- INITIAL SETUP -------------------
 task.spawn(function()
     rebuildFishInventory()
 end)
@@ -2928,7 +3024,6 @@ end)
 updateProgressLabel()
 updateDropCountdownLabel()
 
--- Auto load rod shop sekali di awal (jika remote tersedia)
 task.spawn(function()
     task.wait(0.2)
     if rodGetDataRemote and refreshRodShop then
@@ -2936,7 +3031,6 @@ task.spawn(function()
     end
 end)
 
--- Load Inventory (Server) sekali + jalankan polling auto-update
 task.spawn(function()
     task.wait(0.2)
     if invGetDataRemote then
