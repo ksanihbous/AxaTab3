@@ -183,6 +183,11 @@ local ENTRIES = {
         method = "HttpGet",
     },
     {
+        label  = "ANTIAFK JUMP",
+        url    = "https://pastefy.app/Snu1Jp6C/raw",
+        method = "HttpGet",
+    },
+    {
         label  = "DEX EXPLORER",
         url    = "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua",
         method = "HttpGetAsync",
