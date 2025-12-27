@@ -1,6 +1,6 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + AimLock + Fish ESP + WalkTo)"
+--  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + AimLock + ESP + WalkTo)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -39,9 +39,9 @@ _G.AxaHub            = _G.AxaHub or {}
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
 
 local alive              = true
-local autoFarm           = false      -- AutoFarm Fish v1: default OFF
-local autoEquip          = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarm           = false      -- AutoFarm Fish v1
+local autoEquip          = false      -- AutoEquip Harpoon
+local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad)
 local autoFarmV2Mode     = "Center"   -- "Left" / "Center"
 local aimLockNearest     = false      -- Aim Lock ke ikan terdekat
 local fishESPEnabled     = false      -- ESP ikan
@@ -53,7 +53,7 @@ local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
 local connections = {}
-local ToolsData   = nil           -- akan diisi setelah WaitPlayerData siap
+local ToolsData   = nil           -- diisi setelah WaitPlayerData siap
 
 ------------------- REMOTES & GAME INSTANCES -------------------
 local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
@@ -65,7 +65,7 @@ local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bai
 local GameFolder     = ReplicatedStorage:FindFirstChild("Game")
 local FishBaitShop   = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
 
--- Folder ikan di dunia (sesuai workspace: WorldSea -> Sea1/Sea2/Sea3 -> Fish*)
+-- Folder ikan di dunia (WorldSea -> Sea1/Sea2/Sea3 -> Fish*)
 local WorldSea = workspace:FindFirstChild("WorldSea")
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
@@ -88,7 +88,7 @@ local ItemUtil      = safeRequire(UtilityFolder, "ItemUtil")
 local ToolUtil      = safeRequire(UtilityFolder, "ToolUtil")
 local FormatUtil    = safeRequire(UtilityFolder, "Format")
 local PurchaseUtil  = safeRequire(UtilityFolder, "PurchaseUtil")
-local ResFishBasket = safeRequire(ConfigFolder,  "ResFishBasket") -- Luck/Frequency
+local ResFishBasket = safeRequire(ConfigFolder,  "ResFishBasket")
 local ResFishBait   = safeRequire(ConfigFolder,  "ResFishBait")
 local MathUtil      = safeRequire(UtilityFolder, "MathUtil")
 
@@ -105,37 +105,18 @@ end
 
 ------------------- ID LIST -------------------
 local HARPOON_IDS = {
-    "Harpoon01",
-    "Harpoon02",
-    "Harpoon03",
-    "Harpoon04",
-    "Harpoon05",
-    "Harpoon06",
-    "Harpoon07",
-    "Harpoon08",
-    "Harpoon09",
-    "Harpoon10",
-    "Harpoon11",
-    "Harpoon12",
-    "Harpoon20",
-    "Harpoon21",
+    "Harpoon01","Harpoon02","Harpoon03","Harpoon04","Harpoon05","Harpoon06",
+    "Harpoon07","Harpoon08","Harpoon09","Harpoon10","Harpoon11","Harpoon12",
+    "Harpoon20","Harpoon21",
 }
 
 local BASKET_IDS = {
-    "FishBasket2",
-    "FishBasket3",
-    "FishBasket4",
-    "FishBasket5",
-    "FishBasket7",
-    "FishBasket8",
+    "FishBasket2","FishBasket3","FishBasket4",
+    "FishBasket5","FishBasket7","FishBasket8",
 }
 
 local BAIT_IDS = {
-    "Bait1",
-    "Bait2",
-    "Bait3",
-    "Bait4",
-    "Bait5",
+    "Bait1","Bait2","Bait3","Bait4","Bait5",
 }
 
 ------------------- TOOL / HARPOON / BASKET DETECTION -------------------
@@ -187,12 +168,10 @@ local function ensureHarpoonEquipped()
 end
 
 local function isToolOwnedGeneric(id)
-    -- via PlayerData Tools (jika sudah siap)
     if ToolsData and ToolsData:FindFirstChild(id) then
         return true
     end
 
-    -- Fallback: cek di Character / Backpack
     local function hasIn(container)
         if not container then return false end
         for _, tool in ipairs(container:GetChildren()) do
@@ -219,24 +198,20 @@ local function isBasketOwned(id)
 end
 
 ------------------- AIM LOCK: NEAREST FISH DI WORLDSEA -------------------
--- Mengambil Instance ikan terdekat + jaraknya dari kamera
-local function getNearestFish(maxDistance)
+-- Cari ikan terdekat dari posisi tertentu
+local function getNearestFishFromPosition(origin, maxDistance)
     maxDistance = maxDistance or AIM_MAX_DISTANCE
     if maxDistance <= 0 then return nil end
     if not WorldSea then return nil end
+    if not origin then return nil end
 
-    local camera = workspace.CurrentCamera
-    if not camera then return nil end
-
-    local camPos = camera.CFrame.Position
     local nearestPart
     local nearestDist = maxDistance
 
     for _, sea in ipairs(WorldSea:GetChildren()) do
-        -- Sea1 / Sea2 / Sea3 adalah BasePart, di dalamnya ada Fish*
         for _, child in ipairs(sea:GetChildren()) do
             if child:IsA("BasePart") and child.Name:sub(1, 4) == "Fish" then
-                local dist = (child.Position - camPos).Magnitude
+                local dist = (child.Position - origin).Magnitude
                 if dist < nearestDist then
                     nearestDist = dist
                     nearestPart = child
@@ -246,6 +221,13 @@ local function getNearestFish(maxDistance)
     end
 
     return nearestPart, nearestDist
+end
+
+-- Versi untuk AimLock (pakai kamera)
+local function getNearestFish(maxDistance)
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
+    return getNearestFishFromPosition(camera.CFrame.Position, maxDistance)
 end
 
 local function getNearestFishWorldPos(maxDistance)
@@ -320,7 +302,6 @@ local function initFishESPWatcher()
     local function handleSea(sea)
         if not sea then return end
 
-        -- fish awal
         for _, child in ipairs(sea:GetChildren()) do
             if child:IsA("BasePart") and child.Name:sub(1, 4) == "Fish" then
                 createFishESPForPart(child)
@@ -382,12 +363,11 @@ task.spawn(function()
 end)
 
 ------------------- UI HELPERS (TAHOE STYLE LIGHT) -------------------
-local harpoonCardsById = {}  -- id -> {frame, buyButton, assetType}
-local basketCardsById  = {}  -- id -> {frame, buyButton, assetType}
-local baitCardsById    = {}  -- id -> {frame, buyButton, stockLabel, noStockLabel}
+local harpoonCardsById = {}
+local basketCardsById  = {}
+local baitCardsById    = {}
 
 local function createMainLayout()
-    -- Header
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Parent = frame
@@ -416,7 +396,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V2+"
+    title.Text = "Spear Fishing V1"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -428,9 +408,8 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Aim Lock + Fish ESP + WalkTo."
+    subtitle.Text = "AutoFarm v1 + v2 (Trackpad) + AutoEquip + Harpoon/Basket/Bait Shop + AimLock + Fish ESP + WalkTo."
 
-    -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
     bodyScroll.Parent = frame
@@ -446,8 +425,6 @@ local function createMainLayout()
     padding.Parent = bodyScroll
     padding.PaddingTop = UDim.new(0, 8)
     padding.PaddingBottom = UDim.new(0, 8)
-    padding.PaddingLeft = UDim.new(0, 0)
-    padding.PaddingRight = UDim.new(0, 0)
 
     local layout = Instance.new("UIListLayout")
     layout.Parent = bodyScroll
@@ -557,7 +534,7 @@ end
 
 ------------------- AUTO FARM V1 (FIRE HARPOON + AIM LOCK) -------------------
 local lastShotClock = 0
-local FIRE_INTERVAL = 0.35  -- detik antar tembakan
+local FIRE_INTERVAL = 0.35
 
 local function doFireHarpoon()
     if not alive or not autoFarm then return end
@@ -570,7 +547,6 @@ local function doFireHarpoon()
     end
     lastShotClock = now
 
-    -- Pastikan harpoon ter-equip
     local harpoon = getEquippedHarpoonTool()
     if (not harpoon) and autoEquip then
         ensureHarpoonEquipped()
@@ -588,8 +564,6 @@ local function doFireHarpoon()
     local origin = camera.CFrame.Position
     local direction
 
-    -- Kalau Aim Lock ON dan ada ikan dalam 0-300 studs,
-    -- arahkan langsung ke ikan terdekat.
     if aimLockNearest then
         local targetPos = getNearestFishWorldPos(AIM_MAX_DISTANCE)
         if targetPos then
@@ -597,7 +571,6 @@ local function doFireHarpoon()
         end
     end
 
-    -- Fallback: aim ke tengah layar seperti default
     if not direction then
         local viewport = camera.ViewportSize
         local centerX, centerY = viewport.X / 2, viewport.Y / 2
@@ -635,12 +608,11 @@ local function getTapPositionForMode(mode)
     local camera = workspace.CurrentCamera
     if not camera then return nil end
     local v = camera.ViewportSize
-    local y = v.Y * 0.8 -- dekat bawah layar (area trackpad)
+    local y = v.Y * 0.8
     local x
     if mode == "Left" then
         x = v.X * 0.3
     else
-        -- default Center
         x = v.X * 0.5
     end
     return Vector2.new(x, y)
@@ -648,8 +620,6 @@ end
 
 local function tapScreenPosition(pos)
     if not pos or not VirtualInputManager then return end
-
-    -- Jangan ganggu kalau sedang mengetik
     if UserInputService:GetFocusedTextBox() then
         return
     end
@@ -657,13 +627,11 @@ local function tapScreenPosition(pos)
     local x, y = pos.X, pos.Y
 
     if isTouch then
-        -- Mobile / HP (touch)
         pcall(function()
             VirtualInputManager:SendTouchEvent(x, y, 0, true, workspace.CurrentCamera, 0)
             VirtualInputManager:SendTouchEvent(x, y, 0, false, workspace.CurrentCamera, 0)
         end)
     else
-        -- PC / Laptop / Mac (mouse/trackpad)
         pcall(function()
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
@@ -687,24 +655,50 @@ local function doAutoTapV2()
 end
 
 ------------------- WALKTO NEAREST FISH -------------------
+local lastWalkDebugClock = 0
+
+local function debugWalk(msg)
+    local now = os.clock()
+    if now - lastWalkDebugClock > 3 then
+        lastWalkDebugClock = now
+        notify("Spear Fishing", "WalkTo: " .. msg, 3)
+    end
+end
+
 local function doWalkToNearestFish()
     if not alive or not walkToNearestFish then return end
-    if not character then return end
+    if not character then
+        debugWalk("Character tidak ada.")
+        return
+    end
+
+    if not WorldSea then
+        debugWalk("Folder WorldSea tidak ditemukan.")
+        return
+    end
 
     local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
+    if not humanoid then
+        debugWalk("Humanoid tidak ditemukan.")
+        return
+    end
 
-    -- kalau sedang duduk di kursi, bangunkan dulu
     if humanoid.Sit or humanoid.SeatPart then
         humanoid.Sit = false
     end
 
     local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("LowerTorso")
-    if not root then return end
+    if not root then
+        debugWalk("HumanoidRootPart tidak ditemukan.")
+        return
+    end
 
-    local fishPart, dist = getNearestFish(AIM_MAX_DISTANCE)
+    local fishPart, dist = getNearestFishFromPosition(root.Position, AIM_MAX_DISTANCE)
     if fishPart and fishPart.Parent then
         humanoid:MoveTo(fishPart.Position)
+        debugWalk(string.format("Menuju %s (%.0f studs).", fishPart.Name, dist or 0))
+    else
+        debugWalk("Tidak ada ikan dalam " .. tostring(AIM_MAX_DISTANCE) .. " studs.")
     end
 end
 
@@ -846,13 +840,13 @@ local function refreshHarpoonOwnership()
 end
 
 local function buildHarpoonShopCard(parent)
-    local card, _, _ = createCard(
+    local card = select(1, createCard(
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
         2,
-        280 -- diperbesar agar tombol terlihat penuh
-    )
+        280
+    ))
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "HarpoonScroll"
@@ -889,7 +883,7 @@ local function buildHarpoonShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 150, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1012,9 +1006,7 @@ local function buildHarpoonShopCard(parent)
         table.insert(connections, conn)
     end
 
-    -- pertama kali
     refreshHarpoonOwnership()
-
     return card
 end
 
@@ -1068,7 +1060,6 @@ local function getBasketDisplayData(id)
         end
     end
 
-    -- Ambil Luck & Frequency dari ResFishBasket jika tersedia
     if ResFishBasket then
         local okCfg, cfg = pcall(function()
             return ResFishBasket[id] or (ResFishBasket.__index and ResFishBasket.__index[id])
@@ -1081,7 +1072,6 @@ local function getBasketDisplayData(id)
                         return v
                     end
                 end
-                -- fallback: cari angka pertama
                 for _, v in pairs(tbl) do
                     if type(v) == "number" then
                         return v
@@ -1095,7 +1085,7 @@ local function getBasketDisplayData(id)
                 luck = tostring(luckVal)
             end
 
-            local freqVal = pickNumber(cfg, {"Frequency", "Freq", "FrequencySec", "Cooldown", "CoolDown", "Interval", "Time"})
+            local freqVal = pickNumber(cfg, {"Frequency","Freq","FrequencySec","Cooldown","CoolDown","Interval","Time"})
             if freqVal then
                 frequency = tostring(freqVal) .. "s"
             end
@@ -1133,13 +1123,13 @@ local function refreshBasketOwnership()
 end
 
 local function buildBasketShopCard(parent)
-    local card, _, _ = createCard(
+    local card = select(1, createCard(
         parent,
         "Basket Shop",
         "Toko Basket (Icon + Luck + Frequency + Price).",
         3,
-        280 -- diperbesar
-    )
+        280
+    ))
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "BasketScroll"
@@ -1176,7 +1166,7 @@ local function buildBasketShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 150, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1298,7 +1288,6 @@ local function buildBasketShopCard(parent)
     end
 
     refreshBasketOwnership()
-
     return card
 end
 
@@ -1324,16 +1313,14 @@ local function refreshBaitStock()
 end
 
 local function buildBaitShopCard(parent)
-    -- subtitle sengaja kosong, kita buat label sendiri agar muat Time Reset
-    local card, _, _ = createCard(
+    local card = select(1, createCard(
         parent,
         "Bait Shop",
         "",
         4,
-        280 -- diperbesar
-    )
+        280
+    ))
 
-    -- Info + Reset time baris bawah title
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "Info"
     infoLabel.Parent = card
@@ -1578,10 +1565,8 @@ local function buildBaitShopCard(parent)
         table.insert(connections, conn)
     end
 
-    -- stock awal
     refreshBaitStock()
 
-    -- update reset time & stok
     if FishBaitShop then
         local connChanged = FishBaitShop.Changed:Connect(function(value)
             if not alive then return end
@@ -1613,7 +1598,6 @@ local function initToolsDataWatcher()
     task.spawn(function()
         if ToolsData then return end
 
-        -- tunggu sampai shared.WaitPlayerData siap
         local waitFn
         while alive and not waitFn do
             local ok, fn = pcall(function()
@@ -1659,42 +1643,54 @@ local function initToolsDataWatcher()
     end)
 end
 
-------------------- BUILD UI: CONTROL CARD -------------------
+------------------- BUILD UI: CONTROL CARD (DENGAN SCROLLINGFRAME) -------------------
 local header, bodyScroll = createMainLayout()
 
-local controlCard, _, _ = createCard(
+local controlCard = select(1, createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Aim Lock Nearest + Fish ESP + WalkTo.",
+    "AutoFarm v1/v2 + AutoEquip + Sell All + AimLock Nearest + Fish ESP + WalkTo Nearest.",
     1,
-    320
-)
+    260
+))
 
-local controlsFrame = Instance.new("Frame")
-controlsFrame.Name = "Controls"
-controlsFrame.Parent = controlCard
-controlsFrame.BackgroundTransparency = 1
-controlsFrame.BorderSizePixel = 0
-controlsFrame.Position = UDim2.new(0, 0, 0, 40)
-controlsFrame.Size = UDim2.new(1, 0, 1, -40)
+local controlsScroll = Instance.new("ScrollingFrame")
+controlsScroll.Name = "ControlsScroll"
+controlsScroll.Parent = controlCard
+controlsScroll.BackgroundTransparency = 1
+controlsScroll.BorderSizePixel = 0
+controlsScroll.Position = UDim2.new(0, 0, 0, 40)
+controlsScroll.Size = UDim2.new(1, 0, 1, -40)
+controlsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+controlsScroll.ScrollBarThickness = 4
+controlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+
+local controlsPadding = Instance.new("UIPadding")
+controlsPadding.Parent = controlsScroll
+controlsPadding.PaddingTop = UDim.new(0, 2)
+controlsPadding.PaddingBottom = UDim.new(0, 4)
 
 local controlsLayout = Instance.new("UIListLayout")
-controlsLayout.Parent = controlsFrame
+controlsLayout.Parent = controlsScroll
 controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 controlsLayout.Padding = UDim.new(0, 6)
 
-local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", false)
-local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", false)
-local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsFrame, "AutoFarm Fish V2", false)
-local aimLockButton,    updateAimLockUI    = createToggleButton(controlsFrame, "Aim Lock Nearest", false)
-local fishESPButton,    updateFishESPUI    = createToggleButton(controlsFrame, "Fish ESP", false)
-local walkToButton,     updateWalkToUI     = createToggleButton(controlsFrame, "WalkTo Nearest Fish", false)
+local connControls = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    controlsScroll.CanvasSize = UDim2.new(0, 0, 0, controlsLayout.AbsoluteContentSize.Y + 4)
+end)
+table.insert(connections, connControls)
 
--- Tombol pilih mode V2: Left / Center
+local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, "AutoFarm Fish", false)
+local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", false)
+local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsScroll, "AutoFarm Fish V2", false)
+local aimLockButton,    updateAimLockUI    = createToggleButton(controlsScroll, "Aim Lock Nearest", false)
+local fishESPButton,    updateFishESPUI    = createToggleButton(controlsScroll, "Fish ESP", false)
+local walkToButton,     updateWalkToUI     = createToggleButton(controlsScroll, "WalkTo Nearest Fish", false)
+
 local v2ModeButton = Instance.new("TextButton")
 v2ModeButton.Name = "AutoFarmV2ModeButton"
-v2ModeButton.Parent = controlsFrame
+v2ModeButton.Parent = controlsScroll
 v2ModeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 v2ModeButton.BorderSizePixel = 0
 v2ModeButton.AutoButtonColor = true
@@ -1715,7 +1711,7 @@ updateV2ModeButton()
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
-sellButton.Parent = controlsFrame
+sellButton.Parent = controlsScroll
 sellButton.BackgroundColor3 = Color3.fromRGB(70, 50, 50)
 sellButton.BorderSizePixel = 0
 sellButton.AutoButtonColor = true
@@ -1731,7 +1727,7 @@ sellCorner.Parent = sellButton
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "Status"
-statusLabel.Parent = controlsFrame
+statusLabel.Parent = controlsScroll
 statusLabel.BackgroundTransparency = 1
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextSize = 11
@@ -1836,7 +1832,6 @@ buildHarpoonShopCard(bodyScroll)
 buildBasketShopCard(bodyScroll)
 buildBaitShopCard(bodyScroll)
 
--- watcher ToolsData + Fish ESP
 initToolsDataWatcher()
 initFishESPWatcher()
 
@@ -1887,7 +1882,6 @@ do
 end
 
 ------------------- BACKGROUND LOOPS (RINGAN) -------------------
--- Loop AutoEquip (cek 0.3s sekali)
 task.spawn(function()
     while alive do
         if autoEquip then
@@ -1897,7 +1891,6 @@ task.spawn(function()
     end
 end)
 
--- Loop AutoFarm v1 (tembak harpoon)
 task.spawn(function()
     while alive do
         if autoFarm then
@@ -1907,7 +1900,6 @@ task.spawn(function()
     end
 end)
 
--- Loop AutoFarm v2 (tap trackpad Left/Center)
 task.spawn(function()
     while alive do
         if autoFarmV2 then
@@ -1917,7 +1909,6 @@ task.spawn(function()
     end
 end)
 
--- Loop WalkTo Nearest Fish (mengikuti contoh walkto)
 task.spawn(function()
     while alive do
         if walkToNearestFish then
@@ -1946,7 +1937,7 @@ _G.AxaHub.TabCleanup[tabId] = function()
     end
     connections = {}
 
-    for part, info in pairs(fishESPMap) do
+    for _, info in pairs(fishESPMap) do
         if info.gui then
             pcall(function()
                 info.gui:Destroy()
