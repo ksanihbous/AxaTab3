@@ -1,6 +1,6 @@
 --==========================================================
 --  13AxaTab_IndoBeach.lua
---  TAB 13: "Indo Beach - Fish Giver V1"
+--  TAB 13: "Indo Beach - Fish Giver V1 + Farm Mining & Sell Ores"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
@@ -22,16 +22,18 @@ frame:ClearAllChildren()
 frame.BackgroundTransparency = 1
 
 ------------------- CONFIG -------------------
--- Argumen untuk GiveFishFunction / GiveCrystal (contoh dari user)
+-- Argumen untuk GiveFishFunction / GiveCrystal
 local FISH_CODE = "safsafwaetqw3fsa"
 
--- Remote Indo Beach
-local GiveFishFunction    = ReplicatedStorage:WaitForChild("GiveFishFunction", 5)
-local SellAllFishFunction = ReplicatedStorage:WaitForChild("SellAllFishFunction", 5)
-local Sell1FishFunction   = ReplicatedStorage:WaitForChild("Sell1FishFunction", 5)
+-- Remote Indo Beach (Fish)
+local GiveFishFunction        = ReplicatedStorage:WaitForChild("GiveFishFunction", 5)
+local SellAllFishFunction     = ReplicatedStorage:WaitForChild("SellAllFishFunction", 5)
+local Sell1FishFunction       = ReplicatedStorage:WaitForChild("Sell1FishFunction", 5)
 
--- Remote Mining Indo Beach
-local GiveCrystalFunction = ReplicatedStorage:WaitForChild("GiveCrystal", 5)
+-- Remote Mining Indo Beach (Ores)
+local GiveCrystalFunction     = ReplicatedStorage:WaitForChild("GiveCrystal", 5)
+local Sell1OreFunction        = ReplicatedStorage:WaitForChild("Sell1OreFunction", 5)
+local SellOreBackpackFunction = ReplicatedStorage:WaitForChild("SellOreBackpackFunction", 5)
 
 -- Nilai Mining 1-7 (dari contoh user)
 local MINING_VALUES = {
@@ -46,28 +48,30 @@ local MINING_VALUES = {
 
 -- TUNING: agar lebih ringan ke server
 local INPUT_DELAY          = 0.01   -- Get Fish Input (N kali)
-local NONSTOP_DELAY        = 0.01   -- Get Fish Nonstop (lebih ringan)
+local NONSTOP_DELAY        = 0.01   -- Get Fish Nonstop
 local AUTO_SELL_COOLDOWN   = 0.75   -- minimal jeda antar SellAllFish (≤X Kg / All)
 
--- Sell This Fish agar lebih gesit (lebih kecil dari 3 detik, tapi tetap ada delay)
-local SELL_THIS_FISH_DELAY = 0.4    -- jeda antar Sell1Fish saat Sell This Fish batch
+-- Sell This Fish agar lebih gesit (tetap ada delay)
+local SELL_THIS_FISH_DELAY = 0.4    -- jeda antar Sell1Fish
 
 -- Mining: jeda antar panggilan GiveCrystal
-local MINING_DELAY         = 0.1    -- agar tetap ringan
+local MINING_DELAY         = 0.1
+
+-- Auto Sell All Ores loop delay
+local ORE_SELL_ALL_DELAY   = 1.0
 
 ------------------- STATE UTAMA -------------------
 local alive                  = true
+local logEntries             = {}
+
+-- FISH: GET FISH
 local getFishInputEnabled    = false
 local getFishNonstopEnabled  = false
 local currentInputTaskId     = 0
-
-local logEntries             = {}
-
--- PROGRESS STATE (Get Fish Input / Nonstop)
 local inputTargetCount       = 0
 local inputCurrentCount      = 0
 
--- SELL MODE ENUM (lengkap + siap expand)
+-- FISH: SELL MODE ENUM
 local SellMode = {
     Disable   = 1,
     Under10   = 2,
@@ -81,27 +85,21 @@ local SellMode = {
     ThisFish  = 10,
     AllFish   = 11,
 }
-
 local currentSellMode = SellMode.Disable
 
--- BACKPACK / DROPDOWN STATE
+-- BACKPACK / DROPDOWN FISH
 local scannedBackpack      = false
-local fishCategoryList     = {}   -- {"ikan koi goshiki", "ikan rambo merah", ...}
-local fishCategoryMap      = {}   -- [name] = true
-local selectedFishCategory = nil  -- string nama kategori terpilih
-
+local fishCategoryList     = {}
+local fishCategoryMap      = {}
+local selectedFishCategory = nil
 local isSellingThisFish    = false
-
--- SELL PROGRESS STATE
-local sellFishCountByCategory = {}  -- [categoryName] = jumlah ikan terjual
-
--- COOLDOWN SELL ≤ X KG
-local lastSellUnderWeightTick = {}  -- [maxWeight] = tick()
+local sellFishCountByCategory = {}
+local lastSellUnderWeightTick = {}
 
 -- LOG RAW TOGGLE
-local logRawEnabled = false -- default: tidak log supaya ringan
+local logRawEnabled = false
 
--- LOOP TOKENS (NONSTOP & SELL THIS FISH) UNTUK GANTI GENERASI TANPA while
+-- LOOP TOKENS (tanpa while)
 local nonstopLoopId      = 0
 local sellThisFishLoopId = 0
 
@@ -109,7 +107,15 @@ local sellThisFishLoopId = 0
 local autoMiningEnabled   = false
 local autoMiningLoopId    = 0
 local miningTargetLoops   = 0   -- 0 = Nonstop
-local miningCurrentLoop   = 0   -- jumlah loop 1→7 yang sudah selesai
+local miningCurrentLoop   = 0
+
+-- ORES STATE (dropdown & sell)
+local oreSelectedCategory     = nil
+local oreSellCountByCategory  = {}
+local isSellingThisOres       = false
+local sellThisOresLoopId      = 0
+local autoSellAllOresEnabled  = false
+local autoSellAllOresLoopId   = 0
 
 ------------------- UI REFERENCES -------------------
 local headerFrame
@@ -117,33 +123,44 @@ local bodyFrame
 
 local fishCard
 local sellCard
-local logCard
 local miningCard
+local logCard
 
+-- FISH UI
 local getFishInputToggleBtn
 local getFishNonstopToggleBtn
 local fishCountInputBox
 local lastFishLabel
 local inputProgressLabel
-local logScrollFrame
 
 local sellModeButtons = {} -- [mode] = button
-
 local sellDropdownButton
 local sellDropdownListFrame
-local dropdownItemButtons = {} -- [key] = button (termasuk "__DISABLE__" & nama fish)
-
+local dropdownItemButtons = {}
+local currentDropdownKey = "__DISABLE__"
 local sellProgressLabel
+
+local logScrollFrame
 local logToggleBtn
 
--- KEY saat ini untuk highlight dropdown ("__DISABLE__" atau nama fish)
-local currentDropdownKey = "__DISABLE__"
-
--- FARM MINING UI
+-- MINING & ORES UI
+local miningButtons = {} -- [1..7] = button
 local autoMiningToggleBtn
 local miningCountInputBox
 local miningProgressLabel
-local miningButtons = {} -- [1..7] = button
+local lastOreLabel
+
+local oreSellUnder7Button
+local oreSellUnder12Button
+local oreSellUnder20Button
+local oreSellThisButton
+
+local oreDropdownButton
+local oreDropdownListFrame
+local oreDropdownItemButtons = {}
+local oreCurrentDropdownKey = "__DISABLE__"
+local oreSellAllToggleBtn
+local oreSellProgressLabel
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -174,7 +191,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(235, 235, 245)
-    title.Text = "Indo Beach - Fish Giver V1"
+    title.Text = "Indo Beach - Fish Giver V2"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -186,7 +203,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "Get Fish Input / Nonstop + Auto Sell Mode + Farm Mining"
+    desc.Text = "Get Fish Input / Nonstop + Auto Sell Fish + Farm Mining & Sell Ores"
 
     return h
 end
@@ -449,7 +466,6 @@ local function createSellFishCard(parent, order)
         sellModeButtons[mode] = btn
     end
 
-    -- 2 kolom, vertikal scroll + mode lengkap
     addSellButton(SellMode.Disable,  "Disable")
     addSellButton(SellMode.Under10,  "Sell ≤ 10 Kg")
     addSellButton(SellMode.Under25,  "Sell ≤ 25 Kg")
@@ -485,7 +501,7 @@ local function createSellFishCard(parent, order)
     ddButton.TextSize = 13
     ddButton.TextXAlignment = Enum.TextXAlignment.Left
     ddButton.TextColor3 = Color3.fromRGB(225, 225, 235)
-    ddButton.Text = "Disable"  -- default teks: Disable
+    ddButton.Text = "Disable"
 
     local ddCorner = Instance.new("UICorner")
     ddCorner.CornerRadius = UDim.new(0, 6)
@@ -497,7 +513,7 @@ local function createSellFishCard(parent, order)
     ddStroke.Transparency = 0.3
     ddStroke.Color = Color3.fromRGB(60, 60, 85)
 
-    -- Dropdown list frame
+    -- Dropdown list
     local ddList = Instance.new("ScrollingFrame")
     ddList.Name = "FishDropdownList"
     ddList.Parent = card
@@ -542,12 +558,11 @@ local function createFishLogCard(parent, order)
     local card = createCard(
         parent,
         "Fish Log (Last 100)",
-        "Riwayat ikan & sell status",
+        "Riwayat ikan, sell fish & ores (LOG RAW)",
         order
     )
 
-    -- Toggle Log RAW
-    local _, toggleBtn = createToggleButton(card, "Log RAW (Fish & Sell)")
+    local _, toggleBtn = createToggleButton(card, "Log RAW (Fish & Sell & Mining/Ores)")
 
     local logFrame = Instance.new("ScrollingFrame")
     logFrame.Name = "LogScroll"
@@ -576,16 +591,16 @@ local function createFishLogCard(parent, order)
     return card, logFrame, toggleBtn
 end
 
---==================== FARM MINING CARD ====================
+--==================== FARM MINING & SELL ORES CARD ====================
 local function createMiningCard(parent, order)
     local card = createCard(
         parent,
-        "Farm Mining",
-        "Mining 1–7 instan + Auto Mining loop 1→7 (ringan ke server)",
+        "Farm Mining & Sell Ores",
+        "Mining 1–7 + Auto Mining 1→7 + Sell Ores (Under 7/12/20 kg, Sell This Ores, Sell All Ores Loop)",
         order
     )
 
-    -- Frame tombol Mining 1-7 (grid)
+    -- Grid tombol Mining 1-7
     local btnFrame = Instance.new("Frame")
     btnFrame.Name = "MiningButtonsFrame"
     btnFrame.Parent = card
@@ -635,8 +650,20 @@ local function createMiningCard(parent, order)
         addMiningButton(i)
     end
 
-    -- Toggle Auto Mining 1-7
-    local _, toggleMining = createToggleButton(card, "Auto Mining 1-7 (Loop 1→7)")
+    -- Last Ore result
+    local lastOre = Instance.new("TextLabel")
+    lastOre.Name = "LastOreLabel"
+    lastOre.Parent = card
+    lastOre.BackgroundTransparency = 1
+    lastOre.Size = UDim2.new(1, 0, 0, 18)
+    lastOre.Font = Enum.Font.Gotham
+    lastOre.TextSize = 12
+    lastOre.TextXAlignment = Enum.TextXAlignment.Left
+    lastOre.TextColor3 = Color3.fromRGB(180, 220, 255)
+    lastOre.Text = "Last Ore: -"
+
+    -- Auto Mining toggle
+    local _, toggleMining = createToggleButton(card, "Auto Mining 1-7 (Loop urut 1→7)")
 
     -- Input jumlah loop
     local input = Instance.new("TextBox")
@@ -663,19 +690,170 @@ local function createMiningCard(parent, order)
     inputStroke.Transparency = 0.3
     inputStroke.Color = Color3.fromRGB(60, 60, 85)
 
-    -- Progress Auto Mining
-    local prog = Instance.new("TextLabel")
-    prog.Name = "MiningProgressLabel"
-    prog.Parent = card
-    prog.BackgroundTransparency = 1
-    prog.Size = UDim2.new(1, 0, 0, 18)
-    prog.Font = Enum.Font.Gotham
-    prog.TextSize = 11
-    prog.TextXAlignment = Enum.TextXAlignment.Left
-    prog.TextColor3 = Color3.fromRGB(170, 200, 255)
-    prog.Text = "Mining Progress: -"
+    -- Mining progress label
+    local miningProg = Instance.new("TextLabel")
+    miningProg.Name = "MiningProgressLabel"
+    miningProg.Parent = card
+    miningProg.BackgroundTransparency = 1
+    miningProg.Size = UDim2.new(1, 0, 0, 18)
+    miningProg.Font = Enum.Font.Gotham
+    miningProg.TextSize = 11
+    miningProg.TextXAlignment = Enum.TextXAlignment.Left
+    miningProg.TextColor3 = Color3.fromRGB(170, 200, 255)
+    miningProg.Text = "Mining Progress: -"
 
-    return card, toggleMining, input, prog
+    -- Separator: Sell Ores
+    local sep = Instance.new("TextLabel")
+    sep.Name = "SellOreTitle"
+    sep.Parent = card
+    sep.BackgroundTransparency = 1
+    sep.Size = UDim2.new(1, 0, 0, 18)
+    sep.Font = Enum.Font.GothamBold
+    sep.TextSize = 13
+    sep.TextXAlignment = Enum.TextXAlignment.Left
+    sep.TextColor3 = Color3.fromRGB(220, 220, 235)
+    sep.Text = "Sell Ores Control"
+
+    -- Grid tombol Sell Ores (Under 7/12/20 + Sell This Ores)
+    local sellOreFrame = Instance.new("Frame")
+    sellOreFrame.Name = "SellOreButtonsFrame"
+    sellOreFrame.Parent = card
+    sellOreFrame.BackgroundTransparency = 1
+    sellOreFrame.Size = UDim2.new(1, 0, 0, 0)
+    sellOreFrame.AutomaticSize = Enum.AutomaticSize.Y
+
+    local sellGrid = Instance.new("UIGridLayout")
+    sellGrid.Parent = sellOreFrame
+    sellGrid.FillDirection = Enum.FillDirection.Horizontal
+    sellGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    sellGrid.CellPadding = UDim2.new(0, 6, 0, 6)
+    sellGrid.CellSize = UDim2.new(0.5, -4, 0, 26)
+
+    local sellPad = Instance.new("UIPadding")
+    sellPad.Parent = sellOreFrame
+    sellPad.PaddingTop = UDim.new(0, 2)
+    sellPad.PaddingBottom = UDim.new(0, 4)
+    sellPad.PaddingLeft = UDim.new(0, 2)
+    sellPad.PaddingRight = UDim.new(0, 2)
+
+    local function addSellOreButton(name, text)
+        local btn = Instance.new("TextButton")
+        btn.Name = name
+        btn.Parent = sellOreFrame
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 11
+        btn.TextColor3 = Color3.fromRGB(235, 235, 245)
+        btn.TextWrapped = true
+        btn.Text = text
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 6)
+        c.Parent = btn
+
+        local s = Instance.new("UIStroke")
+        s.Parent = btn
+        s.Thickness = 1
+        s.Transparency = 0.4
+        s.Color = Color3.fromRGB(60, 60, 85)
+
+        return btn
+    end
+
+    local btnUnder7  = addSellOreButton("SellUnder7",  "Sell ≤ 7 Kg Ores")
+    local btnUnder12 = addSellOreButton("SellUnder12", "Sell ≤ 12 Kg Ores")
+    local btnUnder20 = addSellOreButton("SellUnder20", "Sell ≤ 20 Kg Ores")
+    local btnThis    = addSellOreButton("SellThisOres","Sell This Ores")
+
+    -- Label dropdown Ores
+    local oreSelLabel = Instance.new("TextLabel")
+    oreSelLabel.Name = "SelectedOreLabel"
+    oreSelLabel.Parent = card
+    oreSelLabel.BackgroundTransparency = 1
+    oreSelLabel.Size = UDim2.new(1, 0, 0, 18)
+    oreSelLabel.Font = Enum.Font.Gotham
+    oreSelLabel.TextSize = 11
+    oreSelLabel.TextXAlignment = Enum.TextXAlignment.Left
+    oreSelLabel.TextColor3 = Color3.fromRGB(180, 200, 230)
+    oreSelLabel.Text = "Selected Ore (Sell This Ores):"
+
+    -- Dropdown Ores
+    local oreDdButton = Instance.new("TextButton")
+    oreDdButton.Name = "OreDropdownButton"
+    oreDdButton.Parent = card
+    oreDdButton.Size = UDim2.new(1, 0, 0, 26)
+    oreDdButton.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    oreDdButton.AutoButtonColor = true
+    oreDdButton.Font = Enum.Font.Gotham
+    oreDdButton.TextSize = 13
+    oreDdButton.TextXAlignment = Enum.TextXAlignment.Left
+    oreDdButton.TextColor3 = Color3.fromRGB(225, 225, 235)
+    oreDdButton.Text = "Disable"
+
+    local oreDdCorner = Instance.new("UICorner")
+    oreDdCorner.CornerRadius = UDim.new(0, 6)
+    oreDdCorner.Parent = oreDdButton
+
+    local oreDdStroke = Instance.new("UIStroke")
+    oreDdStroke.Parent = oreDdButton
+    oreDdStroke.Thickness = 1
+    oreDdStroke.Transparency = 0.3
+    oreDdStroke.Color = Color3.fromRGB(60, 60, 85)
+
+    local oreDdList = Instance.new("ScrollingFrame")
+    oreDdList.Name = "OreDropdownList"
+    oreDdList.Parent = card
+    oreDdList.BackgroundTransparency = 1
+    oreDdList.BorderSizePixel = 0
+    oreDdList.Size = UDim2.new(1, 0, 0, 0)
+    oreDdList.Visible = false
+    oreDdList.ScrollBarThickness = 4
+    oreDdList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    oreDdList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    oreDdList.ScrollBarImageTransparency = 0.2
+
+    local oreDdPad = Instance.new("UIPadding")
+    oreDdPad.Parent = oreDdList
+    oreDdPad.PaddingTop = UDim.new(0, 2)
+    oreDdPad.PaddingBottom = UDim.new(0, 4)
+    oreDdPad.PaddingLeft = UDim.new(0, 2)
+    oreDdPad.PaddingRight = UDim.new(0, 2)
+
+    local oreDdLayout = Instance.new("UIListLayout")
+    oreDdLayout.Parent = oreDdList
+    oreDdLayout.FillDirection = Enum.FillDirection.Vertical
+    oreDdLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    oreDdLayout.Padding = UDim.new(0, 2)
+
+    -- Toggle Sell All Ores
+    local _, toggleSellAll = createToggleButton(card, "Sell All Ores (Loop)")
+
+    -- Ore Sell Progress
+    local oreProg = Instance.new("TextLabel")
+    oreProg.Name = "OreSellProgressLabel"
+    oreProg.Parent = card
+    oreProg.BackgroundTransparency = 1
+    oreProg.Size = UDim2.new(1, 0, 0, 18)
+    oreProg.Font = Enum.Font.Gotham
+    oreProg.TextSize = 11
+    oreProg.TextXAlignment = Enum.TextXAlignment.Left
+    oreProg.TextColor3 = Color3.fromRGB(170, 220, 255)
+    oreProg.Text = "Sell Ores Progress: -"
+
+    return card,
+        toggleMining,
+        input,
+        miningProg,
+        lastOre,
+        oreDdButton,
+        oreDdList,
+        toggleSellAll,
+        oreProg,
+        btnUnder7,
+        btnUnder12,
+        btnUnder20,
+        btnThis
 end
 
 ------------------- BUILD UI -------------------
@@ -688,7 +866,19 @@ fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, las
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel =
     createSellFishCard(bodyFrame, 2)
 
-miningCard, autoMiningToggleBtn, miningCountInputBox, miningProgressLabel =
+miningCard,
+autoMiningToggleBtn,
+miningCountInputBox,
+miningProgressLabel,
+lastOreLabel,
+oreDropdownButton,
+oreDropdownListFrame,
+oreSellAllToggleBtn,
+oreSellProgressLabel,
+oreSellUnder7Button,
+oreSellUnder12Button,
+oreSellUnder20Button,
+oreSellThisButton =
     createMiningCard(bodyFrame, 3)
 
 logCard, logScrollFrame, logToggleBtn = createFishLogCard(bodyFrame, 4)
@@ -705,18 +895,15 @@ local function updateToggleVisual(button, state)
     end
 end
 
--- Set default visual OFF
+-- Default visual OFF
 updateToggleVisual(getFishInputToggleBtn, false)
 updateToggleVisual(getFishNonstopToggleBtn, false)
-updateToggleVisual(logToggleBtn, false) -- LOG RAW default OFF
-updateToggleVisual(autoMiningToggleBtn, false) -- Auto Mining default OFF
+updateToggleVisual(logToggleBtn, false)
+updateToggleVisual(autoMiningToggleBtn, false)
+updateToggleVisual(oreSellAllToggleBtn, false)
 
 ------------------- HELPER: LOG -------------------
 local function appendLog(text)
-    -- Hanya log jika:
-    -- 1) tab masih alive
-    -- 2) log frame ada
-    -- 3) logRawEnabled = true (LOG RAW ON)
     if not (alive and logScrollFrame and logRawEnabled) then
         return
     end
@@ -733,8 +920,6 @@ local function appendLog(text)
     lbl.Text = text
 
     table.insert(logEntries, lbl)
-
-    -- Batasi 100 baris terakhir
     if #logEntries > 100 then
         local oldest = table.remove(logEntries, 1)
         if oldest then
@@ -743,7 +928,7 @@ local function appendLog(text)
     end
 end
 
-------------------- HELPER: PROGRESS LABEL (GET FISH) -------------------
+------------------- HELPER: PROGRESS LABEL FISH -------------------
 local function updateInputProgressLabel()
     if not inputProgressLabel then return end
 
@@ -759,20 +944,17 @@ local function updateInputProgressLabel()
     end
 end
 
-------------------- HELPER: PROGRESS LABEL (SELL THIS FISH) -------------------
 local function updateSellProgressLabel()
     if not sellProgressLabel then return end
-
     if not selectedFishCategory or selectedFishCategory == "" then
         sellProgressLabel.Text = "Sell Progress: -"
         return
     end
-
     local count = sellFishCountByCategory[selectedFishCategory] or 0
     sellProgressLabel.Text = string.format("Sell Progress: %d %s", count, selectedFishCategory)
 end
 
-------------------- HELPER: PROGRESS LABEL (AUTO MINING) -------------------
+------------------- HELPER: PROGRESS LABEL MINING/ORE -------------------
 local function updateMiningProgressLabel()
     if not miningProgressLabel then return end
 
@@ -791,22 +973,30 @@ local function updateMiningProgressLabel()
     end
 end
 
-------------------- HELPER: CLEAN NAMA IKAN (KATEGORI) -------------------
-local function cleanFishName(raw)
+local function updateOreSellProgressLabel()
+    if not oreSellProgressLabel then return end
+
+    if not oreSelectedCategory or oreSelectedCategory == "" then
+        oreSellProgressLabel.Text = "Sell Ores Progress: -"
+        return
+    end
+
+    local count = oreSellCountByCategory[oreSelectedCategory] or 0
+    oreSellProgressLabel.Text = string.format("Sell Ores Progress: %d %s", count, oreSelectedCategory)
+end
+
+------------------- HELPER: CLEAN NAMA ITEM -------------------
+local function cleanItemName(raw)
     if type(raw) ~= "string" then
         return ""
     end
 
     local name = raw
-
-    -- hapus (Favorite)
     name = name:gsub("%(Favorite%)", "")
-    -- kompres spasi
     name = name:gsub("%s+", " ")
     name = name:gsub("^%s+", "")
     name = name:gsub("%s+$", "")
 
-    -- ambil sebelum '(' (berat, dll)
     local base = name:match("^(.-)%s*%(")
     if base and base ~= "" then
         name = base:gsub("%s+$", "")
@@ -815,24 +1005,21 @@ local function cleanFishName(raw)
     return name
 end
 
-------------------- HELPER: CEK TOOL YANG DIKELUARKAN DARI DROPDOWN -------------------
+------------------- HELPER: FISH DROPDOWN FILTER -------------------
 local function isIgnoredToolForDropdown(toolName)
     if type(toolName) ~= "string" then return false end
 
     local lower   = toolName:lower()
     local compact = lower:gsub("%s+", "")
 
-    -- semua jenis Rod di akhir nama (NormalRod, VIP Rod, WaveRod, dsb)
     if compact:sub(-3) == "rod" then
         return true
     end
 
-    -- Torch
     if lower:find("torch") then
         return true
     end
 
-    -- Pickaxe / Picaxe
     if lower:find("pickaxe") or lower:find("picaxe") then
         return true
     end
@@ -840,7 +1027,6 @@ local function isIgnoredToolForDropdown(toolName)
     return false
 end
 
-------------------- HELPER: PARSE NAMA IKAN (RAW RESULT) -------------------
 local function getFishNameFromResult(res)
     local fishName = "Unknown Fish"
     local t = typeof(res)
@@ -857,7 +1043,6 @@ local function getFishNameFromResult(res)
         elseif res[1] and typeof(res[1]) == "string" then
             fishName = res[1]
         else
-            -- fallback cukup tostring table, tanpa JSONEncode agar lebih ringan
             fishName = tostring(res)
         end
     else
@@ -867,7 +1052,7 @@ local function getFishNameFromResult(res)
     return fishName
 end
 
-------------------- BACKPACK SCAN (SEKALI DIAWAL, KECUALI ROD/TORCH/PICAXE) -------------------
+------------------- BACKPACK FISH SCAN (SEKALI) -------------------
 local function scanBackpackOnce()
     if scannedBackpack then return end
     scannedBackpack = true
@@ -883,7 +1068,7 @@ local function scanBackpackOnce()
     end
 
     if not backpack then
-        appendLog("[Dropdown] Backpack tidak ditemukan untuk scan.")
+        appendLog("[Dropdown] Backpack tidak ditemukan untuk scan (Fish).")
         return
     end
 
@@ -892,9 +1077,8 @@ local function scanBackpackOnce()
 
     for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") then
-            -- Keluarkan NormalRod / Rod lain, Torch, Picaxe/Pickaxe dari kategori fish
             if not isIgnoredToolForDropdown(tool.Name) then
-                local cname = cleanFishName(tool.Name)
+                local cname = cleanItemName(tool.Name)
                 if cname ~= "" and not fishCategoryMap[cname] then
                     fishCategoryMap[cname] = true
                     table.insert(fishCategoryList, cname)
@@ -908,7 +1092,6 @@ local function scanBackpackOnce()
     end)
 end
 
-------------------- HELPER: CARI TOOL FISH PER KATEGORI -------------------
 local function findFishToolByCategory(categoryName)
     if not categoryName or categoryName == "" then
         return nil
@@ -921,10 +1104,8 @@ local function findFishToolByCategory(categoryName)
         if not container then return nil end
         for _, inst in ipairs(container:GetChildren()) do
             if inst:IsA("Tool") then
-                if isIgnoredToolForDropdown(inst.Name) then
-                    -- lewati Rod/Torch/Picaxe
-                else
-                    local cname = cleanFishName(inst.Name)
+                if not isIgnoredToolForDropdown(inst.Name) then
+                    local cname = cleanItemName(inst.Name)
                     if cname == categoryName then
                         return inst
                     end
@@ -939,7 +1120,6 @@ local function findFishToolByCategory(categoryName)
     return searchContainer(backpack)
 end
 
-------------------- HELPER: HITUNG JUMLAH FISH KATEGORI (BACKPACK + CHARACTER) -------------------
 local function countFishToolsInCategory(categoryName)
     if not categoryName or categoryName == "" then
         return 0
@@ -952,7 +1132,7 @@ local function countFishToolsInCategory(categoryName)
         for _, inst in ipairs(container:GetChildren()) do
             if inst:IsA("Tool") then
                 if not isIgnoredToolForDropdown(inst.Name) then
-                    local cname = cleanFishName(inst.Name)
+                    local cname = cleanItemName(inst.Name)
                     if cname == categoryName then
                         count += 1
                     end
@@ -961,10 +1141,7 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
-    if not backpack then
-        backpack = LocalPlayer:FindFirstChild("Backpack")
-    end
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
     local char     = LocalPlayer.Character
 
     countInContainer(char)
@@ -973,18 +1150,16 @@ local function countFishToolsInCategory(categoryName)
     return count
 end
 
-------------------- HELPER: SELL IMPLEMENTATION -------------------
+------------------- SELL FISH IMPLEMENTATION -------------------
 local function sellUnderWeight(maxWeight)
     if not SellAllFishFunction then
         appendLog("[Sell] SellAllFishFunction tidak ditemukan.")
         return
     end
 
-    -- Cooldown per maxWeight agar tidak spam remote
     local now = tick()
     local last = lastSellUnderWeightTick[maxWeight]
     if last and (now - last) < AUTO_SELL_COOLDOWN then
-        -- Masih dalam cooldown, lewati saja
         return
     end
     lastSellUnderWeightTick[maxWeight] = now
@@ -1001,11 +1176,9 @@ local function sellUnderWeight(maxWeight)
 end
 
 local function sellAllFish()
-    -- SELL ALL (contoh: 10000)
     sellUnderWeight(10000)
 end
 
-------------------- SELL THIS FISH (LOGIC BARU, LEBIH GESIT) -------------------
 local function finishSellThisFishLoop(reason)
     if isSellingThisFish then
         isSellingThisFish = false
@@ -1058,7 +1231,6 @@ local function sellThisFishAll()
                 return
             end
             if thisLoopId ~= sellThisFishLoopId then
-                -- Generasi loop sudah diganti, hentikan batch ini
                 return
             end
 
@@ -1070,7 +1242,7 @@ local function sellThisFishAll()
 
             local tool = findFishToolByCategory(categoryName)
             if not tool then
-                finishSellThisFishLoop("Fish kategori '" .. categoryName .. "' sudah habis sebelum selesai batch.")
+                finishSellThisFishLoop("Fish kategori '" .. categoryName .. "' sudah habis.")
                 return
             end
 
@@ -1082,7 +1254,6 @@ local function sellThisFishAll()
             end
 
             local ok, res = pcall(function()
-                -- SELL THIS FISH (math.huge) sesuai contoh user
                 return Sell1FishFunction:InvokeServer(math.huge)
             end)
 
@@ -1092,20 +1263,16 @@ local function sellThisFishAll()
                 return
             else
                 appendLog(string.format("[Sell] Sell1Fish OK (%s) ke-%d", categoryName, i))
-
-                -- Update counter & progress label
                 sellFishCountByCategory[categoryName] =
                     (sellFishCountByCategory[categoryName] or 0) + 1
                 updateSellProgressLabel()
             end
 
-            -- Jeda kecil antar jualan supaya tetap ringan tapi gesit
             if i < total then
                 task.wait(SELL_THIS_FISH_DELAY)
             end
         end
 
-        -- Jika sampai sini, batch selesai normal
         if alive and currentSellMode == SellMode.ThisFish and thisLoopId == sellThisFishLoopId then
             finishSellThisFishLoop("Selesai jual semua ikan kategori " .. tostring(categoryName))
         else
@@ -1146,13 +1313,11 @@ local function setSellMode(mode)
     appendLog("[Sell] Mode diubah: " .. name)
     notify("Indo Beach - Sell Mode", name, 3)
 
-    -- Jika keluar dari mode ThisFish, pastikan loop dimatikan
     if mode ~= SellMode.ThisFish then
-        sellThisFishLoopId += 1 -- batalkan batch lama
+        sellThisFishLoopId += 1
         finishSellThisFishLoop("Mode berubah dari ThisFish")
     end
 
-    -- Update label progress sesuai kategori terpilih
     updateSellProgressLabel()
 end
 
@@ -1176,18 +1341,16 @@ local function applyAutoSellAfterCatch()
     elseif currentSellMode == SellMode.Under800 then
         sellUnderWeight(800)
     elseif currentSellMode == SellMode.ThisFish then
-        -- Jual semua fish kategori terpilih, batch cepat
         sellThisFishAll()
     elseif currentSellMode == SellMode.AllFish then
         sellAllFish()
     end
 end
 
-------------------- DROPDOWN BUILD -------------------
+------------------- DROPDOWN FISH BUILD -------------------
 local function buildFishDropdownItems()
     if not sellDropdownListFrame then return end
 
-    -- hapus item lama (hanya TextButton)
     for _, child in ipairs(sellDropdownListFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
@@ -1195,7 +1358,7 @@ local function buildFishDropdownItems()
     end
     dropdownItemButtons = {}
 
-    -- ITEM PERTAMA: DISABLE
+    -- DISABLE ITEM
     do
         local btn = Instance.new("TextButton")
         btn.Name = "FishItem_Disable"
@@ -1222,7 +1385,6 @@ local function buildFishDropdownItems()
                 sellDropdownButton.Text = "Disable"
             end
 
-            -- highlight
             for key, b in pairs(dropdownItemButtons) do
                 if key == currentDropdownKey then
                     b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
@@ -1233,10 +1395,8 @@ local function buildFishDropdownItems()
                 end
             end
 
-            -- progress reset
             updateSellProgressLabel()
 
-            -- tutup dropdown
             if sellDropdownListFrame then
                 sellDropdownListFrame.Visible = false
                 sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
@@ -1246,7 +1406,6 @@ local function buildFishDropdownItems()
         end)
     end
 
-    -- ITEM FISH: TAMPILKAN "jumlah x nama"
     for _, cname in ipairs(fishCategoryList) do
         local btn = Instance.new("TextButton")
         btn.Name = "FishItem_" .. cname
@@ -1277,7 +1436,6 @@ local function buildFishDropdownItems()
                 sellDropdownButton.Text = string.format("%dx %s", currentCount, cname)
             end
 
-            -- highlight pilihan
             for key, b in pairs(dropdownItemButtons) do
                 if key == currentDropdownKey then
                     b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
@@ -1288,10 +1446,8 @@ local function buildFishDropdownItems()
                 end
             end
 
-            -- update progress label untuk kategori baru
             updateSellProgressLabel()
 
-            -- tutup dropdown
             if sellDropdownListFrame then
                 sellDropdownListFrame.Visible = false
                 sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
@@ -1299,14 +1455,12 @@ local function buildFishDropdownItems()
 
             appendLog("[Dropdown] Selected Fish diubah ke: " .. selectedFishCategory)
 
-            -- Jika mode Sell This Fish aktif, langsung mulai batch jual semua ikan kategori ini
             if currentSellMode == SellMode.ThisFish then
                 sellThisFishAll()
             end
         end)
     end
 
-    -- DEFAULT: jika belum pernah pilih, tetap di "__DISABLE__"
     if not selectedFishCategory then
         currentDropdownKey = "__DISABLE__"
         if sellDropdownButton then
@@ -1314,7 +1468,6 @@ local function buildFishDropdownItems()
         end
     end
 
-    -- highlight sesuai currentDropdownKey
     for key, b in pairs(dropdownItemButtons) do
         if key == currentDropdownKey then
             b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
@@ -1325,7 +1478,6 @@ local function buildFishDropdownItems()
         end
     end
 
-    -- sync progress label
     updateSellProgressLabel()
 end
 
@@ -1337,12 +1489,10 @@ local function initFishDropdown()
         if sellDropdownButton then
             sellDropdownButton.Text = "Disable (Backpack kosong / fish tidak ditemukan)"
         end
-        -- tetap bisa buka dropdown, hanya ada tombol Disable
         buildFishDropdownItems()
         return
     end
 
-    -- build item dengan Disable di atas + daftar fish
     buildFishDropdownItems()
 end
 
@@ -1371,14 +1521,12 @@ local function requestOneFish()
     end
 
     appendLog("Got Fish: " .. fishName)
-
-    -- Auto Sell setelah dapat ikan (mode sesuai pilihan)
     applyAutoSellAfterCatch()
 
     return fishName, res
 end
 
-------------------- LOGIC: GET FISH INPUT (N KALI) -------------------
+------------------- GET FISH INPUT / NONSTOP -------------------
 local function startGetFishInput()
     if not alive then return end
 
@@ -1415,10 +1563,9 @@ local function startGetFishInput()
             inputCurrentCount = i
             updateInputProgressLabel()
 
-            task.wait(INPUT_DELAY) -- jeda kecil agar tetap ringan
+            task.wait(INPUT_DELAY)
         end
 
-        -- Jika masih task yang sama, matikan toggle & info selesai
         if alive and currentInputTaskId == thisTaskId then
             getFishInputEnabled = false
             updateToggleVisual(getFishInputToggleBtn, false)
@@ -1427,7 +1574,6 @@ local function startGetFishInput()
     end)
 end
 
-------------------- LOGIC: GET FISH NONSTOP (TANPA while) -------------------
 local function scheduleNonstopStep(loopId)
     task.spawn(function()
         if not alive then return end
@@ -1463,7 +1609,421 @@ local function startGetFishNonstop()
     scheduleNonstopStep(thisLoopId)
 end
 
-------------------- LOGIC: FARM MINING -------------------
+------------------- ORES HELPER -------------------
+local function getOreDisplayFromResult(res)
+    local t = typeof(res)
+    if t == "string" then
+        return res
+    elseif t == "table" then
+        local name = res.OreName or res.Name or res.name
+        if not name and res[1] and typeof(res[1]) == "string" then
+            name = res[1]
+        end
+
+        local weight = res.Weight or res.weight
+        if not weight and res[2] and tonumber(res[2]) then
+            weight = tonumber(res[2])
+        end
+
+        if not name then
+            name = "Unknown Ore"
+        end
+
+        if weight then
+            return string.format("%s (%.2f kg)", tostring(name), tonumber(weight) or 0)
+        else
+            return tostring(name)
+        end
+    else
+        return tostring(res)
+    end
+end
+
+local function isIgnoredToolForOres(toolName)
+    if type(toolName) ~= "string" then return true end
+    local lower = toolName:lower()
+    local compact = lower:gsub("%s+", "")
+
+    if compact:sub(-3) == "rod" then return true end
+    if lower:find("torch") then return true end
+    if lower:find("pickaxe") or lower:find("picaxe") then return true end
+    if lower:find("fish") or lower:find("ikan") then return true end
+
+    return false
+end
+
+local function isOreName(toolName)
+    if type(toolName) ~= "string" then return false end
+    local lower = toolName:lower()
+    if lower:find("ore") or lower:find("iron") or lower:find("gold") or lower:find("diamond") or lower:find("crystal") or lower:find("gem") then
+        return true
+    end
+    return false
+end
+
+local function buildOreCategoryList()
+    local list = {}
+    local map  = {}
+
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+
+    local function scan(container)
+        if not container then return end
+        for _, inst in ipairs(container:GetChildren()) do
+            if inst:IsA("Tool") then
+                local name = inst.Name
+                if not isIgnoredToolForOres(name) and isOreName(name) then
+                    local cname = cleanItemName(name)
+                    if cname ~= "" and not map[cname] then
+                        map[cname] = true
+                        table.insert(list, cname)
+                    end
+                end
+            end
+        end
+    end
+
+    scan(char)
+    scan(backpack)
+
+    table.sort(list, function(a, b)
+        return a:lower() < b:lower()
+    end)
+
+    return list
+end
+
+local function countOreToolsInCategory(categoryName)
+    if not categoryName or categoryName == "" then
+        return 0
+    end
+
+    local count = 0
+
+    local function countInContainer(container)
+        if not container then return end
+        for _, inst in ipairs(container:GetChildren()) do
+            if inst:IsA("Tool") then
+                if not isIgnoredToolForOres(inst.Name) and isOreName(inst.Name) then
+                    local cname = cleanItemName(inst.Name)
+                    if cname == categoryName then
+                        count += 1
+                    end
+                end
+            end
+        end
+    end
+
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local char     = LocalPlayer.Character
+
+    countInContainer(char)
+    countInContainer(backpack)
+
+    return count
+end
+
+local function findOreToolByCategory(categoryName)
+    if not categoryName or categoryName == "" then
+        return nil
+    end
+
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local char     = LocalPlayer.Character
+
+    local function search(container)
+        if not container then return nil end
+        for _, inst in ipairs(container:GetChildren()) do
+            if inst:IsA("Tool") then
+                if not isIgnoredToolForOres(inst.Name) and isOreName(inst.Name) then
+                    local cname = cleanItemName(inst.Name)
+                    if cname == categoryName then
+                        return inst
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local t = search(char)
+    if t then return t end
+    return search(backpack)
+end
+
+local function sellOreUnderWeight(maxWeight)
+    if not SellOreBackpackFunction then
+        appendLog("[Ores] SellOreBackpackFunction tidak ditemukan.")
+        return
+    end
+
+    local ok, res = pcall(function()
+        return SellOreBackpackFunction:InvokeServer(maxWeight)
+    end)
+
+    if not ok then
+        appendLog(string.format("[Ores] Error SellOreBackpack(%d): %s", maxWeight, tostring(res)))
+    else
+        appendLog(string.format("[Ores] SellOreBackpack ≤ %d Kg OK.", maxWeight))
+    end
+end
+
+local function sellAllOresOnce()
+    if not SellOreBackpackFunction then
+        appendLog("[Ores] SellOreBackpackFunction tidak ditemukan (Sell All).")
+        return
+    end
+
+    local ok, res = pcall(function()
+        return SellOreBackpackFunction:InvokeServer(math.huge)
+    end)
+
+    if not ok then
+        appendLog("[Ores] Error SellOreBackpack(math.huge): " .. tostring(res))
+    else
+        appendLog("[Ores] SellOreBackpack ALL OK.")
+    end
+end
+
+local function finishSellThisOresLoop(reason)
+    if isSellingThisOres then
+        isSellingThisOres = false
+        appendLog("[Ores] SellThisOres selesai: " .. tostring(reason or "Selesai"))
+    end
+end
+
+local function sellThisOresAll()
+    if not Sell1OreFunction then
+        appendLog("[Ores] Sell1OreFunction tidak ditemukan.")
+        return
+    end
+
+    if not oreSelectedCategory or oreSelectedCategory == "" then
+        appendLog("[Ores] Selected Ore belum dipilih (dropdown).")
+        return
+    end
+
+    if isSellingThisOres then
+        appendLog("[Ores] SellThisOres loop sudah berjalan.")
+        return
+    end
+
+    local total = countOreToolsInCategory(oreSelectedCategory)
+    if total <= 0 then
+        appendLog("[Ores] Tidak ada ore kategori '" .. oreSelectedCategory .. "' di Backpack/Character.")
+        return
+    end
+
+    isSellingThisOres = true
+    sellThisOresLoopId += 1
+    local thisLoopId = sellThisOresLoopId
+    local categoryName = oreSelectedCategory
+
+    appendLog(string.format("[Ores] Mulai SellThisOres batch: %s (total ± %d)", categoryName, total))
+
+    task.spawn(function()
+        for i = 1, total do
+            if not alive then
+                finishSellThisOresLoop("Tab tidak aktif")
+                return
+            end
+            if thisLoopId ~= sellThisOresLoopId then
+                return
+            end
+
+            local char = LocalPlayer.Character
+            if not char then
+                finishSellThisOresLoop("Character belum siap")
+                return
+            end
+
+            local tool = findOreToolByCategory(categoryName)
+            if not tool then
+                finishSellThisOresLoop("Ore kategori '" .. categoryName .. "' sudah habis.")
+                return
+            end
+
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:EquipTool(tool)
+            else
+                tool.Parent = char
+            end
+
+            local ok, res = pcall(function()
+                return Sell1OreFunction:InvokeServer(math.huge, true)
+            end)
+
+            if not ok then
+                appendLog("[Ores] Error Sell1Ore(math.huge, true): " .. tostring(res))
+                finishSellThisOresLoop("Error Sell1Ore")
+                return
+            else
+                oreSellCountByCategory[categoryName] =
+                    (oreSellCountByCategory[categoryName] or 0) + 1
+                updateOreSellProgressLabel()
+                appendLog(string.format("[Ores] Sell1Ore OK (%s) ke-%d", categoryName, i))
+            end
+
+            if i < total then
+                task.wait(SELL_THIS_FISH_DELAY)
+            end
+        end
+
+        if alive and thisLoopId == sellThisOresLoopId then
+            finishSellThisOresLoop("Selesai jual semua ore kategori " .. tostring(categoryName))
+        else
+            finishSellThisOresLoop("Dihentikan sebelum selesai")
+        end
+    end)
+end
+
+local function updateOreDropdownHighlight()
+    for key, b in pairs(oreDropdownItemButtons) do
+        if key == oreCurrentDropdownKey then
+            b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+            b.TextColor3       = Color3.fromRGB(245, 245, 255)
+        else
+            b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            b.TextColor3       = Color3.fromRGB(220, 220, 230)
+        end
+    end
+end
+
+local function buildOreDropdownItems()
+    if not oreDropdownListFrame then return end
+
+    for _, child in ipairs(oreDropdownListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    oreDropdownItemButtons = {}
+
+    -- Disable item
+    do
+        local btn = Instance.new("TextButton")
+        btn.Name = "OreItem_Disable"
+        btn.Parent = oreDropdownListFrame
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+        btn.Text = "Disable"
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = btn
+
+        oreDropdownItemButtons["__DISABLE__"] = btn
+
+        btn.MouseButton1Click:Connect(function()
+            oreSelectedCategory   = nil
+            oreCurrentDropdownKey = "__DISABLE__"
+            if oreDropdownButton then
+                oreDropdownButton.Text = "Disable"
+            end
+            updateOreDropdownHighlight()
+            updateOreSellProgressLabel()
+
+            if oreDropdownListFrame then
+                oreDropdownListFrame.Visible = false
+                oreDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+            end
+
+            appendLog("[Ores] Selected Ore diubah ke: Disable")
+        end)
+    end
+
+    local oreCategories = buildOreCategoryList()
+
+    for _, cname in ipairs(oreCategories) do
+        local btn = Instance.new("TextButton")
+        btn.Name = "OreItem_" .. cname
+        btn.Parent = oreDropdownListFrame
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+
+        local initialCount = countOreToolsInCategory(cname)
+        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+        btn.Text = string.format("%dx %s", initialCount, cname)
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = btn
+
+        oreDropdownItemButtons[cname] = btn
+
+        btn.MouseButton1Click:Connect(function()
+            oreSelectedCategory   = cname
+            oreCurrentDropdownKey = cname
+
+            if oreDropdownButton then
+                local currentCount = countOreToolsInCategory(cname)
+                oreDropdownButton.Text = string.format("%dx %s", currentCount, cname)
+            end
+
+            updateOreDropdownHighlight()
+            updateOreSellProgressLabel()
+
+            if oreDropdownListFrame then
+                oreDropdownListFrame.Visible = false
+                oreDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+            end
+
+            appendLog("[Ores] Selected Ore diubah ke: " .. tostring(oreSelectedCategory))
+        end)
+    end
+
+    if not oreSelectedCategory then
+        oreCurrentDropdownKey = "__DISABLE__"
+        if oreDropdownButton then
+            oreDropdownButton.Text = "Disable"
+        end
+    end
+
+    updateOreDropdownHighlight()
+    updateOreSellProgressLabel()
+end
+
+------------------- AUTO SELL ALL ORES LOOP -------------------
+local function scheduleAutoSellAllOresStep(loopId)
+    task.spawn(function()
+        if not alive then return end
+        if not autoSellAllOresEnabled then return end
+        if loopId ~= autoSellAllOresLoopId then return end
+
+        sellAllOresOnce()
+
+        task.wait(ORE_SELL_ALL_DELAY)
+
+        if not alive then return end
+        if not autoSellAllOresEnabled then return end
+        if loopId ~= autoSellAllOresLoopId then return end
+
+        scheduleAutoSellAllOresStep(loopId)
+    end)
+end
+
+local function startAutoSellAllOres()
+    if not alive then return end
+
+    autoSellAllOresLoopId += 1
+    local thisLoopId = autoSellAllOresLoopId
+
+    notify("Indo Beach - Ores", "Auto Sell All Ores dimulai.", 4)
+    scheduleAutoSellAllOresStep(thisLoopId)
+end
+
+------------------- MINING LOGIC -------------------
 local function doMining(index)
     if not alive then return end
     if not GiveCrystalFunction then
@@ -1478,16 +2038,17 @@ local function doMining(index)
     end
 
     local ok, res = pcall(function()
-        -- Sesuai contoh:
-        -- local args = { [1] = "safsafwaetqw3fsa", [2] = <value> }
-        -- GiveCrystal:InvokeServer(unpack(args))
         return GiveCrystalFunction:InvokeServer(FISH_CODE, v)
     end)
 
     if not ok then
         appendLog(string.format("[Mining] Error Mining %d: %s", index, tostring(res)))
     else
-        appendLog(string.format("[Mining] Mining %d OK (%.3f)", index, v))
+        local oreText = getOreDisplayFromResult(res)
+        if lastOreLabel then
+            lastOreLabel.Text = "Last Ore: " .. oreText
+        end
+        appendLog(string.format("[Mining] Mining %d OK: %s", index, oreText))
     end
 end
 
@@ -1497,10 +2058,8 @@ local function scheduleAutoMiningStep(loopId, currentIndex)
         if not autoMiningEnabled then return end
         if loopId ~= autoMiningLoopId then return end
 
-        -- Jalankan Mining index saat ini
         doMining(currentIndex)
 
-        -- Hitung index berikutnya & loop
         local nextIndex = currentIndex + 1
         local nextLoop  = miningCurrentLoop
 
@@ -1510,7 +2069,6 @@ local function scheduleAutoMiningStep(loopId, currentIndex)
             miningCurrentLoop = nextLoop
             updateMiningProgressLabel()
 
-            -- Jika ada target loop & sudah tercapai
             if miningTargetLoops > 0 and nextLoop >= miningTargetLoops then
                 autoMiningEnabled = false
                 updateToggleVisual(autoMiningToggleBtn, false)
@@ -1540,7 +2098,7 @@ local function startAutoMining()
         end
     end
 
-    miningTargetLoops = loops   -- 0 = Nonstop
+    miningTargetLoops = loops
     miningCurrentLoop = 0
     updateMiningProgressLabel()
 
@@ -1557,15 +2115,14 @@ local function startAutoMining()
 end
 
 ------------------- UI EVENTS -------------------
--- Inisialisasi dropdown (scan Backpack sekali diawal)
+
+-- FISH DROPDOWN
 initFishDropdown()
 
--- Toggle list dropdown (buka/tutup)
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
 
-        -- kalau belum pernah scan (jaga-jaga), coba lagi
         if not scannedBackpack then
             initFishDropdown()
         end
@@ -1580,6 +2137,7 @@ if sellDropdownButton then
     end)
 end
 
+-- FISH INPUT VALIDATION
 if fishCountInputBox then
     fishCountInputBox.FocusLost:Connect(function()
         local n = tonumber(fishCountInputBox.Text)
@@ -1589,6 +2147,7 @@ if fishCountInputBox then
     end)
 end
 
+-- GET FISH INPUT
 if getFishInputToggleBtn then
     getFishInputToggleBtn.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1600,11 +2159,11 @@ if getFishInputToggleBtn then
             startGetFishInput()
         else
             notify("Indo Beach", "Get Fish Input dimatikan oleh user.", 3)
-            -- progress dibiarkan menampilkan hasil terakhir
         end
     end)
 end
 
+-- GET FISH NONSTOP
 if getFishNonstopToggleBtn then
     getFishNonstopToggleBtn.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1615,13 +2174,12 @@ if getFishNonstopToggleBtn then
         if getFishNonstopEnabled then
             startGetFishNonstop()
         else
-            -- stop: cukup matikan flag, loop akan berhenti sendiri
             notify("Indo Beach", "Get Fish Nonstop berhenti.", 4)
         end
     end)
 end
 
--- Toggle LOG RAW
+-- LOG RAW TOGGLE
 if logToggleBtn then
     logToggleBtn.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1630,18 +2188,16 @@ if logToggleBtn then
     end)
 end
 
--- Event untuk semua tombol Sell Mode
+-- SELL MODE BUTTONS
 for mode, btn in pairs(sellModeButtons) do
     btn.MouseButton1Click:Connect(function()
         if not alive then return end
-        -- 1) Ubah mode auto sell
         setSellMode(mode)
-        -- 2) Langsung jalankan Sell sesuai mode saat ini
         applyAutoSellAfterCatch()
     end)
 end
 
--- Validasi input Mining Loop
+-- MINING LOOP INPUT VALIDATION
 if miningCountInputBox then
     miningCountInputBox.FocusLost:Connect(function()
         local txt = miningCountInputBox.Text
@@ -1649,13 +2205,12 @@ if miningCountInputBox then
         if not n or n < 0 then
             miningCountInputBox.Text = "0"
         else
-            -- biarkan n >= 0, 0 = Nonstop
             miningCountInputBox.Text = tostring(math.floor(n))
         end
     end)
 end
 
--- Event tombol Mining 1-7 (manual)
+-- MANUAL MINING 1-7
 for idx, btn in pairs(miningButtons) do
     if btn then
         btn.MouseButton1Click:Connect(function()
@@ -1665,7 +2220,7 @@ for idx, btn in pairs(miningButtons) do
     end
 end
 
--- Toggle Auto Mining 1-7
+-- AUTO MINING TOGGLE
 if autoMiningToggleBtn then
     autoMiningToggleBtn.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1676,14 +2231,78 @@ if autoMiningToggleBtn then
         if autoMiningEnabled then
             startAutoMining()
         else
-            autoMiningLoopId = autoMiningLoopId + 1 -- matikan loop generasi lama
+            autoMiningLoopId = autoMiningLoopId + 1
             updateMiningProgressLabel()
             notify("Indo Beach - Mining", "Auto Mining 1-7 dihentikan oleh user.", 3)
         end
     end)
 end
 
--- Set default sell mode = Disable
+-- ORES DROPDOWN BUTTON
+if oreDropdownButton then
+    oreDropdownButton.MouseButton1Click:Connect(function()
+        if not oreDropdownListFrame then return end
+
+        buildOreDropdownItems()
+
+        local open = not oreDropdownListFrame.Visible
+        oreDropdownListFrame.Visible = open
+        if open then
+            oreDropdownListFrame.Size = UDim2.new(1, 0, 0, 120)
+        else
+            oreDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+        end
+    end)
+end
+
+-- SELL UNDER 7 / 12 / 20 KG ORES
+if oreSellUnder7Button then
+    oreSellUnder7Button.MouseButton1Click:Connect(function()
+        if not alive then return end
+        sellOreUnderWeight(6)   -- ≤ 6 kg = Under 7
+    end)
+end
+
+if oreSellUnder12Button then
+    oreSellUnder12Button.MouseButton1Click:Connect(function()
+        if not alive then return end
+        sellOreUnderWeight(11)  -- ≤ 11 kg = Under 12
+    end)
+end
+
+if oreSellUnder20Button then
+    oreSellUnder20Button.MouseButton1Click:Connect(function()
+        if not alive then return end
+        sellOreUnderWeight(19)  -- ≤ 19 kg = Under 20
+    end)
+end
+
+-- SELL THIS ORES BUTTON
+if oreSellThisButton then
+    oreSellThisButton.MouseButton1Click:Connect(function()
+        if not alive then return end
+        sellThisOresAll()
+    end)
+end
+
+-- SELL ALL ORES LOOP TOGGLE
+if oreSellAllToggleBtn then
+    oreSellAllToggleBtn.MouseButton1Click:Connect(function()
+        if not alive then return end
+
+        autoSellAllOresEnabled = not autoSellAllOresEnabled
+        updateToggleVisual(oreSellAllToggleBtn, autoSellAllOresEnabled)
+
+        if autoSellAllOresEnabled then
+            startAutoSellAllOres()
+        else
+            autoSellAllOresLoopId = autoSellAllOresLoopId + 1
+            notify("Indo Beach - Ores", "Auto Sell All Ores dihentikan oleh user.", 3)
+        end
+    end)
+end
+
+-- Set default sell mode fish = Disable
 setSellMode(SellMode.Disable)
 
 ------------------- TAB CLEANUP (INTEGRASI CORE) -------------------
@@ -1692,12 +2311,21 @@ _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
 
 _G.AxaHub.TabCleanup[tabId] = function()
     alive = false
+
+    -- Fish
     getFishInputEnabled   = false
     getFishNonstopEnabled = false
     isSellingThisFish     = false
     sellThisFishLoopId    = sellThisFishLoopId + 1
     nonstopLoopId         = nonstopLoopId + 1
 
+    -- Mining
     autoMiningEnabled     = false
     autoMiningLoopId      = autoMiningLoopId + 1
+
+    -- Ores
+    isSellingThisOres     = false
+    sellThisOresLoopId    = sellThisOresLoopId + 1
+    autoSellAllOresEnabled = false
+    autoSellAllOresLoopId  = autoSellAllOresLoopId + 1
 end
