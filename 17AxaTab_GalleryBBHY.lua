@@ -1,6 +1,6 @@
 --==========================================================
 --  17AxaTab_GalleryBBHY.lua
---  TAB 17: "Gallery BBHY - Fish Giver V3"
+--  TAB 17: "Gallery BBHY - Fish Giver V3+"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -757,7 +757,7 @@ local function round(num)
 end
 
 local function getCoinsAmount()
-    local ls = LocalPlayer:FindFirstChild("leaderstats")
+    local ls = LocalPlayer:FindChild("leaderstats") or LocalPlayer:FindFirstChild("leaderstats")
     if not ls then return 0 end
     local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Coin")
     if coins and type(coins.Value) == "number" then
@@ -790,7 +790,7 @@ local function createMainLayout(parent)
     header.TextSize = 16
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.TextColor3 = Color3.fromRGB(0, 0, 0)
-    header.Text = "Gallery BBHY - Fish Giver V3"
+    header.Text = "Gallery BBHY - Fish Giver V3+"
 
     local body = Instance.new("ScrollingFrame")
     body.Name = "BodyScroll"
@@ -2060,7 +2060,7 @@ rebuildFishInventoryUI = function()
         local row = Instance.new("Frame")
         row.Name = fish.uniqueId or ("Fish_" .. idx)
         row.Parent = fishInvScroll
-        row.Size = UDim2.new(1, -4, 0, 44)
+        row.Size = UDim2.new(1, -4, 0, 52)
         row.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
         row.BackgroundTransparency = 0.1
         row.BorderSizePixel = 0
@@ -2123,12 +2123,15 @@ rebuildFishInventoryUI = function()
         local infoLabel = Instance.new("TextLabel")
         infoLabel.Parent = textFrame
         infoLabel.BackgroundTransparency = 1
-        infoLabel.Size = UDim2.new(1, 0, 0, 16)
+        infoLabel.Size = UDim2.new(1, 0, 0, 32)
         infoLabel.Font = Enum.Font.Gotham
         infoLabel.TextSize = 11
         infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+        infoLabel.TextWrapped = true
         infoLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-        infoLabel.Text = string.format("Weight: %s kg | ID: %s",
+        infoLabel.Text = string.format(
+            "Weight: %s kg\nID: %s",
             formatKg(fish.weight or 0),
             tostring(fish.uniqueId or "-")
         )
@@ -2249,7 +2252,7 @@ rebuildRodInventoryUI = function()
         local frame = Instance.new("Frame")
         frame.Name = rodName .. "InvItem"
         frame.Parent = rodInvScroll
-        frame.Size = UDim2.new(1, -4, 0, 56)
+        frame.Size = UDim2.new(1, -4, 0, 60)
         frame.BackgroundColor3 = Color3.fromRGB(26, 26, 35)
         frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
@@ -2309,10 +2312,12 @@ rebuildRodInventoryUI = function()
         local infoLabel = Instance.new("TextLabel")
         infoLabel.Parent = textFrame
         infoLabel.BackgroundTransparency = 1
-        infoLabel.Size = UDim2.new(1, 0, 0, 16)
+        infoLabel.Size = UDim2.new(1, 0, 0, 32)
         infoLabel.Font = Enum.Font.Gotham
         infoLabel.TextSize = 11
         infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+        infoLabel.TextWrapped = true
         infoLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 
         local globalMult = 1
@@ -2320,10 +2325,12 @@ rebuildRodInventoryUI = function()
             globalMult = globalLuckMultiplier.Value
         end
         local effectiveLuck = baseLuck * globalMult
-        infoLabel.Text = string.format("Luck: %.1fx | Weight: %dkg | MaxRarity: %s",
+        infoLabel.Text = string.format(
+            "Luck: %.1fx\nWeight: %dkg\nMax Rarity: %s",
             effectiveLuck,
             maxWeight,
-            tostring(maxRarity))
+            tostring(maxRarity)
+        )
 
         local btn = Instance.new("TextButton")
         btn.Name = "EquipButton"
@@ -2622,6 +2629,11 @@ createInputRow(fishInvInner, "Custom Size Inventory", "contoh: 500", tostring(in
     updateInventoryCountLabel()
 end)
 
+-- Tombol manual Refresh Fish inventory (server)
+createButtonRow(fishInvInner, "Manual Refresh Fish Inventory", "Refresh Fish", function()
+    refreshServerInventoryData()
+end)
+
 local fishInvListHolder = Instance.new("Frame")
 fishInvListHolder.Name = "FishInvListHolder"
 fishInvListHolder.Parent = fishInvInner
@@ -2880,11 +2892,11 @@ listScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 listScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.Parent = listScroll
-listLayout.FillDirection = Enum.FillDirection.Vertical
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-listLayout.Padding = UDim.new(0, 2)
+local listLayout2 = Instance.new("UIListLayout")
+listLayout2.Parent = listScroll
+listLayout2.FillDirection = Enum.FillDirection.Vertical
+listLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout2.Padding = UDim.new(0, 2)
 
 for _, fish in ipairs(FISH_TABLE) do
     local row = Instance.new("TextLabel")
