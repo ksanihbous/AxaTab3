@@ -802,7 +802,7 @@ local function createMainLayout(parent)
     coinsLabel.Font = Enum.Font.Gotham
     coinsLabel.TextSize = 13
     coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    coinsLabel.TextColor3 = Color3.fromRGB(255, 253, 228)
+    coinsLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     coinsLabel.Text = "🪙 Coins 0"
     coinsLabel.Visible = false
 
