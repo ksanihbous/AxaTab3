@@ -298,7 +298,7 @@ local function createMainLayout(parent)
     header.Font = Enum.Font.GothamSemibold
     header.TextSize = 16
     header.TextXAlignment = Enum.TextXAlignment.Left
-    header.TextColor3 = Color3.fromRGB(240, 240, 240)
+    header.TextColor3 = Color3.fromRGB(0, 0, 0)
     header.Text = "Sulsel Voice - Fish Giver V1"
 
     local body = Instance.new("ScrollingFrame")
