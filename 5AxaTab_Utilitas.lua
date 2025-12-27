@@ -1164,7 +1164,7 @@ do
         TextSize = 15,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextColor3 = Color3.fromRGB(40,40,70),
-        Text = "⚙️ Utilitas V1 - Invisible"
+        Text = "⚙️ Utilitas V2 - Invisible"
     }, TAB)
 
     -- ScrollingFrame vertikal berisi checkbox checklist
@@ -1283,7 +1283,7 @@ do
         BackgroundTransparency = 1
     }, scroll)
 
-    local srLabel = ui("TextLabel", {
+    ui("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(0,150,1,0),
         Position = UDim2.new(0,0,0,0),
@@ -1324,28 +1324,25 @@ do
     }, srConfigRow)
     ui("UICorner", {CornerRadius = UDim.new(0,6)}, fovBox)
 
-    speedBox.FocusLost:Connect(function(enterPressed)
+    speedBox.FocusLost:Connect(function()
         local txt = speedBox.Text
         local num = tonumber(txt)
         if not num then
-            -- reset ke nilai sekarang jika bukan angka
             speedBox.Text = tostring(SR_RunningSpeed)
             notify("ShiftRun","Speed harus angka (contoh: 40).",2)
             return
         end
-        -- clamp biar aman
         num = math.clamp(num, 16, 200)
         SR_RunningSpeed = num
         speedBox.Text = tostring(num)
 
-        -- jika sedang lari, apply ulang
         if SR_Humanoid and SR_sprintEnabled and SR_Running then
             SR_run()
         end
         notify("ShiftRun","RunningSpeed di-set ke "..tostring(num)..".",2)
     end)
 
-    fovBox.FocusLost:Connect(function(enterPressed)
+    fovBox.FocusLost:Connect(function()
         local txt = fovBox.Text
         local num = tonumber(txt)
         if not num then
@@ -1357,9 +1354,7 @@ do
         SR_RunFOV = num
         fovBox.Text = tostring(num)
 
-        -- rebuild tween biar target FOV baru
         SR_ensureTweens()
-        -- apply state sekarang
         if SR_sprintEnabled and SR_Running then
             SR_run()
         else
@@ -1382,6 +1377,67 @@ do
             state and ("Aktif (%d extra jump)."):format(IJ_Settings.ExtraJumps) or "Dimatikan.",
             3
         )
+    end)
+
+    ----------------------------------------------------------------
+    -- INPUT BOX: EXTRA JUMPS (DIBAWAH INFINITE JUMP)
+    ----------------------------------------------------------------
+    local ijConfigRow = ui("Frame", {
+        Name = "2_InfiniteJumpConfig",
+        Size = UDim2.new(1,0,0,30),
+        BackgroundTransparency = 1
+    }, scroll)
+
+    ui("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0,150,1,0),
+        Position = UDim2.new(0,0,0,0),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = Color3.fromRGB(40,40,70),
+        Text = "Extra Jumps (udara):"
+    }, ijConfigRow)
+
+    local extraBox = ui("TextBox", {
+        Name = "ExtraJumpsBox",
+        Size = UDim2.new(0,70,0,24),
+        Position = UDim2.new(0,160,0,3),
+        BackgroundColor3 = Color3.fromRGB(235,235,245),
+        BorderSizePixel = 0,
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 13,
+        TextColor3 = Color3.fromRGB(40,40,70),
+        PlaceholderText = "5",
+        Text = tostring(IJ_Settings.ExtraJumps),
+        ClearTextOnFocus = false
+    }, ijConfigRow)
+    ui("UICorner", {CornerRadius = UDim.new(0,6)}, extraBox)
+
+    extraBox.FocusLost:Connect(function()
+        local txt = extraBox.Text
+        local num = tonumber(txt)
+        if not num then
+            extraBox.Text = tostring(IJ_Settings.ExtraJumps)
+            notify("Infinite Jump","ExtraJumps harus angka (contoh: 5).",2)
+            return
+        end
+        -- clamp & bulatkan biar aman
+        num = math.floor(num + 0.5)
+        num = math.clamp(num, 0, 50)
+        IJ_Settings.ExtraJumps = num
+        IJ_JumpsDone = 0
+        extraBox.Text = tostring(num)
+
+        -- update label row Infinite Jump
+        local lbl = rowInfJump
+            and rowInfJump.Frame
+            and rowInfJump.Frame:FindFirstChild("Label")
+        if lbl and lbl:IsA("TextLabel") then
+            lbl.Text = ("Infinite Jump (%d extra jump di udara + pijakan VFX)"):format(IJ_Settings.ExtraJumps)
+        end
+
+        notify("Infinite Jump","ExtraJumps di-set ke "..tostring(num)..".",2)
     end)
 
     -- Checkbox: Fly (tanpa NoClip)
