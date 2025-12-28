@@ -257,7 +257,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.1"
+    title.Text = "Spear Fishing V3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -661,7 +661,7 @@ end
 -- Cooldown ini hanya untuk UI (perkiraan), bukan limiter eksekusi sebenarnya.
 local SKILL1_COOLDOWN    = 15  -- detik (info UI)
 local SKILL2_COOLDOWN    = 20  -- detik (info UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata), TIDAK ada jeda khusus setelah Skill2
+local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata); TIDAK ada jeda khusus setelah Skill2
 
 -- Waktu terakhir eksekusi skill (untuk UI countdown)
 local lastSkill1Time = 0
@@ -682,10 +682,15 @@ local function fireSkill1()
     local ok, err = pcall(function()
         FishRE:FireServer(unpack(args))
     end)
-    if ok then
-        lastSkill1Time = os.clock()
-    else
+    if not ok then
         warn("[SpearFishing] Auto Skill01 gagal:", err)
+        return
+    end
+
+    -- Update timestamp hanya jika UI cooldown sudah habis
+    local now = os.clock()
+    if lastSkill1Time <= 0 or (now - lastSkill1Time) >= SKILL1_COOLDOWN then
+        lastSkill1Time = now
     end
 end
 
@@ -704,10 +709,15 @@ local function fireSkill2()
     local ok, err = pcall(function()
         FishRE:FireServer(unpack(args))
     end)
-    if ok then
-        lastSkill2Time = os.clock()
-    else
+    if not ok then
         warn("[SpearFishing] Auto Skill09 gagal:", err)
+        return
+    end
+
+    -- Update timestamp hanya jika UI cooldown sudah habis
+    local now = os.clock()
+    if lastSkill2Time <= 0 or (now - lastSkill2Time) >= SKILL2_COOLDOWN then
+        lastSkill2Time = now
     end
 end
 
@@ -2333,28 +2343,34 @@ local function updateSkillCooldownLabels()
     local now = os.clock()
 
     if skillInfo1Label then
-        local rem1 = 0
-        if lastSkill1Time > 0 then
+        local rem1
+        if lastSkill1Time <= 0 then
+            rem1 = 0
+        else
             rem1 = math.max(0, SKILL1_COOLDOWN - (now - lastSkill1Time))
         end
 
         if rem1 <= 0 then
             skillInfo1Label.Text = string.format("Skill 1 (Skill01) Ready (UI CD ~%ds).", SKILL1_COOLDOWN)
         else
-            skillInfo1Label.Text = string.format("Skill 1 (Skill01) Cooldown: %.1fs / ~%ds (UI).", rem1, SKILL1_COOLDOWN)
+            local s = math.ceil(rem1)
+            skillInfo1Label.Text = string.format("Skill 1 (Skill01) Cooldown: %ds / ~%ds (UI).", s, SKILL1_COOLDOWN)
         end
     end
 
     if skillInfo2Label then
-        local rem2 = 0
-        if lastSkill2Time > 0 then
+        local rem2
+        if lastSkill2Time <= 0 then
+            rem2 = 0
+        else
             rem2 = math.max(0, SKILL2_COOLDOWN - (now - lastSkill2Time))
         end
 
         if rem2 <= 0 then
             skillInfo2Label.Text = string.format("Skill 2 (Skill09) Ready (UI CD ~%ds, gap Skill1->Skill2 %ds).", SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
         else
-            skillInfo2Label.Text = string.format("Skill 2 (Skill09) Cooldown: %.1fs / ~%ds (UI, gap Skill1->Skill2 %ds).", rem2, SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
+            local s2 = math.ceil(rem2)
+            skillInfo2Label.Text = string.format("Skill 2 (Skill09) Cooldown: %ds / ~%ds (UI, gap Skill1->Skill2 %ds).", s2, SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
         end
     end
 end
@@ -2368,37 +2384,37 @@ task.spawn(function()
 end)
 
 -- Loop Auto Skill sequence:
---  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> langsung ulang lagi (tanpa wait 3s setelah Skill2)
---  - Jika hanya salah satu ON: skill itu di-try setiap ~1s
+--  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> langsung ulang (kembali ke Skill1)
+--  - Jika hanya salah satu ON: skill itu di-try tiap ~1s
 task.spawn(function()
     while alive do
         if autoSkill1 or autoSkill2 then
             if autoSkill1 and autoSkill2 then
-                -- Sequence: Skill1 -> 3s -> Skill2 -> langsung kembali ke Skill1
+                -- Sequence penuh: Skill1 -> 3s -> Skill2 -> langsung balik lagi ke Skill1
                 pcall(fireSkill1)
+
                 local t = 0
                 while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
                     task.wait(0.2)
                     t = t + 0.2
                 end
+
                 if not alive then break end
+
                 if autoSkill1 and autoSkill2 then
                     pcall(fireSkill2)
                 end
-                -- tidak ada wait 3s khusus setelah Skill2, hanya kecil untuk jaga CPU
-                task.wait(0.1)
+
+                -- Tidak ada jeda 3s setelah Skill2, hanya jeda kecil supaya CPU tidak 100%
+                task.wait(0.2)
             else
-                -- Hanya satu skill aktif, coba cast tiap ~1 detik (server yang atur cooldown sebenarnya)
+                -- Mode single skill
                 if autoSkill1 then
                     pcall(fireSkill1)
                 elseif autoSkill2 then
                     pcall(fireSkill2)
                 end
-                local t = 0
-                while t < 1 and alive and (autoSkill1 or autoSkill2) do
-                    task.wait(0.2)
-                    t = t + 0.2
-                end
+                task.wait(1)
             end
         else
             task.wait(0.5)
