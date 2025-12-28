@@ -38,6 +38,11 @@ local autoFarmV2       = false      -- AutoFarm Fish V2 (tap trackpad): default 
 local autoFarmV2Mode   = "Center"   -- "Left" / "Center"
 local autoDailyReward  = true       -- Auto Daily Reward: default ON
 
+-- NEW: Auto Skill states
+local autoSkill1        = false     -- Auto Skill 1: default OFF
+local autoSkill2        = false     -- Auto Skill 2: default OFF
+local autoSkillSequence = true      -- Auto Skill 1 kemudian 2: default ON (sequence)
+
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
@@ -47,11 +52,15 @@ local DailyData       = nil           -- WaitPlayerData("Daily")
 local SpearFishData   = nil           -- WaitPlayerData(...) / Folder spearfish
 local spearInitTried  = false
 
+-- Skill data (cooldown info dari server, kalau ada)
+local SkillData       = nil           -- WaitPlayerData("Skill"/"Skills") atau folder di LocalPlayer
+local skillInitTried  = false
+
 ------------------- REMOTES & GAME INSTANCES -------------------
 local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
 local FireRE         = Remotes and Remotes:FindFirstChild("FireRE")   -- Fire harpoon
 local ToolRE         = Remotes and Remotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
-local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish
+local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish + Skill
 local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bait
 local DailyRE        = Remotes and Remotes:FindFirstChild("DailyRE")  -- Daily reward claim
 
@@ -219,6 +228,10 @@ local dailyCardsByIndex = {} -- index -> {frame, claimButton, claimedLabel, dayL
 local dailyStatusLabel  = nil
 local updateAutoDailyUI = nil
 
+-- Skill cooldown label refs (diisi saat build UI)
+local skillCooldownLabel1 = nil
+local skillCooldownLabel2 = nil
+
 local function createMainLayout()
     -- Header
     local header = Instance.new("Frame")
@@ -249,7 +262,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V2"
+    title.Text = "Spear Fishing V3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -261,7 +274,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Auto Daily Reward"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Auto Daily Reward + Auto Skill."
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -646,6 +659,200 @@ local function sellAllFish()
     else
         warn("[SpearFishing] SellAll gagal:", err)
         notify("Spear Fishing", "Sell All gagal, cek Output/Console.", 4)
+    end
+end
+
+------------------- SKILL AUTO (SKILL 1 / SKILL 2) -------------------
+-- Skill logic menggunakan FishRE dengan argumen:
+-- [1] = "Skill", [2] = { ID = "Skill01" } / { ID = "Skill09" }
+
+local skillLastCast = {
+    Skill01 = 0,
+    Skill09 = 0,
+}
+
+local SKILL_FALLBACK_INTERVAL = 8 -- detik fallback kalau tidak ada data cooldown server
+
+local function initSkillDataAsync()
+    if skillInitTried then return end
+    skillInitTried = true
+
+    task.spawn(function()
+        local waitFn
+
+        -- Coba ambil shared.WaitPlayerData dulu (seperti Daily/Tools)
+        while alive and not waitFn do
+            local ok, fn = pcall(function()
+                return shared and shared.WaitPlayerData
+            end)
+            if ok and typeof(fn) == "function" then
+                waitFn = fn
+                break
+            end
+            task.wait(0.5)
+        end
+
+        if not alive then
+            return
+        end
+
+        if waitFn then
+            local keys = { "Skill", "Skills", "SkillData", "SkillCD" }
+            for _, key in ipairs(keys) do
+                local ok2, result = pcall(function()
+                    return waitFn(key)
+                end)
+                if ok2 and result and typeof(result) == "Instance" then
+                    SkillData = result
+                    break
+                end
+            end
+        end
+
+        -- Fallback: cek langsung di LocalPlayer
+        if not SkillData then
+            local keys2 = { "Skill", "Skills", "SkillData", "SkillCD" }
+            for _, name in ipairs(keys2) do
+                local inst = LocalPlayer:FindFirstChild(name)
+                if inst and inst:IsA("Folder") then
+                    SkillData = inst
+                    break
+                end
+            end
+        end
+    end)
+end
+
+local function getSkillCooldownRaw(skillId)
+    if not SkillData then
+        return nil
+    end
+
+    local child = SkillData:FindFirstChild(skillId)
+    if not child then
+        child = SkillData:FindFirstChild(string.lower(skillId)) or SkillData:FindFirstChild(string.upper(skillId))
+    end
+
+    if not child then
+        -- coba dari Attribute di root SkillData
+        local attrNames = {
+            skillId .. "CD",
+            skillId .. "_CD",
+            skillId .. "Cooldown",
+            skillId .. "_Cooldown",
+            "CD_" .. skillId,
+        }
+        for _, attrName in ipairs(attrNames) do
+            local val = SkillData:GetAttribute(attrName)
+            if val ~= nil then
+                return val
+            end
+        end
+        return nil
+    end
+
+    -- coba Attribute di child (Remaining/Cooldown/etc)
+    local attrCandidates = { "Remaining", "Remain", "Cooldown", "CD", "Time", "Timer", "Seconds" }
+    for _, attr in ipairs(attrCandidates) do
+        local v = child:GetAttribute(attr)
+        if v ~= nil then
+            return v
+        end
+    end
+
+    -- coba ValueObject child
+    for _, v in ipairs(child:GetChildren()) do
+        if v:IsA("NumberValue") or v:IsA("IntValue") then
+            return v.Value
+        end
+        if v:IsA("StringValue") then
+            return v.Value
+        end
+    end
+
+    return nil
+end
+
+local function getSkillCooldownSeconds(skillId)
+    local raw = getSkillCooldownRaw(skillId)
+    if raw == nil then
+        return nil
+    end
+
+    local t = type(raw)
+    if t == "number" then
+        return raw
+    elseif t == "string" then
+        local n = tonumber(raw)
+        if n then
+            return n
+        end
+        -- format mm:ss
+        local mm, ss = raw:match("^(%d+)%:(%d+)$")
+        if mm and ss then
+            local m = tonumber(mm) or 0
+            local s = tonumber(ss) or 0
+            return m * 60 + s
+        end
+    end
+
+    return nil
+end
+
+local function formatSkillCooldownText(skillId)
+    local raw = getSkillCooldownRaw(skillId)
+    if raw == nil then
+        return "--"
+    end
+
+    local t = type(raw)
+    if t == "number" then
+        if raw <= 0 then
+            return "Ready"
+        end
+        if raw >= 100 then
+            return string.format("%.0fs", raw)
+        end
+        return string.format("%.1fs", raw)
+    elseif t == "string" then
+        return raw
+    end
+
+    return tostring(raw)
+end
+
+local function isSkillReady(skillId)
+    -- Prioritas: cooldown dari server (diasumsikan value = sisa detik)
+    local cd = getSkillCooldownSeconds(skillId)
+    if cd ~= nil then
+        return cd <= 0
+    end
+
+    -- Fallback: pakai os.clock supaya tidak spam server
+    local now = os.clock()
+    local last = skillLastCast[skillId] or 0
+    return (now - last) >= SKILL_FALLBACK_INTERVAL
+end
+
+local function fireSkill(skillId)
+    if not alive then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = skillId
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+
+    if not ok then
+        warn("[SpearFishing] Skill Fire gagal:", skillId, err)
+    else
+        skillLastCast[skillId] = os.clock()
     end
 end
 
@@ -1219,7 +1426,7 @@ local function refreshBaitStock()
     if not FishBaitShop then return end
     for id, entry in pairs(baitCardsById) do
         local stockVal = FishBaitShop:GetAttribute(id)
-        if typeof(stockVal) ~= "number" then
+        if type(stockVal) ~= "number" then
             stockVal = 0
         end
         if entry.stockLabel then
@@ -1963,9 +2170,9 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill.",
     1,
-    230
+    420   -- diperbesar agar muat tombol & label skill
 )
 
 local controlsFrame = Instance.new("Frame")
@@ -1982,9 +2189,9 @@ controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 controlsLayout.Padding = UDim.new(0, 6)
 
-local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", false)
-local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", false)
-local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsFrame, "AutoFarm Fish V2", false)
+local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", autoFarm)
+local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", autoEquip)
+local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsFrame, "AutoFarm Fish V2", autoFarmV2)
 
 -- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
@@ -2007,6 +2214,36 @@ local function updateV2ModeButton()
     v2ModeButton.Text = "Mode AutoFarm V2: " .. autoFarmV2Mode .. " Trackpad"
 end
 updateV2ModeButton()
+
+-- NEW: Auto Skill toggles
+local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsFrame, "Auto Skill 1", autoSkill1)
+local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsFrame, "Auto Skill 2", autoSkill2)
+local autoSkillSeqButton, updateAutoSkillSeqUI = createToggleButton(controlsFrame, "Auto Skill 1 kemudian 2", autoSkillSequence)
+
+-- NEW: Cooldown labels (di bawah tombol Auto Skill)
+skillCooldownLabel1 = Instance.new("TextLabel")
+skillCooldownLabel1.Name = "Skill1CooldownLabel"
+skillCooldownLabel1.Parent = controlsFrame
+skillCooldownLabel1.BackgroundTransparency = 1
+skillCooldownLabel1.Font = Enum.Font.Gotham
+skillCooldownLabel1.TextSize = 11
+skillCooldownLabel1.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillCooldownLabel1.TextXAlignment = Enum.TextXAlignment.Left
+skillCooldownLabel1.TextWrapped = false
+skillCooldownLabel1.Size = UDim2.new(1, 0, 0, 18)
+skillCooldownLabel1.Text = "Skill 1 Cooldown: --"
+
+skillCooldownLabel2 = Instance.new("TextLabel")
+skillCooldownLabel2.Name = "Skill2CooldownLabel"
+skillCooldownLabel2.Parent = controlsFrame
+skillCooldownLabel2.BackgroundTransparency = 1
+skillCooldownLabel2.Font = Enum.Font.Gotham
+skillCooldownLabel2.TextSize = 11
+skillCooldownLabel2.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillCooldownLabel2.TextXAlignment = Enum.TextXAlignment.Left
+skillCooldownLabel2.TextWrapped = false
+skillCooldownLabel2.Size = UDim2.new(1, 0, 0, 18)
+skillCooldownLabel2.Text = "Skill 2 Cooldown: --"
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
@@ -2034,19 +2271,71 @@ statusLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
 statusLabel.Size = UDim2.new(1, 0, 0, 40)
-statusLabel.Text = "Status: AutoFarm OFF, AutoEquip OFF, AutoFarm V2 OFF (Center)."
+statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s).",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s).\nSkills: S1 %s, S2 %s, S1->2 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
-        autoFarmV2Mode
+        autoFarmV2Mode,
+        autoSkill1 and "ON" or "OFF",
+        autoSkill2 and "ON" or "OFF",
+        autoSkillSequence and "ON" or "OFF"
     )
 end
 
+local function updateSkillCooldownLabels()
+    if skillCooldownLabel1 then
+        local txt1 = formatSkillCooldownText("Skill01")
+        skillCooldownLabel1.Text = "Skill 1 Cooldown: " .. txt1
+    end
+    if skillCooldownLabel2 then
+        local txt2 = formatSkillCooldownText("Skill09")
+        skillCooldownLabel2.Text = "Skill 2 Cooldown: " .. txt2
+    end
+end
+
 do
+    local function setAutoSkillSequence(state)
+        autoSkillSequence = state and true or false
+        if updateAutoSkillSeqUI then
+            updateAutoSkillSeqUI(autoSkillSequence)
+        end
+        if autoSkillSequence then
+            autoSkill1 = false
+            autoSkill2 = false
+            if updateAutoSkill1UI then updateAutoSkill1UI(false) end
+            if updateAutoSkill2UI then updateAutoSkill2UI(false) end
+        end
+        updateStatusLabel()
+    end
+
+    local function setAutoSkill1(state)
+        autoSkill1 = state and true or false
+        if updateAutoSkill1UI then
+            updateAutoSkill1UI(autoSkill1)
+        end
+        if autoSkill1 then
+            autoSkillSequence = false
+            if updateAutoSkillSeqUI then updateAutoSkillSeqUI(false) end
+        end
+        updateStatusLabel()
+    end
+
+    local function setAutoSkill2(state)
+        autoSkill2 = state and true or false
+        if updateAutoSkill2UI then
+            updateAutoSkill2UI(autoSkill2)
+        end
+        if autoSkill2 then
+            autoSkillSequence = false
+            if updateAutoSkillSeqUI then updateAutoSkillSeqUI(false) end
+        end
+        updateStatusLabel()
+    end
+
     local conn1 = autoFarmButton.MouseButton1Click:Connect(function()
         autoFarm = not autoFarm
         updateAutoFarmUI(autoFarm)
@@ -2078,23 +2367,42 @@ do
     end)
     table.insert(connections, connMode)
 
+    local connSkill1 = autoSkill1Button.MouseButton1Click:Connect(function()
+        setAutoSkill1(not autoSkill1)
+    end)
+    table.insert(connections, connSkill1)
+
+    local connSkill2 = autoSkill2Button.MouseButton1Click:Connect(function()
+        setAutoSkill2(not autoSkill2)
+    end)
+    table.insert(connections, connSkill2)
+
+    local connSkillSeq = autoSkillSeqButton.MouseButton1Click:Connect(function()
+        setAutoSkillSequence(not autoSkillSequence)
+    end)
+    table.insert(connections, connSkillSeq)
+
     local conn3 = sellButton.MouseButton1Click:Connect(function()
         sellAllFish()
     end)
     table.insert(connections, conn3)
+
+    -- initial status + cooldown text
+    updateStatusLabel()
+    updateSkillCooldownLabels()
 end
 
 ------------------- KEY F HOTKEY (TOGGLE AUTOFARM V2) -------------------
 local function onInputBegan(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-    if input.KeyCode ~= Enum.KeyCode.F then return end
+    if input.KeyCode ~= Enum.KeyCode.G then return end
     if UserInputService:GetFocusedTextBox() then return end
 
     autoFarmV2 = not autoFarmV2
     updateAutoFarmV2UI(autoFarmV2)
     updateStatusLabel()
-    notify("Spear Fishing", "AutoFarm V2: " .. (autoFarmV2 and "ON" or "OFF") .. " (Key F)", 2)
+    notify("Spear Fishing", "AutoFarm V2: " .. (autoFarmV2 and "ON" or "OFF") .. " (Key G)", 2)
 end
 
 do
@@ -2203,13 +2511,54 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Skill (Skill 1 / Skill 2 + Sequence) + update cooldown UI
+task.spawn(function()
+    -- mulai init data skill (kalau ada dari server)
+    initSkillDataAsync()
+
+    local seqNextSkill = "Skill01"
+
+    while alive do
+        -- Update label cooldown (ringan, hanya baca Value/Attribute)
+        pcall(updateSkillCooldownLabels)
+
+        if autoSkillSequence then
+            -- Mode sequence: Skill01 -> Skill09 -> Skill01 -> ...
+            if seqNextSkill == "Skill01" then
+                if isSkillReady("Skill01") then
+                    fireSkill("Skill01")
+                    seqNextSkill = "Skill09"
+                end
+            else
+                if isSkillReady("Skill09") then
+                    fireSkill("Skill09")
+                    seqNextSkill = "Skill01"
+                end
+            end
+        else
+            -- Mode individual
+            if autoSkill1 and isSkillReady("Skill01") then
+                fireSkill("Skill01")
+            end
+            if autoSkill2 and isSkillReady("Skill09") then
+                fireSkill("Skill09")
+            end
+        end
+
+        task.wait(0.25)
+    end
+end)
+
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive           = false
-    autoFarm        = false
-    autoEquip       = false
-    autoFarmV2      = false
-    autoDailyReward = false
+    alive               = false
+    autoFarm            = false
+    autoEquip           = false
+    autoFarmV2          = false
+    autoDailyReward     = false
+    autoSkill1          = false
+    autoSkill2          = false
+    autoSkillSequence   = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
