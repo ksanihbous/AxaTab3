@@ -28,22 +28,22 @@ frame.BorderSizePixel = 0
 local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 ------------------- GLOBAL STATE / AXAHUB -------------------
-_G.AxaHub              = _G.AxaHub or {}
-_G.AxaHub.TabCleanup   = _G.AxaHub.TabCleanup or {}
+_G.AxaHub            = _G.AxaHub or {}
+_G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
 
-local alive            = true
-local autoFarm         = false      -- AutoFarm Fish v1: default OFF
-local autoEquip        = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2       = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode   = "Center"   -- "Left" / "Center"
-local autoDailyReward  = true       -- Auto Daily Reward: default ON
+local alive           = true
+local autoFarm        = false      -- AutoFarm Fish v1: default OFF
+local autoEquip       = false      -- AutoEquip Harpoon: default OFF
+local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
+local autoFarmV2Mode  = "Center"   -- "Left" / "Center"
+local autoDailyReward = true       -- Auto Daily Reward: default ON
 
--- Auto Skill states
-local autoSkill1        = true     -- Auto Skill 1: default OFF
-local autoSkill2        = true     -- Auto Skill 2: default OFF
+-- Auto Skill states (DEFAULT TRUE)
+local autoSkill1      = true       -- Auto Skill 1: default ON
+local autoSkill2      = true       -- Auto Skill 2: default ON
 
-local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
+local character       = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local backpack        = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
 local connections     = {}
 local ToolsData       = nil           -- WaitPlayerData("Tools")
@@ -51,20 +51,21 @@ local DailyData       = nil           -- WaitPlayerData("Daily")
 local SpearFishData   = nil           -- WaitPlayerData(...) / Folder spearfish
 local spearInitTried  = false
 
--- Skill data (cooldown info dari server, kalau ada)
+-- Skill data (untuk baca cooldown dari server, kalau ada)
 local SkillData       = nil           -- WaitPlayerData("Skill"/"Skills") atau folder di LocalPlayer
 local skillInitTried  = false
 
 ------------------- REMOTES & GAME INSTANCES -------------------
-local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
-local FireRE         = Remotes and Remotes:FindFirstChild("FireRE")   -- Fire harpoon
-local ToolRE         = Remotes and Remotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
-local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish + Skill
-local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bait
-local DailyRE        = Remotes and Remotes:FindFirstChild("DailyRE")  -- Daily reward claim
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
 
-local GameFolder     = ReplicatedStorage:FindFirstChild("Game")
-local FishBaitShop   = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
+local FireRE = Remotes and Remotes:WaitForChild("FireRE", 10)   -- Fire harpoon
+local ToolRE = Remotes and Remotes:WaitForChild("ToolRE", 10)   -- Buy / Switch harpoon & basket
+local FishRE = Remotes and Remotes:WaitForChild("FishRE", 10)   -- Sell spear-fish + Skill
+local BaitRE = Remotes and Remotes:WaitForChild("BaitRE", 10)   -- Buy bait
+local DailyRE= Remotes and Remotes:WaitForChild("DailyRE", 10)  -- Daily reward claim
+
+local GameFolder   = ReplicatedStorage:FindFirstChild("Game")
+local FishBaitShop = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
 local UtilityFolder = ReplicatedStorage:FindFirstChild("Utility")
@@ -261,7 +262,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3+"
+    title.Text = "Spear Fishing V2"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -273,7 +274,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Auto Daily Reward + Auto Skill."
+    subtitle.Text = "AutoFarm v1 + v2 (Trackpad) + AutoEquip + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill 1 & 2."
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -662,15 +663,18 @@ local function sellAllFish()
 end
 
 ------------------- SKILL AUTO (SKILL 1 / SKILL 2) -------------------
--- Skill logic menggunakan FishRE dengan argumen:
--- [1] = "Skill", [2] = { ID = "Skill01" } / { ID = "Skill09" }
+-- Logic Fire persis contoh:
+-- local args = { [1] = "Skill", [2] = { ID = "Skill09" } }
+-- FishRE:FireServer(unpack(args))
+
+-- Waktu minimal antar cast (biar tidak spam berat, server tetap yang enforce cooldown)
+local SKILL_INTERVAL_1 = 8 -- detik
+local SKILL_INTERVAL_2 = 8 -- detik
 
 local skillLastCast = {
     Skill01 = 0,
     Skill09 = 0,
 }
-
-local SKILL_FALLBACK_INTERVAL = 8 -- detik fallback kalau tidak ada data cooldown server
 
 local function initSkillDataAsync()
     if skillInitTried then return end
@@ -772,32 +776,6 @@ local function getSkillCooldownRaw(skillId)
     return nil
 end
 
-local function getSkillCooldownSeconds(skillId)
-    local raw = getSkillCooldownRaw(skillId)
-    if raw == nil then
-        return nil
-    end
-
-    local t = type(raw)
-    if t == "number" then
-        return raw
-    elseif t == "string" then
-        local n = tonumber(raw)
-        if n then
-            return n
-        end
-        -- format mm:ss
-        local mm, ss = raw:match("^(%d+)%:(%d+)$")
-        if mm and ss then
-            local m = tonumber(mm) or 0
-            local s = tonumber(ss) or 0
-            return m * 60 + s
-        end
-    end
-
-    return nil
-end
-
 local function formatSkillCooldownText(skillId)
     local raw = getSkillCooldownRaw(skillId)
     if raw == nil then
@@ -818,19 +796,6 @@ local function formatSkillCooldownText(skillId)
     end
 
     return tostring(raw)
-end
-
-local function isSkillReady(skillId)
-    -- Prioritas: cooldown dari server (diasumsikan value = sisa detik)
-    local cd = getSkillCooldownSeconds(skillId)
-    if cd ~= nil then
-        return cd <= 0
-    end
-
-    -- Fallback: pakai os.clock supaya tidak spam server
-    local now = os.clock()
-    local last = skillLastCast[skillId] or 0
-    return (now - last) >= SKILL_FALLBACK_INTERVAL
 end
 
 local function fireSkill(skillId)
@@ -2214,7 +2179,7 @@ local function updateV2ModeButton()
 end
 updateV2ModeButton()
 
--- Auto Skill toggles
+-- Auto Skill toggles (DEFAULT ON)
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsFrame, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsFrame, "Auto Skill 2", autoSkill2)
 
@@ -2389,6 +2354,7 @@ buildBaitShopCard(bodyScroll)
 -- setelah semua card terbentuk, inisialisasi ToolsData & DailyData watcher
 initToolsDataWatcher()
 initDailyDataWatcher()
+initSkillDataAsync()
 
 ------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
 do
@@ -2481,21 +2447,21 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill (Skill 1 & Skill 2) + update cooldown UI
+-- Loop Auto Skill 1 & 2 + update cooldown UI
 task.spawn(function()
-    -- mulai init data skill (kalau ada dari server)
-    initSkillDataAsync()
-
     while alive do
         -- Update label cooldown (ringan, hanya baca Value/Attribute)
         pcall(updateSkillCooldownLabels)
 
-        -- Auto Skill 1 dan 2: dikerjakan bersamaan, tetap mengikuti cooldown server
-        if autoSkill1 and isSkillReady("Skill01") then
+        local now = os.clock()
+
+        -- Auto Skill 1
+        if autoSkill1 and (now - (skillLastCast["Skill01"] or 0)) >= SKILL_INTERVAL_1 then
             fireSkill("Skill01")
         end
 
-        if autoSkill2 and isSkillReady("Skill09") then
+        -- Auto Skill 2
+        if autoSkill2 and (now - (skillLastCast["Skill09"] or 0)) >= SKILL_INTERVAL_2 then
             fireSkill("Skill09")
         end
 
