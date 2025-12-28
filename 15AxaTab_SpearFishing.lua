@@ -38,7 +38,7 @@ local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default O
 local autoFarmV2Mode  = "Center"   -- "Left" / "Center"
 local autoDailyReward = true       -- Auto Daily Reward: default ON
 
--- Auto Skill (DEFAULT ON, sesuai request)
+-- Auto Skill (DEFAULT ON)
 local autoSkill1      = true       -- Auto Skill 1: default ON
 local autoSkill2      = true       -- Auto Skill 2: default ON
 
@@ -223,6 +223,10 @@ local dailyCardsByIndex = {} -- index -> {frame, claimButton, claimedLabel, dayL
 local dailyStatusLabel  = nil
 local updateAutoDailyUI = nil
 
+-- Skill cooldown UI label references
+local skillInfo1Label   = nil
+local skillInfo2Label   = nil
+
 local function createMainLayout()
     -- Header
     local header = Instance.new("Frame")
@@ -253,7 +257,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3"
+    title.Text = "Spear Fishing V3.1"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -265,7 +269,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 & 2"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon + Auto Skill 1 & 2"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -530,7 +534,7 @@ local function ensureSpearFishData()
         local keys = {
             "SpearFish",
             "Spearfish",
-            "SpearFishing",
+            "Spearfishing",
             "SpearFishBag",
             "FishSpear",
             "FishSpearBag",
@@ -653,11 +657,15 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 & 2 (SEQUENCE, COOLDOWN HANYA DI UI) -------------------
--- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
-local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
-local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
+------------------- AUTO SKILL 1 & 2 (SEQUENCE + UI REALTIME COOLDOWN) -------------------
+-- Cooldown ini hanya untuk UI (perkiraan), bukan limiter eksekusi sebenarnya.
+local SKILL1_COOLDOWN    = 15  -- detik (info UI)
+local SKILL2_COOLDOWN    = 20  -- detik (info UI)
+local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata), TIDAK ada jeda khusus setelah Skill2
+
+-- Waktu terakhir eksekusi skill (untuk UI countdown)
+local lastSkill1Time = 0
+local lastSkill2Time = 0
 
 -- LOGIC AUTO SKILL 1 (Skill01)
 local function fireSkill1()
@@ -674,7 +682,9 @@ local function fireSkill1()
     local ok, err = pcall(function()
         FishRE:FireServer(unpack(args))
     end)
-    if not ok then
+    if ok then
+        lastSkill1Time = os.clock()
+    else
         warn("[SpearFishing] Auto Skill01 gagal:", err)
     end
 end
@@ -694,7 +704,9 @@ local function fireSkill2()
     local ok, err = pcall(function()
         FishRE:FireServer(unpack(args))
     end)
-    if not ok then
+    if ok then
+        lastSkill2Time = os.clock()
+    else
         warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
 end
@@ -2078,30 +2090,30 @@ updateV2ModeButton()
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
 
--- Info cooldown skill (default, hanya info)
-local skillInfo1 = Instance.new("TextLabel")
-skillInfo1.Name = "Skill1Info"
-skillInfo1.Parent = controlsScroll
-skillInfo1.BackgroundTransparency = 1
-skillInfo1.Font = Enum.Font.Gotham
-skillInfo1.TextSize = 11
-skillInfo1.TextColor3 = Color3.fromRGB(185, 185, 185)
-skillInfo1.TextXAlignment = Enum.TextXAlignment.Left
-skillInfo1.TextWrapped = true
-skillInfo1.Size = UDim2.new(1, 0, 0, 18)
-skillInfo1.Text = string.format("Skill 1 (Skill01) Cooldown server (perkiraan): %d detik (UI info).", SKILL1_COOLDOWN)
+-- Info cooldown skill (UI, realtime)
+skillInfo1Label = Instance.new("TextLabel")
+skillInfo1Label.Name = "Skill1Info"
+skillInfo1Label.Parent = controlsScroll
+skillInfo1Label.BackgroundTransparency = 1
+skillInfo1Label.Font = Enum.Font.Gotham
+skillInfo1Label.TextSize = 11
+skillInfo1Label.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillInfo1Label.TextXAlignment = Enum.TextXAlignment.Left
+skillInfo1Label.TextWrapped = true
+skillInfo1Label.Size = UDim2.new(1, 0, 0, 18)
+skillInfo1Label.Text = string.format("Skill 1 (Skill01) Ready (UI CD ~%ds).", SKILL1_COOLDOWN)
 
-local skillInfo2 = Instance.new("TextLabel")
-skillInfo2.Name = "Skill2Info"
-skillInfo2.Parent = controlsScroll
-skillInfo2.BackgroundTransparency = 1
-skillInfo2.Font = Enum.Font.Gotham
-skillInfo2.TextSize = 11
-skillInfo2.TextColor3 = Color3.fromRGB(185, 185, 185)
-skillInfo2.TextXAlignment = Enum.TextXAlignment.Left
-skillInfo2.TextWrapped = true
-skillInfo2.Size = UDim2.new(1, 0, 0, 30)
-skillInfo2.Text = string.format("Skill 2 (Skill09) Cooldown server (perkiraan): %d detik (UI info). Jeda antar Skill1 -> Skill2: %d detik.", SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
+skillInfo2Label = Instance.new("TextLabel")
+skillInfo2Label.Name = "Skill2Info"
+skillInfo2Label.Parent = controlsScroll
+skillInfo2Label.BackgroundTransparency = 1
+skillInfo2Label.Font = Enum.Font.Gotham
+skillInfo2Label.TextSize = 11
+skillInfo2Label.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillInfo2Label.TextXAlignment = Enum.TextXAlignment.Left
+skillInfo2Label.TextWrapped = true
+skillInfo2Label.Size = UDim2.new(1, 0, 0, 30)
+skillInfo2Label.Text = string.format("Skill 2 (Skill09) Ready (UI CD ~%ds, gap Skill1->Skill2 %ds).", SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
@@ -2316,14 +2328,53 @@ task.spawn(function()
     end
 end)
 
+-- Helper untuk update text cooldown Skill 1 & 2 di UI (realtime, hanya UI)
+local function updateSkillCooldownLabels()
+    local now = os.clock()
+
+    if skillInfo1Label then
+        local rem1 = 0
+        if lastSkill1Time > 0 then
+            rem1 = math.max(0, SKILL1_COOLDOWN - (now - lastSkill1Time))
+        end
+
+        if rem1 <= 0 then
+            skillInfo1Label.Text = string.format("Skill 1 (Skill01) Ready (UI CD ~%ds).", SKILL1_COOLDOWN)
+        else
+            skillInfo1Label.Text = string.format("Skill 1 (Skill01) Cooldown: %.1fs / ~%ds (UI).", rem1, SKILL1_COOLDOWN)
+        end
+    end
+
+    if skillInfo2Label then
+        local rem2 = 0
+        if lastSkill2Time > 0 then
+            rem2 = math.max(0, SKILL2_COOLDOWN - (now - lastSkill2Time))
+        end
+
+        if rem2 <= 0 then
+            skillInfo2Label.Text = string.format("Skill 2 (Skill09) Ready (UI CD ~%ds, gap Skill1->Skill2 %ds).", SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
+        else
+            skillInfo2Label.Text = string.format("Skill 2 (Skill09) Cooldown: %.1fs / ~%ds (UI, gap Skill1->Skill2 %ds).", rem2, SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
+        end
+    end
+end
+
+-- Loop UI Cooldown Skill (ringan, hanya text update)
+task.spawn(function()
+    while alive do
+        pcall(updateSkillCooldownLabels)
+        task.wait(0.2)
+    end
+end)
+
 -- Loop Auto Skill sequence:
---  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> wait 3s -> ulang
+--  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> langsung ulang lagi (tanpa wait 3s setelah Skill2)
 --  - Jika hanya salah satu ON: skill itu di-try setiap ~1s
 task.spawn(function()
     while alive do
         if autoSkill1 or autoSkill2 then
             if autoSkill1 and autoSkill2 then
-                -- Sequence penuh 1 -> 2
+                -- Sequence: Skill1 -> 3s -> Skill2 -> langsung kembali ke Skill1
                 pcall(fireSkill1)
                 local t = 0
                 while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
@@ -2333,14 +2384,11 @@ task.spawn(function()
                 if not alive then break end
                 if autoSkill1 and autoSkill2 then
                     pcall(fireSkill2)
-                    t = 0
-                    while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
-                        task.wait(0.2)
-                        t = t + 0.2
-                    end
                 end
+                -- tidak ada wait 3s khusus setelah Skill2, hanya kecil untuk jaga CPU
+                task.wait(0.1)
             else
-                -- Hanya satu skill aktif, spam ringan (1 detik interval)
+                -- Hanya satu skill aktif, coba cast tiap ~1 detik (server yang atur cooldown sebenarnya)
                 if autoSkill1 then
                     pcall(fireSkill1)
                 elseif autoSkill2 then
