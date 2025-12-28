@@ -253,7 +253,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3++"
+    title.Text = "Spear Fishing V3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -653,19 +653,16 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 & 2 (SEQUENCE 3s + DEFAULT COOLDOWN) -------------------
--- Default cooldown untuk UI & limit spam client (server tetap punya cooldown sendiri)
-local SKILL1_COOLDOWN    = 15  -- detik
-local SKILL2_COOLDOWN    = 20  -- detik
-local SKILL_SEQUENCE_GAP = 3   -- delay antar Skill1 -> Skill2 (detik)
-
-local nextSkill1Time = 0
-local nextSkill2Time = 0
+------------------- AUTO SKILL 1 & 2 (SEQUENCE, COOLDOWN HANYA DI UI) -------------------
+-- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
+local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
+local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
+local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
 
 -- LOGIC AUTO SKILL 1 (Skill01)
 local function fireSkill1()
-    if not alive or not autoSkill1 then return false end
-    if not FishRE then return false end
+    if not alive or not autoSkill1 then return end
+    if not FishRE then return end
 
     local args = {
         [1] = "Skill",
@@ -679,15 +676,13 @@ local function fireSkill1()
     end)
     if not ok then
         warn("[SpearFishing] Auto Skill01 gagal:", err)
-        return false
     end
-    return true
 end
 
 -- LOGIC AUTO SKILL 2 (Skill09)
 local function fireSkill2()
-    if not alive or not autoSkill2 then return false end
-    if not FishRE then return false end
+    if not alive or not autoSkill2 then return end
+    if not FishRE then return end
 
     local args = {
         [1] = "Skill",
@@ -701,55 +696,6 @@ local function fireSkill2()
     end)
     if not ok then
         warn("[SpearFishing] Auto Skill09 gagal:", err)
-        return false
-    end
-    return true
-end
-
--- Pola:
--- Jika Skill1 & Skill2 ON:
---   Skill1 -> tunggu 3s -> Skill2 -> tunggu cooldown masing2 -> ulangi
--- Jika hanya salah satu ON, dia jalan dengan cooldown-nya sendiri.
-local function autoSkillTick()
-    if not alive then return end
-    if not (autoSkill1 or autoSkill2) then return end
-    if not FishRE then return end
-
-    local now = os.clock()
-
-    if autoSkill1 and autoSkill2 then
-        -- Sequence mode: Skill1 lalu Skill2 dengan jeda 3 detik
-        if now >= nextSkill1Time then
-            if fireSkill1() then
-                nextSkill1Time = now + SKILL1_COOLDOWN
-                nextSkill2Time = now + SKILL_SEQUENCE_GAP
-            else
-                -- Kalau gagal, coba lagi dalam 2 detik supaya tidak flood
-                nextSkill1Time = now + 2
-            end
-        elseif now >= nextSkill2Time then
-            if fireSkill2() then
-                nextSkill2Time = now + SKILL2_COOLDOWN
-            else
-                nextSkill2Time = now + 2
-            end
-        end
-    else
-        -- Mode non-sequence (hanya 1 skill aktif)
-        if autoSkill1 and now >= nextSkill1Time then
-            if fireSkill1() then
-                nextSkill1Time = now + SKILL1_COOLDOWN
-            else
-                nextSkill1Time = now + 2
-            end
-        end
-        if autoSkill2 and now >= nextSkill2Time then
-            if fireSkill2() then
-                nextSkill2Time = now + SKILL2_COOLDOWN
-            else
-                nextSkill2Time = now + 2
-            end
-        end
     end
 end
 
@@ -2132,7 +2078,7 @@ updateV2ModeButton()
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
 
--- Info cooldown skill (default, tidak dari server)
+-- Info cooldown skill (default, hanya info)
 local skillInfo1 = Instance.new("TextLabel")
 skillInfo1.Name = "Skill1Info"
 skillInfo1.Parent = controlsScroll
@@ -2143,7 +2089,7 @@ skillInfo1.TextColor3 = Color3.fromRGB(185, 185, 185)
 skillInfo1.TextXAlignment = Enum.TextXAlignment.Left
 skillInfo1.TextWrapped = true
 skillInfo1.Size = UDim2.new(1, 0, 0, 18)
-skillInfo1.Text = "Skill 1 (Skill01) Cooldown default: 15 detik."
+skillInfo1.Text = string.format("Skill 1 (Skill01) Cooldown server (perkiraan): %d detik (UI info).", SKILL1_COOLDOWN)
 
 local skillInfo2 = Instance.new("TextLabel")
 skillInfo2.Name = "Skill2Info"
@@ -2155,7 +2101,7 @@ skillInfo2.TextColor3 = Color3.fromRGB(185, 185, 185)
 skillInfo2.TextXAlignment = Enum.TextXAlignment.Left
 skillInfo2.TextWrapped = true
 skillInfo2.Size = UDim2.new(1, 0, 0, 30)
-skillInfo2.Text = "Skill 2 (Skill09) Cooldown default: 20 detik, dengan jeda 3 detik setelah Skill 1."
+skillInfo2.Text = string.format("Skill 2 (Skill09) Cooldown server (perkiraan): %d detik (UI info). Jeda antar Skill1 -> Skill2: %d detik.", SKILL2_COOLDOWN, SKILL_SEQUENCE_GAP)
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
@@ -2232,9 +2178,6 @@ do
     local connSkill1 = autoSkill1Button.MouseButton1Click:Connect(function()
         autoSkill1 = not autoSkill1
         updateAutoSkill1UI(autoSkill1)
-        if autoSkill1 then
-            nextSkill1Time = os.clock() -- ketika di-ON-kan lagi, langsung siap eksekusi
-        end
         updateStatusLabel()
     end)
     table.insert(connections, connSkill1)
@@ -2242,9 +2185,6 @@ do
     local connSkill2 = autoSkill2Button.MouseButton1Click:Connect(function()
         autoSkill2 = not autoSkill2
         updateAutoSkill2UI(autoSkill2)
-        if autoSkill2 then
-            nextSkill2Time = os.clock()
-        end
         updateStatusLabel()
     end)
     table.insert(connections, connSkill2)
@@ -2376,17 +2316,45 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill sequence (Skill1 -> delay 3s -> Skill2, repeat sesuai cooldown)
+-- Loop Auto Skill sequence:
+--  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> wait 3s -> ulang
+--  - Jika hanya salah satu ON: skill itu di-try setiap ~1s
 task.spawn(function()
-    -- awal: biarkan langsung siap jalan
-    nextSkill1Time = os.clock()
-    nextSkill2Time = os.clock()
-
     while alive do
         if autoSkill1 or autoSkill2 then
-            pcall(autoSkillTick)
+            if autoSkill1 and autoSkill2 then
+                -- Sequence penuh 1 -> 2
+                pcall(fireSkill1)
+                local t = 0
+                while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
+                    task.wait(0.2)
+                    t = t + 0.2
+                end
+                if not alive then break end
+                if autoSkill1 and autoSkill2 then
+                    pcall(fireSkill2)
+                    t = 0
+                    while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
+                        task.wait(0.2)
+                        t = t + 0.2
+                    end
+                end
+            else
+                -- Hanya satu skill aktif, spam ringan (1 detik interval)
+                if autoSkill1 then
+                    pcall(fireSkill1)
+                elseif autoSkill2 then
+                    pcall(fireSkill2)
+                end
+                local t = 0
+                while t < 1 and alive and (autoSkill1 or autoSkill2) do
+                    task.wait(0.2)
+                    t = t + 0.2
+                end
+            end
+        else
+            task.wait(0.5)
         end
-        task.wait(0.2)
     end
 end)
 
