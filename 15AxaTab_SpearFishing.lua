@@ -38,7 +38,7 @@ local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default O
 local autoFarmV2Mode  = "Center"   -- "Left" / "Center"
 local autoDailyReward = true       -- Auto Daily Reward: default ON
 
--- Auto Skill (DEFAULT ON)
+-- Auto Skill (DEFAULT ON, sesuai request)
 local autoSkill1      = true       -- Auto Skill 1: default ON
 local autoSkill2      = true       -- Auto Skill 2: default ON
 
@@ -61,19 +61,6 @@ local DailyRE        = Remotes and Remotes:FindFirstChild("DailyRE")  -- Daily r
 
 local GameFolder     = ReplicatedStorage:FindFirstChild("Game")
 local FishBaitShop   = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
-
--- Helper khusus FishRE supaya aman (ikut gaya WaitForChild contoh kamu)
-local function ensureFishRE()
-    if FishRE and FishRE.Parent then
-        return FishRE
-    end
-    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 5)
-    if not remotesFolder then
-        return nil
-    end
-    FishRE = remotesFolder:FindFirstChild("FishRE") or remotesFolder:WaitForChild("FishRE", 5)
-    return FishRE
-end
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
 local UtilityFolder = ReplicatedStorage:FindFirstChild("Utility")
@@ -266,7 +253,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3"
+    title.Text = "Spear Fishing V3++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -278,7 +265,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip + Harpoon / Basket / Bait Shop + Auto Daily Reward + Auto Skill 1 & 2"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 & 2"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -627,7 +614,7 @@ local lastSellClock  = 0
 local SELL_COOLDOWN = 2
 
 local function sellAllFish()
-    if not ensureFishRE() then
+    if not FishRE then
         notify("Spear Fishing", "Remote FishRE tidak ditemukan.", 4)
         return
     end
@@ -666,22 +653,19 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 & 2 (TERPISAH) -------------------
-local lastSkill1Fire = 0
-local lastSkill2Fire = 0
-local SKILL1_INTERVAL = 0.5 -- batas minimal antar request (detik)
-local SKILL2_INTERVAL = 0.5
+------------------- AUTO SKILL 1 & 2 (SEQUENCE 3s + DEFAULT COOLDOWN) -------------------
+-- Default cooldown untuk UI & limit spam client (server tetap punya cooldown sendiri)
+local SKILL1_COOLDOWN    = 15  -- detik
+local SKILL2_COOLDOWN    = 20  -- detik
+local SKILL_SEQUENCE_GAP = 3   -- delay antar Skill1 -> Skill2 (detik)
 
--- LOGIC AUTO SKILL 1
-local function autoSkill1Tick()
-    if not alive or not autoSkill1 then return end
-    if not ensureFishRE() then return end
+local nextSkill1Time = 0
+local nextSkill2Time = 0
 
-    local now = os.clock()
-    if now - lastSkill1Fire < SKILL1_INTERVAL then
-        return
-    end
-    lastSkill1Fire = now
+-- LOGIC AUTO SKILL 1 (Skill01)
+local function fireSkill1()
+    if not alive or not autoSkill1 then return false end
+    if not FishRE then return false end
 
     local args = {
         [1] = "Skill",
@@ -695,19 +679,15 @@ local function autoSkill1Tick()
     end)
     if not ok then
         warn("[SpearFishing] Auto Skill01 gagal:", err)
+        return false
     end
+    return true
 end
 
--- LOGIC AUTO SKILL 2
-local function autoSkill2Tick()
-    if not alive or not autoSkill2 then return end
-    if not ensureFishRE() then return end
-
-    local now = os.clock()
-    if now - lastSkill2Fire < SKILL2_INTERVAL then
-        return
-    end
-    lastSkill2Fire = now
+-- LOGIC AUTO SKILL 2 (Skill09)
+local function fireSkill2()
+    if not alive or not autoSkill2 then return false end
+    if not FishRE then return false end
 
     local args = {
         [1] = "Skill",
@@ -721,6 +701,55 @@ local function autoSkill2Tick()
     end)
     if not ok then
         warn("[SpearFishing] Auto Skill09 gagal:", err)
+        return false
+    end
+    return true
+end
+
+-- Pola:
+-- Jika Skill1 & Skill2 ON:
+--   Skill1 -> tunggu 3s -> Skill2 -> tunggu cooldown masing2 -> ulangi
+-- Jika hanya salah satu ON, dia jalan dengan cooldown-nya sendiri.
+local function autoSkillTick()
+    if not alive then return end
+    if not (autoSkill1 or autoSkill2) then return end
+    if not FishRE then return end
+
+    local now = os.clock()
+
+    if autoSkill1 and autoSkill2 then
+        -- Sequence mode: Skill1 lalu Skill2 dengan jeda 3 detik
+        if now >= nextSkill1Time then
+            if fireSkill1() then
+                nextSkill1Time = now + SKILL1_COOLDOWN
+                nextSkill2Time = now + SKILL_SEQUENCE_GAP
+            else
+                -- Kalau gagal, coba lagi dalam 2 detik supaya tidak flood
+                nextSkill1Time = now + 2
+            end
+        elseif now >= nextSkill2Time then
+            if fireSkill2() then
+                nextSkill2Time = now + SKILL2_COOLDOWN
+            else
+                nextSkill2Time = now + 2
+            end
+        end
+    else
+        -- Mode non-sequence (hanya 1 skill aktif)
+        if autoSkill1 and now >= nextSkill1Time then
+            if fireSkill1() then
+                nextSkill1Time = now + SKILL1_COOLDOWN
+            else
+                nextSkill1Time = now + 2
+            end
+        end
+        if autoSkill2 and now >= nextSkill2Time then
+            if fireSkill2() then
+                nextSkill2Time = now + SKILL2_COOLDOWN
+            else
+                nextSkill2Time = now + 2
+            end
+        end
     end
 end
 
@@ -2032,7 +2061,7 @@ local function initToolsDataWatcher()
     end)
 end
 
-------------------- BUILD UI: CONTROL CARD -------------------
+------------------- BUILD UI: CONTROL CARD (DIBERI SCROLLINGFRAME) -------------------
 local header, bodyScroll = createMainLayout()
 
 local controlCard, _, _ = createCard(
@@ -2040,31 +2069,47 @@ local controlCard, _, _ = createCard(
     "Spear Controls",
     "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill 1 & 2.",
     1,
-    280
+    260 -- tinggi cukup, isi di-scroll
 )
 
-local controlsFrame = Instance.new("Frame")
-controlsFrame.Name = "Controls"
-controlsFrame.Parent = controlCard
-controlsFrame.BackgroundTransparency = 1
-controlsFrame.BorderSizePixel = 0
-controlsFrame.Position = UDim2.new(0, 0, 0, 40)
-controlsFrame.Size = UDim2.new(1, 0, 1, -40)
+-- ScrollingFrame untuk tombol2 di Spear Controls supaya tidak numbuk
+local controlsScroll = Instance.new("ScrollingFrame")
+controlsScroll.Name = "ControlsScroll"
+controlsScroll.Parent = controlCard
+controlsScroll.BackgroundTransparency = 1
+controlsScroll.BorderSizePixel = 0
+controlsScroll.Position = UDim2.new(0, 0, 0, 40)
+controlsScroll.Size = UDim2.new(1, 0, 1, -40)
+controlsScroll.ScrollBarThickness = 4
+controlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+controlsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local controlsPadding = Instance.new("UIPadding")
+controlsPadding.Parent = controlsScroll
+controlsPadding.PaddingTop = UDim.new(0, 0)
+controlsPadding.PaddingBottom = UDim.new(0, 8)
+controlsPadding.PaddingLeft = UDim.new(0, 0)
+controlsPadding.PaddingRight = UDim.new(0, 0)
 
 local controlsLayout = Instance.new("UIListLayout")
-controlsLayout.Parent = controlsFrame
+controlsLayout.Parent = controlsScroll
 controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 controlsLayout.Padding = UDim.new(0, 6)
 
-local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsFrame, "AutoFarm Fish", autoFarm)
-local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsFrame, "AutoEquip Harpoon", autoEquip)
-local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsFrame, "AutoFarm Fish V2", autoFarmV2)
+local controlsConn = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    controlsScroll.CanvasSize = UDim2.new(0, 0, 0, controlsLayout.AbsoluteContentSize.Y + 8)
+end)
+table.insert(connections, controlsConn)
+
+local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
+local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
+local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
 
 -- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
 v2ModeButton.Name = "AutoFarmV2ModeButton"
-v2ModeButton.Parent = controlsFrame
+v2ModeButton.Parent = controlsScroll
 v2ModeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 v2ModeButton.BorderSizePixel = 0
 v2ModeButton.AutoButtonColor = true
@@ -2084,12 +2129,37 @@ end
 updateV2ModeButton()
 
 -- Toggle Auto Skill 1 & 2 (terpisah)
-local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsFrame, "Auto Skill 1", autoSkill1)
-local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsFrame, "Auto Skill 2", autoSkill2)
+local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
+local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
+
+-- Info cooldown skill (default, tidak dari server)
+local skillInfo1 = Instance.new("TextLabel")
+skillInfo1.Name = "Skill1Info"
+skillInfo1.Parent = controlsScroll
+skillInfo1.BackgroundTransparency = 1
+skillInfo1.Font = Enum.Font.Gotham
+skillInfo1.TextSize = 11
+skillInfo1.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillInfo1.TextXAlignment = Enum.TextXAlignment.Left
+skillInfo1.TextWrapped = true
+skillInfo1.Size = UDim2.new(1, 0, 0, 18)
+skillInfo1.Text = "Skill 1 (Skill01) Cooldown default: 15 detik."
+
+local skillInfo2 = Instance.new("TextLabel")
+skillInfo2.Name = "Skill2Info"
+skillInfo2.Parent = controlsScroll
+skillInfo2.BackgroundTransparency = 1
+skillInfo2.Font = Enum.Font.Gotham
+skillInfo2.TextSize = 11
+skillInfo2.TextColor3 = Color3.fromRGB(185, 185, 185)
+skillInfo2.TextXAlignment = Enum.TextXAlignment.Left
+skillInfo2.TextWrapped = true
+skillInfo2.Size = UDim2.new(1, 0, 0, 30)
+skillInfo2.Text = "Skill 2 (Skill09) Cooldown default: 20 detik, dengan jeda 3 detik setelah Skill 1."
 
 local sellButton = Instance.new("TextButton")
 sellButton.Name = "SellAllButton"
-sellButton.Parent = controlsFrame
+sellButton.Parent = controlsScroll
 sellButton.BackgroundColor3 = Color3.fromRGB(70, 50, 50)
 sellButton.BorderSizePixel = 0
 sellButton.AutoButtonColor = true
@@ -2105,7 +2175,7 @@ sellCorner.Parent = sellButton
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "Status"
-statusLabel.Parent = controlsFrame
+statusLabel.Parent = controlsScroll
 statusLabel.BackgroundTransparency = 1
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextSize = 11
@@ -2162,6 +2232,9 @@ do
     local connSkill1 = autoSkill1Button.MouseButton1Click:Connect(function()
         autoSkill1 = not autoSkill1
         updateAutoSkill1UI(autoSkill1)
+        if autoSkill1 then
+            nextSkill1Time = os.clock() -- ketika di-ON-kan lagi, langsung siap eksekusi
+        end
         updateStatusLabel()
     end)
     table.insert(connections, connSkill1)
@@ -2169,6 +2242,9 @@ do
     local connSkill2 = autoSkill2Button.MouseButton1Click:Connect(function()
         autoSkill2 = not autoSkill2
         updateAutoSkill2UI(autoSkill2)
+        if autoSkill2 then
+            nextSkill2Time = os.clock()
+        end
         updateStatusLabel()
     end)
     table.insert(connections, connSkill2)
@@ -2181,7 +2257,7 @@ do
     updateStatusLabel()
 end
 
-------------------- KEY F HOTKEY (TOGGLE AUTOFARM V2) -------------------
+------------------- KEY G HOTKEY (TOGGLE AUTOFARM V2) -------------------
 local function onInputBegan(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -2300,18 +2376,16 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill 1
+-- Loop Auto Skill sequence (Skill1 -> delay 3s -> Skill2, repeat sesuai cooldown)
 task.spawn(function()
-    while alive do
-        pcall(autoSkill1Tick)
-        task.wait(0.2)
-    end
-end)
+    -- awal: biarkan langsung siap jalan
+    nextSkill1Time = os.clock()
+    nextSkill2Time = os.clock()
 
--- Loop Auto Skill 2
-task.spawn(function()
     while alive do
-        pcall(autoSkill2Tick)
+        if autoSkill1 or autoSkill2 then
+            pcall(autoSkillTick)
+        end
         task.wait(0.2)
     end
 end)
