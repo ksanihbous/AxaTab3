@@ -666,7 +666,7 @@ local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
 local skill1LastFireTime = 0
 local skill2LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Skill01)
+-- LOGIC AUTO SKILL 1 (Skill03)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -674,7 +674,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill01"
+            ["ID"] = "Skill03" -- Skill09 (CHAIN LIGHTNING)
         }
     }
 
@@ -691,7 +691,7 @@ local function fireSkill1()
     end
 end
 
--- LOGIC AUTO SKILL 2 (Skill09)
+-- LOGIC AUTO SKILL 2 (Skill01)
 local function fireSkill2()
     if not alive or not autoSkill2 then return end
     if not FishRE then return end
@@ -699,7 +699,7 @@ local function fireSkill2()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill09"
+            ["ID"] = "Skill01" -- Thunder
         }
     }
 
