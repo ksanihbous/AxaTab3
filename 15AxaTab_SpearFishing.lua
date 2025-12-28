@@ -1,6 +1,6 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward)"
+--  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -38,10 +38,9 @@ local autoFarmV2       = false      -- AutoFarm Fish V2 (tap trackpad): default 
 local autoFarmV2Mode   = "Center"   -- "Left" / "Center"
 local autoDailyReward  = true       -- Auto Daily Reward: default ON
 
--- NEW: Auto Skill states
-local autoSkill1        = false     -- Auto Skill 1: default OFF
-local autoSkill2        = false     -- Auto Skill 2: default OFF
-local autoSkillSequence = true      -- Auto Skill 1 kemudian 2: default ON (sequence)
+-- Auto Skill states
+local autoSkill1        = true     -- Auto Skill 1: default OFF
+local autoSkill2        = true     -- Auto Skill 2: default OFF
 
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack  = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
@@ -262,7 +261,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3"
+    title.Text = "Spear Fishing V3+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -2170,9 +2169,9 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill 1 & 2.",
     1,
-    420   -- diperbesar agar muat tombol & label skill
+    380   -- cukup tinggi untuk tombol & label skill
 )
 
 local controlsFrame = Instance.new("Frame")
@@ -2215,12 +2214,11 @@ local function updateV2ModeButton()
 end
 updateV2ModeButton()
 
--- NEW: Auto Skill toggles
+-- Auto Skill toggles
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsFrame, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsFrame, "Auto Skill 2", autoSkill2)
-local autoSkillSeqButton, updateAutoSkillSeqUI = createToggleButton(controlsFrame, "Auto Skill 1 kemudian 2", autoSkillSequence)
 
--- NEW: Cooldown labels (di bawah tombol Auto Skill)
+-- Cooldown labels (di bawah tombol Auto Skill)
 skillCooldownLabel1 = Instance.new("TextLabel")
 skillCooldownLabel1.Name = "Skill1CooldownLabel"
 skillCooldownLabel1.Parent = controlsFrame
@@ -2275,14 +2273,13 @@ statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s).\nSkills: S1 %s, S2 %s, S1->2 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s).\nSkills: S1 %s, S2 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
         autoSkill1 and "ON" or "OFF",
-        autoSkill2 and "ON" or "OFF",
-        autoSkillSequence and "ON" or "OFF"
+        autoSkill2 and "ON" or "OFF"
     )
 end
 
@@ -2298,28 +2295,10 @@ local function updateSkillCooldownLabels()
 end
 
 do
-    local function setAutoSkillSequence(state)
-        autoSkillSequence = state and true or false
-        if updateAutoSkillSeqUI then
-            updateAutoSkillSeqUI(autoSkillSequence)
-        end
-        if autoSkillSequence then
-            autoSkill1 = false
-            autoSkill2 = false
-            if updateAutoSkill1UI then updateAutoSkill1UI(false) end
-            if updateAutoSkill2UI then updateAutoSkill2UI(false) end
-        end
-        updateStatusLabel()
-    end
-
     local function setAutoSkill1(state)
         autoSkill1 = state and true or false
         if updateAutoSkill1UI then
             updateAutoSkill1UI(autoSkill1)
-        end
-        if autoSkill1 then
-            autoSkillSequence = false
-            if updateAutoSkillSeqUI then updateAutoSkillSeqUI(false) end
         end
         updateStatusLabel()
     end
@@ -2328,10 +2307,6 @@ do
         autoSkill2 = state and true or false
         if updateAutoSkill2UI then
             updateAutoSkill2UI(autoSkill2)
-        end
-        if autoSkill2 then
-            autoSkillSequence = false
-            if updateAutoSkillSeqUI then updateAutoSkillSeqUI(false) end
         end
         updateStatusLabel()
     end
@@ -2376,11 +2351,6 @@ do
         setAutoSkill2(not autoSkill2)
     end)
     table.insert(connections, connSkill2)
-
-    local connSkillSeq = autoSkillSeqButton.MouseButton1Click:Connect(function()
-        setAutoSkillSequence(not autoSkillSequence)
-    end)
-    table.insert(connections, connSkillSeq)
 
     local conn3 = sellButton.MouseButton1Click:Connect(function()
         sellAllFish()
@@ -2511,38 +2481,22 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill (Skill 1 / Skill 2 + Sequence) + update cooldown UI
+-- Loop Auto Skill (Skill 1 & Skill 2) + update cooldown UI
 task.spawn(function()
     -- mulai init data skill (kalau ada dari server)
     initSkillDataAsync()
-
-    local seqNextSkill = "Skill01"
 
     while alive do
         -- Update label cooldown (ringan, hanya baca Value/Attribute)
         pcall(updateSkillCooldownLabels)
 
-        if autoSkillSequence then
-            -- Mode sequence: Skill01 -> Skill09 -> Skill01 -> ...
-            if seqNextSkill == "Skill01" then
-                if isSkillReady("Skill01") then
-                    fireSkill("Skill01")
-                    seqNextSkill = "Skill09"
-                end
-            else
-                if isSkillReady("Skill09") then
-                    fireSkill("Skill09")
-                    seqNextSkill = "Skill01"
-                end
-            end
-        else
-            -- Mode individual
-            if autoSkill1 and isSkillReady("Skill01") then
-                fireSkill("Skill01")
-            end
-            if autoSkill2 and isSkillReady("Skill09") then
-                fireSkill("Skill09")
-            end
+        -- Auto Skill 1 dan 2: dikerjakan bersamaan, tetap mengikuti cooldown server
+        if autoSkill1 and isSkillReady("Skill01") then
+            fireSkill("Skill01")
+        end
+
+        if autoSkill2 and isSkillReady("Skill09") then
+            fireSkill("Skill09")
         end
 
         task.wait(0.25)
@@ -2551,14 +2505,13 @@ end)
 
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive               = false
-    autoFarm            = false
-    autoEquip           = false
-    autoFarmV2          = false
-    autoDailyReward     = false
-    autoSkill1          = false
-    autoSkill2          = false
-    autoSkillSequence   = false
+    alive           = false
+    autoFarm        = false
+    autoEquip       = false
+    autoFarmV2      = false
+    autoDailyReward = false
+    autoSkill1      = false
+    autoSkill2      = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
