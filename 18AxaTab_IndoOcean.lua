@@ -45,7 +45,7 @@ local SELL_THIS_FISH_DELAY    = 0.4
 local DROP_DELAY_MIN = 5
 local DROP_DELAY_MAX = 8
 
--- LIST ROD (ToolName) + mapping ke nama Shop (BuyItem / GetShopData)
+-- LIST ROD (ToolName key)
 local rodOptions = {
     "NormalRod",
     "SteakRod",
@@ -81,6 +81,7 @@ end
 
 buildRodAliasMaps()
 
+-- Mapping key -> nama shop (dipakai Rod Shop / alias Character "Robot Rod")
 local rodMeta = {
     NormalRod      = { shopName = "Normal Rod" },
     SteakRod       = { shopName = "Steak Rod" },
@@ -98,9 +99,9 @@ local rodMeta = {
     UmbrellaRod    = { shopName = "Umbrella Rod" },
 }
 
-local function getShopNameFromTool(toolName)
-    local meta = rodMeta[toolName]
-    return (meta and meta.shopName) or toolName
+local function getShopNameFromTool(toolKey)
+    local meta = rodMeta[toolKey]
+    return (meta and meta.shopName) or toolKey
 end
 
 ------------------- STATE UTAMA - FISH -------------------
@@ -263,7 +264,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2.2"
+    title.Text = "Indo Ocean - Fish Giver V2.2+"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -557,7 +558,7 @@ local function createSellFishCard(parent, order)
         sellModeButtons[mode] = btn
     end
 
-    -- Mode 1–9 sesuai permintaan
+    -- Mode 1–9
     addSellButton(SellMode.Disable,      "Disable")
     addSellButton(SellMode.Kg1_10,       "Sell 1–10 Kg")
     addSellButton(SellMode.Kg0_100,      "Sell 0–100 Kg")
@@ -1108,9 +1109,14 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
     if not backpack then
-        backpack = LocalPlayer:FindFirstChild("Backpack")
+        local ok, res = pcall(function()
+            return LocalPlayer:WaitForChild("Backpack", 5)
+        end)
+        if ok then
+            backpack = res
+        end
     end
     local char     = LocalPlayer.Character
 
@@ -1640,7 +1646,7 @@ local function buildRodShopUI()
     if not rodShopScroll or rodShopLoaded then return end
     rodShopLoaded = true
 
-    -- Panggil GetShopData satu kali
+    -- Panggil GetShopData
     if GetShopDataRemote then
         local ok, res = pcall(function()
             return GetShopDataRemote:InvokeServer()
@@ -1786,23 +1792,74 @@ local function buildRodShopUI()
     refreshRodShopOwnedVisual()
 end
 
-------------------- HELPER: REQUEST 1 FISH (MiniGame Complete) -------------------
-local function requestOneFish()
-    if not alive then return nil end
-
+------------------- HELPER: CARI MiniGame Rod (sesuai currentRodName) -------------------
+local function getRodMiniGameForCurrent()
     local char = LocalPlayer.Character
     if not char then
-        appendLog("[Fish] Character belum siap.")
-        return nil
+        return nil, nil, "Character belum siap."
     end
 
-    local rod = char:FindFirstChild(currentRodName)
-    if not (rod and rod:FindFirstChild("MiniGame")) then
-        appendLog("[Fish] " .. tostring(currentRodName) .. ".MiniGame tidak ditemukan di Character.")
-        return nil
+    local candidates = {}
+
+    -- 1) key langsung (NormalRod)
+    table.insert(candidates, currentRodName)
+
+    -- 2) versi spasi (Normal Rod)
+    local spaced = currentRodName:gsub("(%l)(%u)", "%1 %2")
+    if spaced ~= currentRodName then
+        table.insert(candidates, spaced)
+    end
+
+    -- 3) shopName (Robot Rod, dsb)
+    local shopName = getShopNameFromTool(currentRodName)
+    if shopName ~= currentRodName and shopName ~= spaced then
+        table.insert(candidates, shopName)
+    end
+
+    local rod
+    for _, name in ipairs(candidates) do
+        local inst = char:FindFirstChild(name)
+        if inst and inst:IsA("Tool") then
+            rod = inst
+            break
+        end
+    end
+
+    -- 4) Fallback: scan semua Tool di Character dan cocokkan via rodNameToKey
+    if not rod then
+        for _, inst in ipairs(char:GetChildren()) do
+            if inst:IsA("Tool") then
+                local key = rodNameToKey[inst.Name]
+                if key == currentRodName then
+                    rod = inst
+                    break
+                end
+            end
+        end
+    end
+
+    if not rod then
+        return nil, nil, "Rod " .. tostring(currentRodName) .. " tidak ditemukan di Character."
     end
 
     local miniRemote = rod:FindFirstChild("MiniGame")
+    if not miniRemote then
+        return nil, rod.Name, tostring(rod.Name) .. ".MiniGame tidak ditemukan."
+    end
+
+    return miniRemote, rod.Name, nil
+end
+
+------------------- HELPER: REQUEST 1 FISH (MiniGame Complete dengan Rod dinamis) -------------------
+local function requestOneFish()
+    if not alive then return nil end
+
+    local miniRemote, rodUsedName, errMsg = getRodMiniGameForCurrent()
+    if not miniRemote then
+        appendLog("[Fish] " .. tostring(errMsg))
+        return nil
+    end
+
     local ok, err = pcall(function()
         local args = { [1] = "Complete" }
         miniRemote:FireServer(unpack(args))
@@ -1820,7 +1877,7 @@ local function requestOneFish()
         lastFishLabel.Text = "Last Fish: " .. fishName
     end
 
-    appendLog("Got Fish via MiniGame: " .. fishName .. " (" .. currentRodName .. ")")
+    appendLog("Got Fish via MiniGame: " .. fishName .. " (" .. tostring(rodUsedName or currentRodName) .. ")")
 
     applyAutoSellAfterCatch()
 
@@ -2058,7 +2115,7 @@ if fishRefreshButton then
     end)
 end
 
--- Buka dropdown Fish = auto scan & rebuild
+-- Buka dropdown Fish
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
@@ -2153,7 +2210,6 @@ if dropInputBox then
     dropInputBox.FocusLost:Connect(function()
         local raw = dropInputBox.Text
         if raw == "" then
-            -- biarkan kosong, hanya placeholder
             return
         end
         local n = tonumber(raw)
@@ -2270,7 +2326,6 @@ for toolKey, info in pairs(rodShopItems) do
 
             if result == "Success" then
                 appendLog("[RodShop] Pembelian " .. tostring(shopName) .. " Success.")
-                -- mark Owned manual + rescan supaya aman untuk alias nama Tool
                 ownedRodMap[toolKey] = true
                 rescanOwnedRods()
                 refreshRodShopOwnedVisual()
