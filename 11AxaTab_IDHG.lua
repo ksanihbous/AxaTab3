@@ -490,7 +490,7 @@ local WEBHOOK_URL_3 = "https://discord.com/api/webhooks/1445325522295853231/UjT6
 local WEBHOOK_URL_4 = ""
 local WEBHOOK_URL_5 = "https://discord.com/api/webhooks/1448926413272125470/rAX-rVkYKyxeIa_-msqcY2DsVu6ZBqmKzrNXhov-nILq4tdMY88WK1G0ETYtuLt2j1L6"
 
-local webhookEnabled1 = false
+local webhookEnabled1 = true
 local webhookEnabled2 = false
 local webhookEnabled3 = false
 local webhookEnabled4 = false
@@ -2268,7 +2268,7 @@ makeLabel(
 -- DESKRIPSI HEADER (AUTO HEIGHT)
 local headerSubLabel = makeLabel(
     headerScroll,"Sub",
-    "Auto Fishing + Auto Sell Under (v1 LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
+    "Auto Fishing + Auto Sell Under (v2 LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
     UDim2.new(1,-10,0,0),UDim2.new(),
     { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(90,90,120),
       XAlign=Enum.TextXAlignment.Left, YAlign=Enum.TextYAlignment.Top, Wrapped=true }
@@ -3737,7 +3737,401 @@ local function createRodShopCard(parent)
     end
 end
 
+------------------------------------------------------------
+-- CARD: AURA SHOP - INDO HG
+------------------------------------------------------------
+local function createAuraShopCard(parent)
+    local auraCard = makeCard(parent, 5)
+
+    makeLabel(
+        auraCard, "AuraTitle", "Aura Shop — Indo HG",
+        UDim2.new(1,0,0,18), UDim2.new(0,0,0,0),
+        { Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(35,38,70), XAlign=Enum.TextXAlignment.Left }
+    )
+
+    local auraDescLabel = makeLabel(
+        auraCard,"AuraDesc",
+        "Preview & beli Aura Indo HG. Tombol Buy otomatis berubah menjadi Owned jika aura sudah dimiliki.",
+        UDim2.new(1,0,0,0),UDim2.new(0,0,0,18),
+        { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(92,96,124),
+          XAlign=Enum.TextXAlignment.Left, YAlign=Enum.TextYAlignment.Top, Wrapped=true }
+    )
+    auraDescLabel.AutomaticSize = Enum.AutomaticSize.Y
+
+    if not AuraShopRemoteFunction then
+        local warnLabel = makeLabel(
+            auraCard, "AuraWarn",
+            "⚠ RemoteFunction.AuraShop tidak ditemukan di ReplicatedStorage.Events.RemoteFunction.",
+            UDim2.new(1,0,0,0),UDim2.new(0,0,0,60),
+            { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(180,70,70),
+              XAlign=Enum.TextXAlignment.Left, Wrapped=true }
+        )
+        warnLabel.AutomaticSize = Enum.AutomaticSize.Y
+        return
+    end
+
+    local AURA_LIST = {
+        { Name = "Blackred Love" },
+        { Name = "Green Glitch"  },
+        { Name = "Pink Love"     },
+        { Name = "Autumn"        },
+        { Name = "Sakura"        },
+        { Name = "Starlight"     },
+        { Name = "Blueada"       },
+        { Name = "Purple Wings"  },
+    }
+
+    local auraProfile
+    local ownedSet = {}
+
+    local function rebuildOwnedSet()
+        ownedSet = {}
+        local list = auraProfile and auraProfile.Aura
+        if type(list) == "table" then
+            for _, n in ipairs(list) do
+                if type(n) == "string" then
+                    ownedSet[n] = true
+                end
+            end
+        end
+    end
+
+    local function refreshProfile()
+        local ok, res = pcall(function()
+            return AuraShopRemoteFunction:InvokeServer("GetPlayerProfile")
+        end)
+        if ok and type(res) == "table" then
+            auraProfile = res
+        else
+            auraProfile = nil
+        end
+        rebuildOwnedSet()
+    end
+
+    refreshProfile()
+
+    local function isAuraOwned(name)
+        return ownedSet[name] == true
+    end
+
+    local selectedAura
+    local previewIcon
+    local previewNameLabel
+    local previewPriceLabel
+    local previewRarityLabel
+    local previewDescLabel
+    local buyButton
+
+    local infoRow = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,90),
+        Parent = auraCard,
+    }, {
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            SortOrder     = Enum.SortOrder.LayoutOrder,
+            Padding       = UDim.new(0,8),
+        }),
+    })
+
+    local leftInfo = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.45,0,1,0),
+        Parent = infoRow,
+    }, {
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder     = Enum.SortOrder.LayoutOrder,
+            Padding       = UDim.new(0,4),
+        }),
+    })
+
+    local rightList = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.55,0,1,0),
+        Parent = infoRow,
+    })
+
+    local iconFrame = New("Frame", {
+        BackgroundColor3 = Color3.fromRGB(244,246,255),
+        BorderSizePixel  = 0,
+        Size             = UDim2.new(1,0,0,42),
+        Parent           = leftInfo,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0,8) }),
+        New("UIPadding", {
+            PaddingLeft   = UDim.new(0,6),
+            PaddingRight  = UDim.new(0,6),
+        }),
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            SortOrder     = Enum.SortOrder.LayoutOrder,
+            Padding       = UDim.new(0,6),
+        }),
+    })
+
+    previewIcon = New("ImageLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0,32,0,32),
+        ScaleType = Enum.ScaleType.Fit,
+        Image = "",
+        Parent = iconFrame,
+    })
+
+    previewNameLabel = New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,-40,1,0),
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = Color3.fromRGB(40,44,80),
+        Text = "Pilih aura di sebelah kanan",
+        Parent = iconFrame,
+    })
+
+    previewPriceLabel = New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,16),
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = Color3.fromRGB(60,100,60),
+        Text = "Price: -",
+        Parent = leftInfo,
+    })
+
+    previewRarityLabel = New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,16),
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = Color3.fromRGB(92,96,124),
+        Text = "Rarity: -",
+        Parent = leftInfo,
+    })
+
+    previewDescLabel = New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+        TextColor3 = Color3.fromRGB(110,114,140),
+        Text = "Deskripsi aura akan muncul di sini.",
+        Parent = leftInfo,
+    })
+
+    buyButton = makeLittleButton(leftInfo, "Buy", 0)
+    buyButton.Size = UDim2.new(1,0,0,24)
+
+    local auraScroll = New("ScrollingFrame", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1,0,1,0),
+        CanvasSize = UDim2.new(0,0,0,0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 3,
+        Parent = rightList,
+    }, {
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder     = Enum.SortOrder.LayoutOrder,
+            Padding       = UDim.new(0,4),
+        }),
+    })
+
+    local function getAuraInfo(auraItem)
+        if auraItem.Info then
+            return auraItem.Info
+        end
+        local ok, res = pcall(function()
+            return AuraShopRemoteFunction:InvokeServer("GetAuraInfo", auraItem.Name)
+        end)
+        if ok and type(res) == "table" then
+            auraItem.Info = res
+            return res
+        end
+        return nil
+    end
+
+    local function updateBuyButtonState()
+        if not selectedAura then
+            buyButton.Text = "Buy"
+            buyButton.AutoButtonColor = false
+            buyButton.Active = false
+            return
+        end
+
+        local owned = isAuraOwned(selectedAura.Name)
+        if owned then
+            buyButton.Text = "Owned"
+            buyButton.AutoButtonColor = false
+            buyButton.Active = false
+            buyButton.BackgroundColor3 = Color3.fromRGB(200,205,220)
+            buyButton.TextColor3       = Color3.fromRGB(80,80,100)
+        else
+            buyButton.Text = "Buy"
+            buyButton.AutoButtonColor = true
+            buyButton.Active = true
+            buyButton.BackgroundColor3 = Color3.fromRGB(228,232,248)
+            buyButton.TextColor3       = Color3.fromRGB(40,44,70)
+        end
+    end
+
+    local function refreshAuraButtons(selectedName)
+        for _, item in ipairs(AURA_LIST) do
+            local btn = item.Button
+            if btn then
+                local owned = isAuraOwned(item.Name)
+                local text = item.Name
+                if owned then
+                    text = text .. " (Owned)"
+                end
+                btn.Text = text
+
+                if selectedName and selectedName == item.Name then
+                    btn.BackgroundColor3 = Color3.fromRGB(120,170,255)
+                    btn.TextColor3       = Color3.fromRGB(255,255,255)
+                else
+                    if owned then
+                        btn.BackgroundColor3 = Color3.fromRGB(210,205,220)
+                        btn.TextColor3       = Color3.fromRGB(80,80,100)
+                    else
+                        btn.BackgroundColor3 = Color3.fromRGB(228,232,248)
+                        btn.TextColor3       = Color3.fromRGB(40,44,70)
+                    end
+                end
+            end
+        end
+    end
+
+    local function previewAura(auraItem)
+        selectedAura = auraItem
+        playUISound("UI - Hover 1")
+
+        previewNameLabel.Text = auraItem.Name
+
+        local info = getAuraInfo(auraItem)
+        if info then
+            local img = info.image or info.Image or info.icon or info.Icon
+            if type(img) == "string" then
+                previewIcon.Image = img
+            else
+                previewIcon.Image = ""
+            end
+
+            local priceVal = info.price or info.Price or info.Coin or info.coin or info.Coins or info.coins
+            auraItem.Price = priceVal
+
+            if isAuraOwned(auraItem.Name) then
+                previewPriceLabel.Text = "Price: Owned"
+            else
+                if priceVal then
+                    previewPriceLabel.Text = "Price: " .. formatRupiah(priceVal)
+                else
+                    previewPriceLabel.Text = "Price: -"
+                end
+            end
+
+            local rarity = info.rarity or info.Rarity
+            if rarity then
+                previewRarityLabel.Text = "Rarity: " .. tostring(rarity)
+            else
+                previewRarityLabel.Text = "Rarity: -"
+            end
+
+            local rarityColor = info.rarityColor or info.RarityColor
+            if typeof(rarityColor) == "Color3" then
+                previewRarityLabel.TextColor3 = rarityColor
+            else
+                previewRarityLabel.TextColor3 = Color3.fromRGB(92,96,124)
+            end
+
+            local desc = info.description or info.desc or info.Desc or info.Description
+            if desc and desc ~= "" then
+                previewDescLabel.Text = tostring(desc)
+            else
+                previewDescLabel.Text = "Tidak ada deskripsi aura."
+            end
+        else
+            previewIcon.Image        = ""
+            previewPriceLabel.Text   = "Price: -"
+            previewRarityLabel.Text  = "Rarity: -"
+            previewRarityLabel.TextColor3 = Color3.fromRGB(92,96,124)
+            previewDescLabel.Text    = "Gagal mengambil info aura."
+        end
+
+        refreshAuraButtons(auraItem.Name)
+        updateBuyButtonState()
+    end
+
+    for _, item in ipairs(AURA_LIST) do
+        local btn = makeLittleButton(auraScroll, item.Name, 0)
+        btn.Size = UDim2.new(1,0,0,24)
+        item.Button = btn
+        btn.MouseButton1Click:Connect(function()
+            previewAura(item)
+        end)
+    end
+
+    refreshAuraButtons(nil)
+    updateBuyButtonState()
+
+    buyButton.MouseButton1Click:Connect(function()
+        local auraItem = selectedAura
+        if not auraItem then
+            notify("IndoHangout", "Pilih Aura dulu sebelum membeli.", 2)
+            playUISound("UI - Cancel")
+            return
+        end
+
+        if isAuraOwned(auraItem.Name) then
+            previewPriceLabel.Text = "Price: Owned"
+            updateBuyButtonState()
+            playUISound("UI - Cancel")
+            notify("IndoHangout", "Aura sudah dimiliki: " .. auraItem.Name, 2)
+            return
+        end
+
+        task.spawn(function()
+            playUISound("UI - Hover 1")
+            local ok, res = pcall(function()
+                return AuraShopRemoteFunction:InvokeServer("Buy", auraItem.Name)
+            end)
+            if not ok then
+                warn("[IndoHangout] AuraShop Buy error ("..tostring(auraItem.Name).."):", res)
+                notify("IndoHangout", "Gagal membeli aura "..tostring(auraItem.Name)..". Lihat Output.", 3)
+                playUISound("UI - Cancel")
+                return
+            end
+
+            if res == "success" or res == true then
+                playUISound("Buy")
+                notify("IndoHangout", "Berhasil membeli aura: "..tostring(auraItem.Name), 3)
+                refreshProfile()
+                previewAura(auraItem)
+            elseif res == "owned" then
+                playUISound("UI - Cancel")
+                notify("IndoHangout", "Aura sudah dimiliki: "..tostring(auraItem.Name), 2)
+                refreshProfile()
+                previewAura(auraItem)
+            else
+                playUISound("UI - Cancel")
+                notify("IndoHangout", "AuraShop mengembalikan: "..tostring(res), 3)
+                refreshProfile()
+                previewAura(auraItem)
+            end
+        end)
+    end)
+end
+
+-- PANGGIL KEDUA CARD
 createRodShopCard(body)
+createAuraShopCard(body)
 
 ------------------- BACKGROUND LOOPS -------------------
 task.spawn(function()
