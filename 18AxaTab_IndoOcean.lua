@@ -1,6 +1,6 @@
 --==========================================================
 --  18AxaTab_IndoOcean.lua
---  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame Complete + Auto Sell + Drop Money)"
+--  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame + Auto Sell + Drop Money)"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
@@ -107,6 +107,31 @@ local autoDrop10MLoopId    = 0
 local autoDrop100MLoopId   = 0
 local autoDrop1BLoopId     = 0
 
+------------------- STATE ROD MINI GAME -------------------
+local rodDropdownButton
+local rodDropdownListFrame
+local rodDropdownButtons = {}
+
+local rodOptions = {
+    "NormalRod",
+    "SteakRod",
+    "RobotRod",
+    "SausageRod",
+    "LovingRod",
+    "LanternRod",
+    "NarwhaleRod",
+    "CelebrationRod",
+    "RubberDuckRod",
+    "CoralRod",
+    "CatRod",
+    "SakuraRod",
+    "BinaryRod",
+    "UmbrellaRod",
+}
+
+local currentRodName = "NormalRod"
+local currentRodKey  = "NormalRod"
+
 ------------------- UI REFERENCES -------------------
 local headerFrame
 local bodyFrame
@@ -181,7 +206,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2"
+    title.Text = "Indo Ocean - Fish Giver V2+"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -193,7 +218,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "MiniGame Complete (NormalRod) + Auto Sell RemoteFish + Drop Money"
+    desc.Text = "MiniGame Complete (Rod pilihan) + Auto Sell RemoteFish + Drop Money"
 
     return h
 end
@@ -334,7 +359,7 @@ local function createFishGiverCard(parent, order)
     local card = createCard(
         parent,
         "Fish Giver Control",
-        "MiniGame: NormalRod.MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
+        "MiniGame: Rod terpilih .MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
         order
     )
 
@@ -348,6 +373,65 @@ local function createFishGiverCard(parent, order)
     lastLbl.TextXAlignment = Enum.TextXAlignment.Left
     lastLbl.TextColor3 = Color3.fromRGB(180, 220, 255)
     lastLbl.Text = "Last Fish: -"
+
+    -- Rod selector
+    local rodLbl = Instance.new("TextLabel")
+    rodLbl.Name = "RodLabel"
+    rodLbl.Parent = card
+    rodLbl.BackgroundTransparency = 1
+    rodLbl.Size = UDim2.new(1, 0, 0, 18)
+    rodLbl.Font = Enum.Font.Gotham
+    rodLbl.TextSize = 11
+    rodLbl.TextXAlignment = Enum.TextXAlignment.Left
+    rodLbl.TextColor3 = Color3.fromRGB(190, 200, 230)
+    rodLbl.Text = "Rod MiniGame (Default: NormalRod)"
+
+    local rodBtn = Instance.new("TextButton")
+    rodBtn.Name = "RodDropdownButton"
+    rodBtn.Parent = card
+    rodBtn.Size = UDim2.new(1, 0, 0, 26)
+    rodBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    rodBtn.AutoButtonColor = true
+    rodBtn.Font = Enum.Font.Gotham
+    rodBtn.TextSize = 13
+    rodBtn.TextXAlignment = Enum.TextXAlignment.Left
+    rodBtn.TextColor3 = Color3.fromRGB(225, 225, 235)
+    rodBtn.Text = "Rod: " .. tostring(currentRodName)
+
+    local rodCorner = Instance.new("UICorner")
+    rodCorner.CornerRadius = UDim.new(0, 6)
+    rodCorner.Parent = rodBtn
+
+    local rodStroke = Instance.new("UIStroke")
+    rodStroke.Parent = rodBtn
+    rodStroke.Thickness = 1
+    rodStroke.Transparency = 0.3
+    rodStroke.Color = Color3.fromRGB(60, 60, 85)
+
+    local rodList = Instance.new("ScrollingFrame")
+    rodList.Name = "RodDropdownList"
+    rodList.Parent = card
+    rodList.BackgroundTransparency = 1
+    rodList.BorderSizePixel = 0
+    rodList.Size = UDim2.new(1, 0, 0, 0)
+    rodList.Visible = false
+    rodList.ScrollBarThickness = 4
+    rodList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    rodList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    rodList.ScrollBarImageTransparency = 0.2
+
+    local rodPad = Instance.new("UIPadding")
+    rodPad.Parent = rodList
+    rodPad.PaddingTop = UDim.new(0, 2)
+    rodPad.PaddingBottom = UDim.new(0, 4)
+    rodPad.PaddingLeft = UDim.new(0, 2)
+    rodPad.PaddingRight = UDim.new(0, 2)
+
+    local rodLayout = Instance.new("UIListLayout")
+    rodLayout.Parent = rodList
+    rodLayout.FillDirection = Enum.FillDirection.Vertical
+    rodLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rodLayout.Padding = UDim.new(0, 2)
 
     local _, toggleInput = createToggleButton(card, "Get Fish Input (Jumlah tertentu)")
 
@@ -388,7 +472,7 @@ local function createFishGiverCard(parent, order)
     prog.TextColor3 = Color3.fromRGB(170, 200, 255)
     prog.Text = "Progress: -"
 
-    return card, toggleInput, toggleNonstop, input, lastLbl, prog
+    return card, toggleInput, toggleNonstop, input, lastLbl, prog, rodBtn, rodList
 end
 
 local function createSellFishCard(parent, order)
@@ -636,8 +720,8 @@ local function createDropMoneyCard(parent, order)
     input.TextSize = 13
     input.TextColor3 = Color3.fromRGB(225, 225, 235)
     input.TextXAlignment = Enum.TextXAlignment.Left
-    input.Text = "10000"
-    input.PlaceholderText = "Nominal Drop (contoh: 10000)"
+    input.Text = ""
+    input.PlaceholderText = "Input Drop Money"
     input.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
 
     local inputCorner = Instance.new("UICorner")
@@ -676,7 +760,8 @@ end
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
 
-fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel =
+fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox,
+    lastFishLabel, inputProgressLabel, rodDropdownButton, rodDropdownListFrame =
     createFishGiverCard(bodyFrame, 1)
 
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
@@ -916,8 +1001,8 @@ local function initCashListener()
 
     local cashNames = { "Cash", "Money", "Coins" }
     for _, name in ipairs(cashNames) do
-        local v = ls:FindFirstChild(name)
-        if v and v:IsA("NumberValue") or v and v:IsA("IntValue") then
+        local v = ls:FindChild(name) or ls:FindFirstChild(name)
+        if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
             cashValueObj = v
             break
         end
@@ -1298,6 +1383,74 @@ local function initFishDropdown()
     buildFishDropdownItems()
 end
 
+------------------- ROD DROPDOWN -------------------
+local function buildRodDropdownItems()
+    if not rodDropdownListFrame then return end
+
+    for _, child in ipairs(rodDropdownListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    rodDropdownButtons = {}
+
+    for _, rodName in ipairs(rodOptions) do
+        local btn = Instance.new("TextButton")
+        btn.Name = "RodItem_" .. rodName
+        btn.Parent = rodDropdownListFrame
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+        btn.Text = rodName
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = btn
+
+        rodDropdownButtons[rodName] = btn
+
+        btn.MouseButton1Click:Connect(function()
+            currentRodName = rodName
+            currentRodKey  = rodName
+
+            if rodDropdownButton then
+                rodDropdownButton.Text = "Rod: " .. tostring(currentRodName)
+            end
+
+            for key, b in pairs(rodDropdownButtons) do
+                if key == currentRodKey then
+                    b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+                    b.TextColor3       = Color3.fromRGB(245, 245, 255)
+                else
+                    b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                    b.TextColor3       = Color3.fromRGB(220, 220, 230)
+                end
+            end
+
+            if rodDropdownListFrame then
+                rodDropdownListFrame.Visible = false
+                rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+            end
+
+            appendLog("[Rod] MiniGame Rod diubah ke: " .. tostring(currentRodName))
+        end)
+    end
+
+    for key, b in pairs(rodDropdownButtons) do
+        if key == currentRodKey then
+            b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+            b.TextColor3       = Color3.fromRGB(245, 245, 255)
+        else
+            b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            b.TextColor3       = Color3.fromRGB(220, 220, 230)
+        end
+    end
+end
+
 ------------------- HELPER: REQUEST 1 FISH (MiniGame Complete) -------------------
 local function requestOneFish()
     if not alive then return nil end
@@ -1308,9 +1461,9 @@ local function requestOneFish()
         return nil
     end
 
-    local rod = char:FindFirstChild("NormalRod")
+    local rod = char:FindFirstChild(currentRodName)
     if not (rod and rod:FindFirstChild("MiniGame")) then
-        appendLog("[Fish] NormalRod.MiniGame tidak ditemukan di Character.")
+        appendLog("[Fish] " .. tostring(currentRodName) .. ".MiniGame tidak ditemukan di Character.")
         return nil
     end
 
@@ -1321,13 +1474,13 @@ local function requestOneFish()
     end)
 
     if not ok then
-        local msg = "Error MiniGame Complete: " .. tostring(err)
+        local msg = "Error MiniGame Complete (" .. tostring(currentRodName) .. "): " .. tostring(err)
         warn("[IndoOcean] " .. msg)
         appendLog(msg)
         return nil
     end
 
-    local fishName = "Fish (Complete)"
+    local fishName = "Fish (Complete via " .. tostring(currentRodName) .. ")"
     if lastFishLabel then
         lastFishLabel.Text = "Last Fish: " .. fishName
     end
@@ -1498,7 +1651,7 @@ if fishRefreshButton then
     end)
 end
 
--- Buka dropdown = auto scan & rebuild
+-- Buka dropdown fish = auto scan & rebuild
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
@@ -1512,6 +1665,24 @@ if sellDropdownButton then
             sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 120)
         else
             sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+        end
+    end)
+end
+
+-- Rod dropdown
+if rodDropdownButton then
+    rodDropdownButton.MouseButton1Click:Connect(function()
+        if not alive then return end
+        if not rodDropdownListFrame then return end
+
+        buildRodDropdownItems()
+
+        local open = not rodDropdownListFrame.Visible
+        rodDropdownListFrame.Visible = open
+        if open then
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 22 * math.min(#rodOptions, 6) + 8)
+        else
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
         end
     end)
 end
@@ -1579,7 +1750,7 @@ if dropInputBox then
     dropInputBox.FocusLost:Connect(function()
         local n = tonumber(dropInputBox.Text)
         if not n or n <= 0 then
-            dropInputBox.Text = "10000"
+            dropInputBox.Text = ""
         end
     end)
 end
