@@ -37,9 +37,9 @@ local GetShopDataRemote   = RemotesFolder and RemotesFolder:WaitForChild("GetSho
 local BuyItemRemote       = RemotesFolder and RemotesFolder:WaitForChild("BuyItem", 5)
 
 -- TUNING Fish Giver
-local INPUT_DELAY          = 0.01
-local NONSTOP_DELAY        = 0.01
-local SELL_THIS_FISH_DELAY = 0.4
+local INPUT_DELAY             = 0.01
+local NONSTOP_DELAY_DEFAULT   = 0.01
+local SELL_THIS_FISH_DELAY    = 0.4
 
 -- TUNING Drop Money
 local DROP_DELAY_MIN = 5
@@ -63,10 +63,23 @@ local rodOptions = {
     "UmbrellaRod",
 }
 
+-- Map canonical rod key -> true
 local rodOptionsMap = {}
-for _, name in ipairs(rodOptions) do
-    rodOptionsMap[name] = true
+-- Map berbagai nama Tool (dengan / tanpa spasi) -> canonical rod key (NormalRod, dll)
+local rodNameToKey  = {}
+
+local function buildRodAliasMaps()
+    for _, key in ipairs(rodOptions) do
+        rodOptionsMap[key] = true
+        -- nama persis
+        rodNameToKey[key] = key
+        -- nama dengan spasi (NormalRod -> Normal Rod, RubberDuckRod -> Rubber Duck Rod, dll)
+        local spaced = key:gsub("(%l)(%u)", "%1 %2")
+        rodNameToKey[spaced] = key
+    end
 end
+
+buildRodAliasMaps()
 
 local rodMeta = {
     NormalRod      = { shopName = "Normal Rod" },
@@ -165,12 +178,13 @@ local rodDropdownButton
 local rodDropdownListFrame
 local rodDropdownButtons  = {}
 local rodCurrentLabel
+local nonstopDelaySec     = NONSTOP_DELAY_DEFAULT
 
 ------------------- STATE ROD SHOP -------------------
 local rodShopData           = {}
 local rodShopScroll
-local rodShopItems          = {} -- [toolName] = {frame=..., buyButton=..., priceLabel=..., nameLabel=..., infoLabel=...}
-local ownedRodMap           = {} -- [toolName] = bool
+local rodShopItems          = {} -- [toolKey] = {frame=..., buyButton=..., priceText=..., shopName=..., entry=...}
+local ownedRodMap           = {} -- [toolKey] = bool
 local rodShopLoaded         = false
 
 ------------------- UI REFERENCES -------------------
@@ -187,6 +201,7 @@ local rodShopCard
 local getFishInputToggleBtn
 local getFishNonstopToggleBtn
 local fishCountInputBox
+local nonstopDelayInputBox
 local lastFishLabel
 local inputProgressLabel
 local logScrollFrame
@@ -248,7 +263,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2.1"
+    title.Text = "Indo Ocean - Fish Giver V2.2"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -444,6 +459,31 @@ local function createFishGiverCard(parent, order)
 
     local _, toggleNonstop = createToggleButton(card, "Get Fish Nonstop (Loop terus menerus)")
 
+    -- Input Delay Nonstop (UI baru)
+    local delayBox = Instance.new("TextBox")
+    delayBox.Name = "NonstopDelayInput"
+    delayBox.Parent = card
+    delayBox.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    delayBox.Size = UDim2.new(1, 0, 0, 26)
+    delayBox.ClearTextOnFocus = false
+    delayBox.Font = Enum.Font.Gotham
+    delayBox.TextSize = 13
+    delayBox.TextColor3 = Color3.fromRGB(225, 225, 235)
+    delayBox.TextXAlignment = Enum.TextXAlignment.Left
+    delayBox.Text = tostring(NONSTOP_DELAY_DEFAULT)
+    delayBox.PlaceholderText = "Delay Nonstop (detik, contoh: 0.01 / 0.05 / 0.1)"
+    delayBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+
+    local delayCorner = Instance.new("UICorner")
+    delayCorner.CornerRadius = UDim.new(0, 6)
+    delayCorner.Parent = delayBox
+
+    local delayStroke = Instance.new("UIStroke")
+    delayStroke.Parent = delayBox
+    delayStroke.Thickness = 1
+    delayStroke.Transparency = 0.3
+    delayStroke.Color = Color3.fromRGB(60, 60, 85)
+
     local prog = Instance.new("TextLabel")
     prog.Name = "InputProgressLabel"
     prog.Parent = card
@@ -455,7 +495,7 @@ local function createFishGiverCard(parent, order)
     prog.TextColor3 = Color3.fromRGB(170, 200, 255)
     prog.Text = "Progress: -"
 
-    return card, toggleInput, toggleNonstop, input, lastLbl, prog
+    return card, toggleInput, toggleNonstop, input, lastLbl, prog, delayBox
 end
 
 local function createSellFishCard(parent, order)
@@ -852,7 +892,8 @@ end
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
 
-fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel =
+fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox,
+    lastFishLabel, inputProgressLabel, nonstopDelayInputBox =
     createFishGiverCard(bodyFrame, 1)
 
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
@@ -1067,7 +1108,10 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
+    if not backpack then
+        backpack = LocalPlayer:FindFirstChild("Backpack")
+    end
     local char     = LocalPlayer.Character
 
     countInContainer(char)
@@ -1479,15 +1523,18 @@ end
 
 ------------------- OWNED ROD (DARI BACKPACK/CHAR/STARTERGEAR) -------------------
 local function rescanOwnedRods()
-    for _, name in ipairs(rodOptions) do
-        ownedRodMap[name] = false
+    for _, key in ipairs(rodOptions) do
+        ownedRodMap[key] = false
     end
 
     local function scan(container)
         if not container then return end
         for _, inst in ipairs(container:GetChildren()) do
-            if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
-                ownedRodMap[inst.Name] = true
+            if inst:IsA("Tool") then
+                local key = rodNameToKey[inst.Name]
+                if key then
+                    ownedRodMap[key] = true
+                end
             end
         end
     end
@@ -1503,8 +1550,8 @@ end
 
 local function refreshRodShopOwnedVisual()
     if not rodShopScroll then return end
-    for toolName, info in pairs(rodShopItems) do
-        local owned = ownedRodMap[toolName]
+    for toolKey, info in pairs(rodShopItems) do
+        local owned = ownedRodMap[toolKey]
         local btn = info and info.buyButton
         if btn then
             if owned then
@@ -1527,18 +1574,23 @@ local function watchRodContainer(container)
 
     container.ChildAdded:Connect(function(inst)
         if not alive then return end
-        if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
-            ownedRodMap[inst.Name] = true
-            refreshRodShopOwnedVisual()
+        if inst:IsA("Tool") then
+            local key = rodNameToKey[inst.Name]
+            if key then
+                ownedRodMap[key] = true
+                refreshRodShopOwnedVisual()
+            end
         end
     end)
 
     container.ChildRemoved:Connect(function(inst)
         if not alive then return end
-        if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
-            -- full rescan untuk aman (misal berpindah kontainer)
-            rescanOwnedRods()
-            refreshRodShopOwnedVisual()
+        if inst:IsA("Tool") then
+            local key = rodNameToKey[inst.Name]
+            if key then
+                rescanOwnedRods()
+                refreshRodShopOwnedVisual()
+            end
         end
     end)
 end
@@ -1553,6 +1605,9 @@ local function initOwnedRodWatch()
         watchRodContainer(LocalPlayer.Character)
     end
 
+    local starter = LocalPlayer:FindFirstChild("StarterGear")
+    watchRodContainer(starter)
+
     LocalPlayer.CharacterAdded:Connect(function(char)
         if not alive then return end
         watchRodContainer(char)
@@ -1562,12 +1617,12 @@ local function initOwnedRodWatch()
 end
 
 ------------------- ROD SHOP DATA & BUILD -------------------
-local function getFormattedPriceString(priceData)
-    if not priceData then
+local function getFormattedPriceString(entry)
+    if not entry then
         return "Buy"
     end
-    if priceData.Type == "Cash" then
-        local value = tonumber(priceData.Price) or 0
+    if entry.Type == "Cash" then
+        local value = tonumber(entry.Price) or 0
         local s = tostring(math.floor(value))
         local formatted = s
         local k
@@ -1575,7 +1630,7 @@ local function getFormattedPriceString(priceData)
             formatted, k = formatted:gsub("^(-?%d+)(%d%d%d)", "%1.%2")
         until k == 0
         return "Rp." .. formatted
-    elseif priceData.Type == "GamePass" then
+    elseif entry.Type == "GamePass" then
         return "GamePass"
     end
     return "Buy"
@@ -1605,12 +1660,12 @@ local function buildRodShopUI()
     end
     rodShopItems = {}
 
-    for _, toolName in ipairs(rodOptions) do
-        local shopName = getShopNameFromTool(toolName)
+    for _, toolKey in ipairs(rodOptions) do
+        local shopName = getShopNameFromTool(toolKey)
         local entry    = rodShopData[shopName]
 
         local row = Instance.new("Frame")
-        row.Name = "RodRow_" .. toolName
+        row.Name = "RodRow_" .. toolKey
         row.Parent = rodShopScroll
         row.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
         row.BackgroundTransparency = 0
@@ -1719,7 +1774,7 @@ local function buildRodShopUI()
 
         local priceText = getFormattedPriceString(entry)
 
-        rodShopItems[toolName] = {
+        rodShopItems[toolKey] = {
             frame      = row,
             buyButton  = buyBtn,
             priceText  = priceText,
@@ -1832,7 +1887,7 @@ local function scheduleNonstopStep(loopId)
         inputCurrentCount = inputCurrentCount + 1
         updateInputProgressLabel()
 
-        task.wait(NONSTOP_DELAY)
+        task.wait(nonstopDelaySec)
 
         if not alive then return end
         if not getFishNonstopEnabled then return end
@@ -2030,6 +2085,20 @@ if fishCountInputBox then
     end)
 end
 
+-- Delay Nonstop input
+if nonstopDelayInputBox then
+    nonstopDelayInputBox.FocusLost:Connect(function()
+        local raw = nonstopDelayInputBox.Text
+        local v   = tonumber(raw)
+        if not v or v <= 0 then
+            nonstopDelaySec            = NONSTOP_DELAY_DEFAULT
+            nonstopDelayInputBox.Text  = tostring(NONSTOP_DELAY_DEFAULT)
+        else
+            nonstopDelaySec = v
+        end
+    end)
+end
+
 if getFishInputToggleBtn then
     getFishInputToggleBtn.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -2164,14 +2233,14 @@ if rodDropdownButton and rodDropdownListFrame then
 end
 
 -- Rod Shop Buy events
-for toolName, info in pairs(rodShopItems) do
+for toolKey, info in pairs(rodShopItems) do
     local btn = info.buyButton
     if btn then
         btn.MouseButton1Click:Connect(function()
             if not alive then return end
 
-            if ownedRodMap[toolName] then
-                notify("Rod Shop", toolName .. " sudah Owned (dari Backpack).", 3)
+            if ownedRodMap[toolKey] then
+                notify("Rod Shop", toolKey .. " sudah Owned (dari Backpack).", 3)
                 return
             end
 
@@ -2188,29 +2257,27 @@ for toolName, info in pairs(rodShopItems) do
                 return
             end
 
-            local ok, status, msg = pcall(function()
+            local ok, result, errMsg = pcall(function()
                 local s, err = BuyItemRemote:InvokeServer(shopName)
                 return s, err
             end)
 
             if not ok then
-                notify("Rod Shop", "Error BuyItem: " .. tostring(status), 4)
-                appendLog("[RodShop] Error BuyItem(" .. tostring(shopName) .. "): " .. tostring(status))
+                notify("Rod Shop", "Error BuyItem: " .. tostring(result), 4)
+                appendLog("[RodShop] Error BuyItem(" .. tostring(shopName) .. "): " .. tostring(result))
                 return
             end
 
-            local result, errMsg = status, msg
-
             if result == "Success" then
                 appendLog("[RodShop] Pembelian " .. tostring(shopName) .. " Success.")
-                -- mark Owned manual, nanti rescanOwnedRods juga akan sync
-                ownedRodMap[toolName] = true
+                -- mark Owned manual + rescan supaya aman untuk alias nama Tool
+                ownedRodMap[toolKey] = true
+                rescanOwnedRods()
                 refreshRodShopOwnedVisual()
             elseif result == "Failed" then
                 notify("Rod Shop", "Gagal: " .. tostring(errMsg), 4)
                 appendLog("[RodShop] Failed " .. tostring(shopName) .. ": " .. tostring(errMsg))
             elseif result == "PromptPurchase" then
-                -- harusnya untuk GamePass, tapi sudah ditangani di atas
                 appendLog("[RodShop] PromptPurchase " .. tostring(shopName))
             end
         end)
