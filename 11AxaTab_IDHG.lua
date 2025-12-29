@@ -2270,7 +2270,7 @@ makeLabel(
 -- DESKRIPSI HEADER (AUTO HEIGHT)
 local headerSubLabel = makeLabel(
     headerScroll,"Sub",
-    "Auto Fishing + Auto Sell Under (V2++ LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
+    "Auto Fishing + Auto Sell Under (V2 LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
     UDim2.new(1,-10,0,0),UDim2.new(),
     { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(90,90,120),
       XAlign=Enum.TextXAlignment.Left, YAlign=Enum.TextYAlignment.Top, Wrapped=true }
@@ -3740,7 +3740,7 @@ local function createRodShopCard(parent)
 end
 
 ------------------------------------------------------------
--- CARD: AURA SHOP - INDO HG
+-- CARD: AURA SHOP - INDO HG (RAPI, MIRIP ROD SHOP)
 ------------------------------------------------------------
 local function createAuraShopCard(parent)
     local auraCard = makeCard(parent, 5)
@@ -3753,7 +3753,7 @@ local function createAuraShopCard(parent)
 
     local auraDescLabel = makeLabel(
         auraCard,"AuraDesc",
-        "Preview & beli Aura Indo HG. Tombol Buy otomatis berubah menjadi Owned jika aura sudah dimiliki.",
+        "Preview & beli Aura Indo HG. Daftar di bawah mirip Rod Shop: ada index, nama, price, dan status Owned.",
         UDim2.new(1,0,0,0),UDim2.new(0,0,0,18),
         { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(92,96,124),
           XAlign=Enum.TextXAlignment.Left, YAlign=Enum.TextYAlignment.Top, Wrapped=true }
@@ -3783,6 +3783,7 @@ local function createAuraShopCard(parent)
         { Name = "Purple Wings"  },
     }
 
+    -- PROFILE & OWNED STATE
     local auraProfile
     local ownedSet = {}
 
@@ -3816,6 +3817,7 @@ local function createAuraShopCard(parent)
         return ownedSet[name] == true
     end
 
+    -- PREVIEW STATE
     local selectedAura
     local previewIcon
     local previewNameLabel
@@ -3824,23 +3826,28 @@ local function createAuraShopCard(parent)
     local previewDescLabel
     local buyButton
 
-    local infoRow = New("Frame", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1,0,0,90),
-        Parent = auraCard,
+    --------------------------------------------------------
+    -- PREVIEW AREA (ATAS) MIRIP “HEADER KECIL”
+    --------------------------------------------------------
+    local previewCard = New("Frame", {
+        Name = "AuraPreviewCard",
+        BackgroundColor3 = Color3.fromRGB(244,246,255),
+        BorderSizePixel  = 0,
+        Size             = UDim2.new(1,0,0,90),
+        Parent           = auraCard,
     }, {
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            SortOrder     = Enum.SortOrder.LayoutOrder,
-            Padding       = UDim.new(0,8),
+        New("UICorner", { CornerRadius = UDim.new(0,10) }),
+        New("UIStroke", {
+            Thickness    = 1,
+            Color        = Color3.fromRGB(220,222,238),
+            Transparency = 0.35,
         }),
-    })
-
-    local leftInfo = New("Frame", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.45,0,1,0),
-        Parent = infoRow,
-    }, {
+        New("UIPadding", {
+            PaddingTop    = UDim.new(0,6),
+            PaddingBottom = UDim.new(0,6),
+            PaddingLeft   = UDim.new(0,8),
+            PaddingRight  = UDim.new(0,8),
+        }),
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Vertical,
             SortOrder     = Enum.SortOrder.LayoutOrder,
@@ -3848,23 +3855,11 @@ local function createAuraShopCard(parent)
         }),
     })
 
-    local rightList = New("Frame", {
+    local iconRow = New("Frame", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(0.55,0,1,0),
-        Parent = infoRow,
-    })
-
-    local iconFrame = New("Frame", {
-        BackgroundColor3 = Color3.fromRGB(244,246,255),
-        BorderSizePixel  = 0,
-        Size             = UDim2.new(1,0,0,42),
-        Parent           = leftInfo,
+        Size = UDim2.new(1,0,0,32),
+        Parent = previewCard,
     }, {
-        New("UICorner", { CornerRadius = UDim.new(0,8) }),
-        New("UIPadding", {
-            PaddingLeft   = UDim.new(0,6),
-            PaddingRight  = UDim.new(0,6),
-        }),
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
             SortOrder     = Enum.SortOrder.LayoutOrder,
@@ -3874,43 +3869,55 @@ local function createAuraShopCard(parent)
 
     previewIcon = New("ImageLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(0,32,0,32),
-        ScaleType = Enum.ScaleType.Fit,
-        Image = "",
-        Parent = iconFrame,
+        Size       = UDim2.new(0,32,0,32),
+        ScaleType  = Enum.ScaleType.Fit,
+        Image      = "",
+        Parent     = iconRow,
     })
 
     previewNameLabel = New("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1,-40,1,0),
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = Color3.fromRGB(40,44,80),
-        Text = "Pilih aura di sebelah kanan",
-        Parent = iconFrame,
+        Size             = UDim2.new(1,-40,1,0),
+        Font             = Enum.Font.GothamSemibold,
+        TextSize         = 13,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+        TextColor3       = Color3.fromRGB(40,44,80),
+        Text             = "Pilih aura di daftar bawah",
+        Parent           = iconRow,
+    })
+
+    local infoRow = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,32),
+        Parent = previewCard,
+    }, {
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder     = Enum.SortOrder.LayoutOrder,
+            Padding       = UDim.new(0,2),
+        }),
     })
 
     previewPriceLabel = New("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1,0,0,16),
+        Size = UDim2.new(1,0,0,14),
         Font = Enum.Font.Gotham,
         TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextColor3 = Color3.fromRGB(60,100,60),
         Text = "Price: -",
-        Parent = leftInfo,
+        Parent = infoRow,
     })
 
     previewRarityLabel = New("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1,0,0,16),
+        Size = UDim2.new(1,0,0,14),
         Font = Enum.Font.Gotham,
         TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextColor3 = Color3.fromRGB(92,96,124),
         Text = "Rarity: -",
-        Parent = leftInfo,
+        Parent = infoRow,
     })
 
     previewDescLabel = New("TextLabel", {
@@ -3924,20 +3931,23 @@ local function createAuraShopCard(parent)
         TextWrapped = true,
         TextColor3 = Color3.fromRGB(110,114,140),
         Text = "Deskripsi aura akan muncul di sini.",
-        Parent = leftInfo,
+        Parent = previewCard,
     })
 
-    buyButton = makeLittleButton(leftInfo, "Buy", 0)
+    buyButton = makeLittleButton(previewCard, "Buy", 0)
     buyButton.Size = UDim2.new(1,0,0,24)
 
+    --------------------------------------------------------
+    -- SCROLL LIST AURA (MIRIP ROD SHOP STYLE)
+    --------------------------------------------------------
     local auraScroll = New("ScrollingFrame", {
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.new(1,0,1,0),
+        Size = UDim2.new(1,0,0,150),
         CanvasSize = UDim2.new(0,0,0,0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ScrollBarThickness = 3,
-        Parent = rightList,
+        Parent = auraCard,
     }, {
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Vertical,
@@ -3946,6 +3956,9 @@ local function createAuraShopCard(parent)
         }),
     })
 
+    --------------------------------------------------------
+    -- HELPER: GET AURA INFO (CACHE)
+    --------------------------------------------------------
     local function getAuraInfo(auraItem)
         if auraItem.Info then
             return auraItem.Info
@@ -3960,11 +3973,18 @@ local function createAuraShopCard(parent)
         return nil
     end
 
+    --------------------------------------------------------
+    -- UPDATE BUTTON BUY (GLOBAL)
+    --------------------------------------------------------
     local function updateBuyButtonState()
+        if not buyButton then return end
+
         if not selectedAura then
             buyButton.Text = "Buy"
             buyButton.AutoButtonColor = false
             buyButton.Active = false
+            buyButton.BackgroundColor3 = Color3.fromRGB(228,232,248)
+            buyButton.TextColor3       = Color3.fromRGB(40,44,70)
             return
         end
 
@@ -3984,33 +4004,41 @@ local function createAuraShopCard(parent)
         end
     end
 
+    --------------------------------------------------------
+    -- REFRESH ROW STYLE AURA (MIRIP ROD SHOP BARIS)
+    --------------------------------------------------------
     local function refreshAuraButtons(selectedName)
         for _, item in ipairs(AURA_LIST) do
-            local btn = item.Button
-            if btn then
+            local row       = item.RowFrame
+            local nameLabel = item.NameLabel
+
+            if row and nameLabel then
                 local owned = isAuraOwned(item.Name)
-                local text = item.Name
+                local text  = item.Name
                 if owned then
                     text = text .. " (Owned)"
                 end
-                btn.Text = text
+                nameLabel.Text = text
 
                 if selectedName and selectedName == item.Name then
-                    btn.BackgroundColor3 = Color3.fromRGB(120,170,255)
-                    btn.TextColor3       = Color3.fromRGB(255,255,255)
+                    row.BackgroundColor3 = Color3.fromRGB(120,170,255)
+                    nameLabel.TextColor3 = Color3.fromRGB(255,255,255)
                 else
                     if owned then
-                        btn.BackgroundColor3 = Color3.fromRGB(210,205,220)
-                        btn.TextColor3       = Color3.fromRGB(80,80,100)
+                        row.BackgroundColor3 = Color3.fromRGB(210,205,220)
+                        nameLabel.TextColor3 = Color3.fromRGB(80,80,100)
                     else
-                        btn.BackgroundColor3 = Color3.fromRGB(228,232,248)
-                        btn.TextColor3       = Color3.fromRGB(40,44,70)
+                        row.BackgroundColor3 = Color3.fromRGB(244,246,255)
+                        nameLabel.TextColor3 = Color3.fromRGB(40,44,70)
                     end
                 end
             end
         end
     end
 
+    --------------------------------------------------------
+    -- PREVIEW AURA (KLIK ROW)
+    --------------------------------------------------------
     local function previewAura(auraItem)
         selectedAura = auraItem
         playUISound("UI - Hover 1")
@@ -4059,6 +4087,17 @@ local function createAuraShopCard(parent)
             else
                 previewDescLabel.Text = "Tidak ada deskripsi aura."
             end
+
+            -- Update label harga di row sesuai info (mirip Rod Shop)
+            if auraItem.PriceLabel then
+                if isAuraOwned(auraItem.Name) then
+                    auraItem.PriceLabel.Text = "Price: Owned"
+                elseif priceVal then
+                    auraItem.PriceLabel.Text = "Price: " .. formatRupiah(priceVal)
+                else
+                    auraItem.PriceLabel.Text = "Price: -"
+                end
+            end
         else
             previewIcon.Image        = ""
             previewPriceLabel.Text   = "Price: -"
@@ -4071,18 +4110,114 @@ local function createAuraShopCard(parent)
         updateBuyButtonState()
     end
 
-    for _, item in ipairs(AURA_LIST) do
-        local btn = makeLittleButton(auraScroll, item.Name, 0)
-        btn.Size = UDim2.new(1,0,0,24)
-        item.Button = btn
-        btn.MouseButton1Click:Connect(function()
+    --------------------------------------------------------
+    -- BUILD ROW AURA (MIRIP ROD SHOP INDO OCEAN)
+    --------------------------------------------------------
+    for idx, item in ipairs(AURA_LIST) do
+        local row = New("Frame", {
+            BackgroundColor3 = Color3.fromRGB(244,246,255),
+            BorderSizePixel  = 0,
+            Size             = UDim2.new(1,0,0,24),
+            Parent           = auraScroll,
+        }, {
+            New("UICorner", { CornerRadius = UDim.new(0,6) }),
+            New("UIPadding", {
+                PaddingLeft  = UDim.new(0,6),
+                PaddingRight = UDim.new(0,6),
+            }),
+            New("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                SortOrder     = Enum.SortOrder.LayoutOrder,
+                Padding       = UDim.new(0,4),
+            }),
+        })
+
+        item.RowFrame = row
+
+        -- INDEX
+        New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.10,0,1,0),
+            Font = Enum.Font.Gotham,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextColor3 = Color3.fromRGB(70,74,110),
+            Text = tostring(idx)..".",
+            Parent = row,
+        })
+
+        -- NAMA AURA
+        local nameLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.40,0,1,0),
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextColor3 = Color3.fromRGB(40,44,80),
+            Text = item.Name,
+            Parent = row,
+        })
+        item.NameLabel = nameLabel
+
+        -- PRICE LABEL (AKAN DIUPDATE KETIKA INFO TERAMBIL)
+        local priceLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.40,0,1,0),
+            Font = Enum.Font.Gotham,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextColor3 = Color3.fromRGB(60,100,60),
+            Text = "Price: -",
+            Parent = row,
+        })
+        item.PriceLabel = priceLabel
+
+        -- SPACER KECIL
+        New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.10,0,1,0),
+            Parent = row,
+        })
+
+        -- AREA KLIK TRANSPARAN (SUPAYA MIRIP FEEL BUTTON)
+        local clickBtn = New("TextButton", {
+            BackgroundTransparency = 1,
+            BorderSizePixel  = 0,
+            Text             = "",
+            AutoButtonColor  = false,
+            Size             = UDim2.new(1,0,1,0),
+            ZIndex           = 2,
+            Parent           = row,
+        })
+
+        clickBtn.MouseButton1Click:Connect(function()
             previewAura(item)
+        end)
+
+        -- Ambil info awal (sekali) supaya price langsung muncul di list
+        task.spawn(function()
+            local info = getAuraInfo(item)
+            if info then
+                local priceVal = info.price or info.Price or info.Coin or info.coin or info.Coins or info.coins
+                item.Price = priceVal
+                if isAuraOwned(item.Name) then
+                    priceLabel.Text = "Price: Owned"
+                elseif priceVal then
+                    priceLabel.Text = "Price: " .. formatRupiah(priceVal)
+                else
+                    priceLabel.Text = "Price: -"
+                end
+            end
+            refreshAuraButtons(selectedAura and selectedAura.Name or nil)
         end)
     end
 
     refreshAuraButtons(nil)
     updateBuyButtonState()
 
+    --------------------------------------------------------
+    -- BUY BUTTON: BELI AURA YANG SEDANG DI-PREVIEW
+    --------------------------------------------------------
     buyButton.MouseButton1Click:Connect(function()
         local auraItem = selectedAura
         if not auraItem then
@@ -4131,7 +4266,7 @@ local function createAuraShopCard(parent)
     end)
 end
 
--- PANGGIL KEDUA CARD
+-- PANGGIL KEDUA CARD (TETAP)
 createRodShopCard(body)
 createAuraShopCard(body)
 
