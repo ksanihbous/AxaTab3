@@ -38,7 +38,7 @@ local BuyItemRemote       = RemotesFolder and RemotesFolder:WaitForChild("BuyIte
 
 -- TUNING Fish Giver
 local INPUT_DELAY             = 0.01
-local NONSTOP_DELAY_DEFAULT   = 0.01
+local NONSTOP_DELAY_DEFAULT   = 0.50
 local SELL_THIS_FISH_DELAY    = 0.4
 
 -- TUNING Drop Money
@@ -150,6 +150,8 @@ local logRawEnabled           = false
 local nonstopLoopId           = 0
 local sellThisFishLoopId      = 0
 
+local totalFishCount          = 0
+
 ------------------- STATE CASH -------------------
 local cashValueObj        = nil
 local currentCash         = 0
@@ -215,6 +217,7 @@ local dropdownItemButtons = {}
 local fishRefreshButton
 
 local sellProgressLabel
+local totalFishLabel
 local logToggleBtn
 
 local cashLabel
@@ -264,7 +267,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2.2+"
+    title.Text = "Indo Ocean - Fish Giver V2.3"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -276,7 +279,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "MiniGame Complete (Rod Pilihan) + Auto Sell RemoteFish + Drop Money + Rod Shop"
+    desc.Text = "MiniGame Complete + Auto Sell + Drop Money + Rod Shop"
 
     return h
 end
@@ -580,6 +583,17 @@ local function createSellFishCard(parent, order)
     selLabel.TextColor3 = Color3.fromRGB(180, 200, 230)
     selLabel.Text = "Selected Fish (Sell This Fish):"
 
+    local totalLbl = Instance.new("TextLabel")
+    totalLbl.Name = "TotalFishLabel"
+    totalLbl.Parent = card
+    totalLbl.BackgroundTransparency = 1
+    totalLbl.Size = UDim2.new(1, 0, 0, 18)
+    totalLbl.Font = Enum.Font.Gotham
+    totalLbl.TextSize = 11
+    totalLbl.TextXAlignment = Enum.TextXAlignment.Left
+    totalLbl.TextColor3 = Color3.fromRGB(180, 230, 180)
+    totalLbl.Text = "Total Fish (Backpack): 0 Fish"
+
     local refreshBtn = Instance.new("TextButton")
     refreshBtn.Name = "RefreshFishButton"
     refreshBtn.Parent = card
@@ -686,7 +700,7 @@ local function createSellFishCard(parent, order)
     totalIncomeLbl.TextColor3 = Color3.fromRGB(220, 220, 200)
     totalIncomeLbl.Text = "Total Sell Income: 0"
 
-    return card, ddButton, ddList, prog, refreshBtn, cashLbl, lastSellLbl, totalIncomeLbl
+    return card, ddButton, ddList, prog, refreshBtn, cashLbl, lastSellLbl, totalIncomeLbl, totalLbl
 end
 
 local function createFishLogCard(parent, order)
@@ -898,7 +912,7 @@ fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox,
     createFishGiverCard(bodyFrame, 1)
 
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
-    fishRefreshButton, cashLabel, lastSellIncomeLabel, totalSellIncomeLabel =
+    fishRefreshButton, cashLabel, lastSellIncomeLabel, totalSellIncomeLabel, totalFishLabel =
     createSellFishCard(bodyFrame, 2)
 
 logCard, logScrollFrame, logToggleBtn =
@@ -1033,15 +1047,20 @@ local function scanBackpack()
 
     fishCategoryList = {}
     fishCategoryMap  = {}
+    totalFishCount   = 0
 
     if not backpack then
         appendLog("[Dropdown] Backpack tidak ditemukan untuk scan.")
+        if totalFishLabel then
+            totalFishLabel.Text = "Total Fish (Backpack): 0 Fish"
+        end
         return
     end
 
     for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") then
             if not isIgnoredToolForDropdown(tool.Name) then
+                totalFishCount += 1
                 local cname = cleanFishName(tool.Name)
                 if cname ~= "" and not fishCategoryMap[cname] then
                     fishCategoryMap[cname] = true
@@ -1054,6 +1073,10 @@ local function scanBackpack()
     table.sort(fishCategoryList, function(a, b)
         return a:lower() < b:lower()
     end)
+
+    if totalFishLabel then
+        totalFishLabel.Text = string.format("Total Fish (Backpack): %d Fish", totalFishCount)
+    end
 end
 
 ------------------- HELPER: CARI TOOL FISH PER KATEGORI -------------------
@@ -1109,7 +1132,7 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
     if not backpack then
         local ok, res = pcall(function()
             return LocalPlayer:WaitForChild("Backpack", 5)
@@ -1450,7 +1473,7 @@ local function buildFishDropdownItems()
 
         local initialCount = countFishToolsInCategory(cname)
         btn.TextColor3 = Color3.fromRGB(220, 220, 230)
-        btn.Text = string.format("%dx %s", initialCount, cname)
+        btn.Text = string.format("%d ikan %s", initialCount, cname)
 
         local c = Instance.new("UICorner")
         c.CornerRadius = UDim.new(0, 4)
@@ -1464,7 +1487,7 @@ local function buildFishDropdownItems()
 
             if sellDropdownButton then
                 local currentCount = countFishToolsInCategory(cname)
-                sellDropdownButton.Text = string.format("%dx %s", currentCount, cname)
+                sellDropdownButton.Text = string.format("%d ikan %s", currentCount, cname)
             end
 
             for key, b in pairs(dropdownItemButtons) do
