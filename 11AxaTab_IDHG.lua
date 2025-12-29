@@ -68,7 +68,8 @@ do
     end
 end
 
-local RodShopRemoteFunction, RodIndexRemoteFunction
+-- TAMBAH AuraShopRemoteFunction DI SINI
+local RodShopRemoteFunction, RodIndexRemoteFunction, AuraShopRemoteFunction
 if RemoteFunctionFolder then
     RodShopRemoteFunction = RemoteFunctionFolder:FindFirstChild("RodShop")
         or RemoteFunctionFolder:FindFirstChild("RodShopRemote")
@@ -76,6 +77,7 @@ if RemoteFunctionFolder then
 
     RodIndexRemoteFunction = RemoteFunctionFolder:FindFirstChild("Index")
     SellFishRemoteFunction = RemoteFunctionFolder:FindFirstChild("SellFish")
+    AuraShopRemoteFunction = RemoteFunctionFolder:FindFirstChild("AuraShop")
 end
 
 ------------------- UI HELPERS -------------------
@@ -2268,7 +2270,7 @@ makeLabel(
 -- DESKRIPSI HEADER (AUTO HEIGHT)
 local headerSubLabel = makeLabel(
     headerScroll,"Sub",
-    "Auto Fishing + Auto Sell Under (v2 LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
+    "Auto Fishing + Auto Sell Under (v2+ LITE) + Rod Shop. Filter: Only Me / Filter Friends / Filter All Friend / Filter All Player. Stranger embed merah",
     UDim2.new(1,-10,0,0),UDim2.new(),
     { Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(90,90,120),
       XAlign=Enum.TextXAlignment.Left, YAlign=Enum.TextYAlignment.Top, Wrapped=true }
