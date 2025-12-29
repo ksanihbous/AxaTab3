@@ -4330,4 +4330,5 @@ _G.AxaHub.TabCleanup[tabId] = function()
     detachReelEvent()
     setReelProgress(0)
 end
+
 notify("IndoHangout","TAB Indo HG siap. Auto Fishing + Auto Sell",4)
