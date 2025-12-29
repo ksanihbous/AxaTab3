@@ -38,7 +38,7 @@ local BuyItemRemote       = RemotesFolder and RemotesFolder:WaitForChild("BuyIte
 
 -- TUNING Fish Giver
 local INPUT_DELAY             = 0.01
-local NONSTOP_DELAY_DEFAULT   = 0.50
+local NONSTOP_DELAY_DEFAULT   = 0.01
 local SELL_THIS_FISH_DELAY    = 0.4
 
 -- TUNING Drop Money
@@ -267,7 +267,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2.3"
+    title.Text = "Indo Ocean - Fish Giver V2.3+"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -279,7 +279,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "MiniGame Complete + Auto Sell + Drop Money + Rod Shop"
+    desc.Text = "MiniGame Complete (Rod Pilihan) + Auto Sell RemoteFish + Drop Money + Rod Shop"
 
     return h
 end
@@ -996,11 +996,23 @@ local function cleanFishName(raw)
     end
 
     local name = raw
+
+    -- hapus label Favorite
     name = name:gsub("%(Favorite%)", "")
+
+    -- hapus pola range kg, misal: " 0-100Kg" / " 0 - 100 KG"
+    name = name:gsub("%d+%s*%-+%s*%d+%s*[Kk][Gg]", "")
+    -- hapus pola berat tunggal, misal: " 123Kg"
+    name = name:gsub("%d+%s*[Kk][Gg]", "")
+    -- hapus sisa "KG" tanpa angka di kiri
+    name = name:gsub("%s*[Kk][Gg]", "")
+
+    -- rapikan spasi
     name = name:gsub("%s+", " ")
     name = name:gsub("^%s+", "")
     name = name:gsub("%s+$", "")
 
+    -- jika masih ada tanda kurung (misal kategori lain), ambil sebelum "("
     local base = name:match("^(.-)%s*%(")
     if base and base ~= "" then
         name = base:gsub("%s+$", "")
@@ -1132,7 +1144,7 @@ local function countFishToolsInCategory(categoryName)
         end
     end
 
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindChild("Backpack")
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
     if not backpack then
         local ok, res = pcall(function()
             return LocalPlayer:WaitForChild("Backpack", 5)
