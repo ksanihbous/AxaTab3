@@ -206,7 +206,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2.2"
+    title.Text = "Indo Ocean - Fish Giver V2.3+"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -610,7 +610,7 @@ local function createSellFishCard(parent, order)
     local ddPad = Instance.new("UIPadding")
     ddPad.Parent = ddList
     ddPad.PaddingTop = UDim.new(0, 2)
-    ddPad.PaddingBottom = UDim.New(0, 4)
+    ddPad.PaddingBottom = UDim.new(0, 4)
     ddPad.PaddingLeft = UDim.new(0, 2)
     ddPad.PaddingRight = UDim.new(0, 2)
 
