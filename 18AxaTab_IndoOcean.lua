@@ -1,19 +1,19 @@
 --==========================================================
 --  18AxaTab_IndoOcean.lua
---  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame Complete + Auto Sell + Drop Money + Rod Shop)"
+--  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame Complete + Auto Sell + Drop Money + Rod Setting + Rod Shop)"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
 local frame  = TAB_FRAME
 local tabId  = TAB_ID or "indoocean"
 
-local Players           = Players           or game:GetService("Players")
-local LocalPlayer       = LocalPlayer       or Players.LocalPlayer
-local RunService        = RunService        or game:GetService("RunService")
-local StarterGui        = StarterGui        or game:GetService("StarterGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService       = HttpService       or game:GetService("HttpService")
-local MarketplaceService= game:GetService("MarketplaceService")
+local Players             = Players             or game:GetService("Players")
+local LocalPlayer         = LocalPlayer         or Players.LocalPlayer
+local RunService          = RunService          or game:GetService("RunService")
+local StarterGui          = StarterGui          or game:GetService("StarterGui")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local HttpService         = HttpService         or game:GetService("HttpService")
+local MarketplaceService  = game:GetService("MarketplaceService")
 
 if not (frame and LocalPlayer) then
     return
@@ -32,9 +32,9 @@ local DropEventFolder = ReplicatedStorage:WaitForChild("DropEvent", 5)
 local DropCashEvent   = DropEventFolder and DropEventFolder:WaitForChild("DropCashEvent", 5)
 
 -- Remotes Rod Shop
-local RemotesMainFolder = ReplicatedStorage:WaitForChild("Remotes", 5)
-local BuyItemRemote     = RemotesMainFolder and RemotesMainFolder:WaitForChild("BuyItem", 5)
-local GetShopDataRemote = RemotesMainFolder and RemotesMainFolder:WaitForChild("GetShopData", 5)
+local RemotesFolder       = ReplicatedStorage:WaitForChild("Remotes", 5)
+local GetShopDataRemote   = RemotesFolder and RemotesFolder:WaitForChild("GetShopData", 5)
+local BuyItemRemote       = RemotesFolder and RemotesFolder:WaitForChild("BuyItem", 5)
 
 -- TUNING Fish Giver
 local INPUT_DELAY          = 0.01
@@ -44,6 +44,51 @@ local SELL_THIS_FISH_DELAY = 0.4
 -- TUNING Drop Money
 local DROP_DELAY_MIN = 5
 local DROP_DELAY_MAX = 8
+
+-- LIST ROD (ToolName) + mapping ke nama Shop (BuyItem / GetShopData)
+local rodOptions = {
+    "NormalRod",
+    "SteakRod",
+    "RobotRod",
+    "SausageRod",
+    "LovingRod",
+    "LanternRod",
+    "NarwhaleRod",
+    "CelebrationRod",
+    "RubberDuckRod",
+    "CoralRod",
+    "CatRod",
+    "SakuraRod",
+    "BinaryRod",
+    "UmbrellaRod",
+}
+
+local rodOptionsMap = {}
+for _, name in ipairs(rodOptions) do
+    rodOptionsMap[name] = true
+end
+
+local rodMeta = {
+    NormalRod      = { shopName = "Normal Rod" },
+    SteakRod       = { shopName = "Steak Rod" },
+    RobotRod       = { shopName = "Robot Rod" },
+    SausageRod     = { shopName = "Sausage Rod" },
+    LovingRod      = { shopName = "Loving Rod" },
+    LanternRod     = { shopName = "Lantern Rod" },
+    NarwhaleRod    = { shopName = "Narwhale Rod" },
+    CelebrationRod = { shopName = "Celebration Rod" },
+    RubberDuckRod  = { shopName = "Rubber Duck Rod" },
+    CoralRod       = { shopName = "Coral Rod" },
+    CatRod         = { shopName = "Cat Rod" },
+    SakuraRod      = { shopName = "Sakura Rod" },
+    BinaryRod      = { shopName = "Binary Rod" },
+    UmbrellaRod    = { shopName = "Umbrella Rod" },
+}
+
+local function getShopNameFromTool(toolName)
+    local meta = rodMeta[toolName]
+    return (meta and meta.shopName) or toolName
+end
 
 ------------------- STATE UTAMA - FISH -------------------
 local alive                  = true
@@ -113,53 +158,31 @@ local autoDrop10MLoopId    = 0
 local autoDrop100MLoopId   = 0
 local autoDrop1BLoopId     = 0
 
-------------------- STATE ROD MINI GAME -------------------
-local rodOptions = {
-    "NormalRod",
-    "SteakRod",
-    "RobotRod",
-    "SausageRod",
-    "LovingRod",
-    "LanternRod",
-    "NarwhaleRod",
-    "CelebrationRod",
-    "RubberDuckRod",
-    "CoralRod",
-    "CatRod",
-    "SakuraRod",
-    "BinaryRod",
-    "UmbrellaRod",
-}
+------------------- STATE ROD SETTING -------------------
+local currentRodName      = "NormalRod"
+local rodCard
+local rodDropdownButton
+local rodDropdownListFrame
+local rodDropdownButtons  = {}
+local rodCurrentLabel
 
--- Mapping internal Tool name -> display / shop name
-local rodMeta = {
-    NormalRod      = { shopName = "Normal Rod" },
-    SteakRod       = { shopName = "Steak Rod" },
-    RobotRod       = { shopName = "Robot Rod" },
-    SausageRod     = { shopName = "Sausage Rod" },
-    LovingRod      = { shopName = "Loving Rod" },
-    LanternRod     = { shopName = "Lantern Rod" },
-    NarwhaleRod    = { shopName = "Narwhale Rod" },
-    CelebrationRod = { shopName = "Celebration Rod" },
-    RubberDuckRod  = { shopName = "Rubber Duck Rod" },
-    CoralRod       = { shopName = "Coral Rod" },
-    CatRod         = { shopName = "Cat Rod" },
-    SakuraRod      = { shopName = "Sakura Rod" },
-    BinaryRod      = { shopName = "Binary Rod" },
-    UmbrellaRod    = { shopName = "Umbrella Rod" },
-}
-
-local currentRodName = "NormalRod"
+------------------- STATE ROD SHOP -------------------
+local rodShopData           = {}
+local rodShopScroll
+local rodShopItems          = {} -- [toolName] = {frame=..., buyButton=..., priceLabel=..., nameLabel=..., infoLabel=...}
+local ownedRodMap           = {} -- [toolName] = bool
+local rodShopLoaded         = false
 
 ------------------- UI REFERENCES -------------------
 local headerFrame
 local bodyFrame
 
--- Fish / Sell / Log / Drop
+-- Fish UI
 local fishCard
 local sellCard
 local logCard
 local dropCard
+local rodShopCard
 
 local getFishInputToggleBtn
 local getFishNonstopToggleBtn
@@ -183,16 +206,6 @@ local lastSellIncomeLabel
 local totalSellIncomeLabel
 
 local currentDropdownKey = "__DISABLE__"
-
--- Rod dropdown MiniGame
-local rodDropdownButton
-local rodDropdownListFrame
-
--- Rod Shop
-local rodShopCard
-local rodShopScroll
-local rodShopItems        = {}   -- [internalName] = {frame=..., buyButton=..., priceLabel=..., shopName=..., data=...}
-local rodShopGamePassMap  = {}   -- [gamePassId] = internalName
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -235,7 +248,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2"
+    title.Text = "Indo Ocean - Fish Giver V2.1"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -247,7 +260,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "MiniGame Complete (Rod pilihan) + Auto Sell RemoteFish + Drop Money + Rod Shop"
+    desc.Text = "MiniGame Complete (Rod Pilihan) + Auto Sell RemoteFish + Drop Money + Rod Shop"
 
     return h
 end
@@ -388,7 +401,7 @@ local function createFishGiverCard(parent, order)
     local card = createCard(
         parent,
         "Fish Giver Control",
-        "MiniGame: Rod pilihan.MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
+        "MiniGame: <Rod>.MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
         order
     )
 
@@ -402,67 +415,6 @@ local function createFishGiverCard(parent, order)
     lastLbl.TextXAlignment = Enum.TextXAlignment.Left
     lastLbl.TextColor3 = Color3.fromRGB(180, 220, 255)
     lastLbl.Text = "Last Fish: -"
-
-    -- Rod label
-    local rodLbl = Instance.new("TextLabel")
-    rodLbl.Name = "RodLabel"
-    rodLbl.Parent = card
-    rodLbl.BackgroundTransparency = 1
-    rodLbl.Size = UDim2.new(1, 0, 0, 18)
-    rodLbl.Font = Enum.Font.Gotham
-    rodLbl.TextSize = 11
-    rodLbl.TextXAlignment = Enum.TextXAlignment.Left
-    rodLbl.TextColor3 = Color3.fromRGB(190, 200, 230)
-    rodLbl.Text = "Rod MiniGame (Default: NormalRod)"
-
-    -- Rod dropdown button
-    local rodBtn = Instance.new("TextButton")
-    rodBtn.Name = "RodDropdownButton"
-    rodBtn.Parent = card
-    rodBtn.Size = UDim2.new(1, 0, 0, 26)
-    rodBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-    rodBtn.AutoButtonColor = true
-    rodBtn.Font = Enum.Font.Gotham
-    rodBtn.TextSize = 13
-    rodBtn.TextXAlignment = Enum.TextXAlignment.Left
-    rodBtn.TextColor3 = Color3.fromRGB(225, 225, 235)
-    rodBtn.Text = "Rod: " .. tostring(currentRodName)
-
-    local rodCorner = Instance.new("UICorner")
-    rodCorner.CornerRadius = UDim.new(0, 6)
-    rodCorner.Parent = rodBtn
-
-    local rodStroke = Instance.new("UIStroke")
-    rodStroke.Parent = rodBtn
-    rodStroke.Thickness = 1
-    rodStroke.Transparency = 0.3
-    rodStroke.Color = Color3.fromRGB(60, 60, 85)
-
-    -- Rod dropdown list
-    local rodList = Instance.new("ScrollingFrame")
-    rodList.Name = "RodDropdownList"
-    rodList.Parent = card
-    rodList.BackgroundTransparency = 1
-    rodList.BorderSizePixel = 0
-    rodList.Size = UDim2.new(1, 0, 0, 0)
-    rodList.Visible = false
-    rodList.ScrollBarThickness = 4
-    rodList.CanvasSize = UDim2.new(0, 0, 0, 0)
-    rodList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    rodList.ScrollBarImageTransparency = 0.2
-
-    local rodPad = Instance.new("UIPadding")
-    rodPad.Parent = rodList
-    rodPad.PaddingTop = UDim.new(0, 2)
-    rodPad.PaddingBottom = UDim.new(0, 4)
-    rodPad.PaddingLeft = UDim.new(0, 2)
-    rodPad.PaddingRight = UDim.new(0, 2)
-
-    local rodLayout = Instance.new("UIListLayout")
-    rodLayout.Parent = rodList
-    rodLayout.FillDirection = Enum.FillDirection.Vertical
-    rodLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rodLayout.Padding = UDim.new(0, 2)
 
     local _, toggleInput = createToggleButton(card, "Get Fish Input (Jumlah tertentu)")
 
@@ -503,7 +455,7 @@ local function createFishGiverCard(parent, order)
     prog.TextColor3 = Color3.fromRGB(170, 200, 255)
     prog.Text = "Progress: -"
 
-    return card, toggleInput, toggleNonstop, input, lastLbl, prog, rodBtn, rodList
+    return card, toggleInput, toggleNonstop, input, lastLbl, prog
 end
 
 local function createSellFishCard(parent, order)
@@ -565,7 +517,7 @@ local function createSellFishCard(parent, order)
         sellModeButtons[mode] = btn
     end
 
-    -- Mode 1–9
+    -- Mode 1–9 sesuai permintaan
     addSellButton(SellMode.Disable,      "Disable")
     addSellButton(SellMode.Kg1_10,       "Sell 1–10 Kg")
     addSellButton(SellMode.Kg0_100,      "Sell 0–100 Kg")
@@ -787,11 +739,84 @@ local function createDropMoneyCard(parent, order)
     return card, input, manualBtn, auto10Btn, auto100Btn, auto1BBtn
 end
 
+local function createRodSettingCard(parent, order)
+    local card = createCard(
+        parent,
+        "Rod Setting",
+        "Pilih default Rod untuk MiniGame Complete",
+        order
+    )
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Name = "CurrentRodLabel"
+    lbl.Parent = card
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, 0, 0, 18)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextColor3 = Color3.fromRGB(180, 220, 255)
+    lbl.Text = "Current Rod: " .. currentRodName
+
+    local ddBtn = Instance.new("TextButton")
+    ddBtn.Name = "RodDropdownButton"
+    ddBtn.Parent = card
+    ddBtn.Size = UDim2.new(1, 0, 0, 26)
+    ddBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    ddBtn.AutoButtonColor = true
+    ddBtn.Font = Enum.Font.Gotham
+    ddBtn.TextSize = 13
+    ddBtn.TextXAlignment = Enum.TextXAlignment.Left
+    ddBtn.TextColor3 = Color3.fromRGB(225, 225, 235)
+    ddBtn.Text = currentRodName
+
+    local ddCorner = Instance.new("UICorner")
+    ddCorner.CornerRadius = UDim.new(0, 6)
+    ddCorner.Parent = ddBtn
+
+    local ddStroke = Instance.new("UIStroke")
+    ddStroke.Parent = ddBtn
+    ddStroke.Thickness = 1
+    ddStroke.Transparency = 0.3
+    ddStroke.Color = Color3.fromRGB(60, 60, 85)
+
+    local ddList = Instance.new("ScrollingFrame")
+    ddList.Name = "RodDropdownList"
+    ddList.Parent = card
+    ddList.BackgroundTransparency = 1
+    ddList.BorderSizePixel = 0
+    ddList.Size = UDim2.new(1, 0, 0, 0)
+    ddList.Visible = false
+    ddList.ScrollBarThickness = 4
+    ddList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    ddList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    ddList.ScrollBarImageTransparency = 0.2
+
+    local ddPad = Instance.new("UIPadding")
+    ddPad.Parent = ddList
+    ddPad.PaddingTop = UDim.new(0, 2)
+    ddPad.PaddingBottom = UDim.new(0, 4)
+    ddPad.PaddingLeft = UDim.new(0, 2)
+    ddPad.PaddingRight = UDim.new(0, 2)
+
+    local ddLayout = Instance.new("UIListLayout")
+    ddLayout.Parent = ddList
+    ddLayout.FillDirection = Enum.FillDirection.Vertical
+    ddLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ddLayout.Padding = UDim.new(0, 2)
+
+    rodCurrentLabel      = lbl
+    rodDropdownButton    = ddBtn
+    rodDropdownListFrame = ddList
+
+    return card
+end
+
 local function createRodShopCard(parent, order)
     local card = createCard(
         parent,
         "Rod Shop",
-        "Beli Rod (Cash / GamePass) + Min / Max Weight + Rarity %",
+        "Data dari Remotes.GetShopData + BuyItem (Owned dari Backpack/Character/StarterGear)",
         order
     )
 
@@ -813,21 +838,21 @@ local function createRodShopCard(parent, order)
     pad.PaddingLeft = UDim.new(0, 2)
     pad.PaddingRight = UDim.new(0, 2)
 
-    local list = Instance.new("UIListLayout")
-    list.Parent = scroll
-    list.FillDirection = Enum.FillDirection.Vertical
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-    list.Padding = UDim.new(0, 6)
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 4)
 
-    return card, scroll
+    rodShopScroll = scroll
+    return card
 end
 
 ------------------- BUILD UI -------------------
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
 
-fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel,
-    rodDropdownButton, rodDropdownListFrame =
+fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel =
     createFishGiverCard(bodyFrame, 1)
 
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
@@ -841,8 +866,8 @@ dropCard, dropInputBox, dropOnceButton,
     autoDrop10MToggleBtn, autoDrop100MToggleBtn, autoDrop1BToggleBtn =
     createDropMoneyCard(bodyFrame, 4)
 
-rodShopCard, rodShopScroll =
-    createRodShopCard(bodyFrame, 5)
+rodCard = createRodSettingCard(bodyFrame, 5)
+rodShopCard = createRodShopCard(bodyFrame, 6)
 
 -- Init toggle visual
 updateToggleVisual(getFishInputToggleBtn, false)
@@ -1051,88 +1076,6 @@ local function countFishToolsInCategory(categoryName)
     return count
 end
 
-------------------- ROD SHOP HELPERS -------------------
-local function formatNumberWithDots(n)
-    local s = tostring(math.floor(tonumber(n) or 0))
-    local k
-    repeat
-        s, k = s:gsub("^(-?%d+)(%d%d%d)", "%1.%2")
-    until k == 0
-    return s
-end
-
-local function computeMinMaxWeight(weightTiers)
-    if not weightTiers then
-        return 0, 0
-    end
-    local minW = math.huge
-    local maxW = 0
-    for _, tier in pairs(weightTiers) do
-        if type(tier) == "table" then
-            local mn = tonumber(tier.MinWeight or tier.min or 0) or 0
-            local mx = tonumber(tier.MaxWeight or tier.max or 0) or 0
-            if mn < minW then minW = mn end
-            if mx > maxW then maxW = mx end
-        end
-    end
-    if minW == math.huge then
-        minW = 0
-    end
-    return minW, maxW
-end
-
-local rarityOrder = { "Mythical", "Legendary", "Epic", "Rare" }
-
-local function buildRarityText(probabilities)
-    if not probabilities then
-        return "Common"
-    end
-    local parts = {}
-    for _, r in ipairs(rarityOrder) do
-        local v = probabilities[r]
-        if v and v > 0 then
-            table.insert(parts, string.format("%s %s%%", r, v))
-        end
-    end
-    if #parts == 0 then
-        return "Common"
-    end
-    return table.concat(parts, " | ")
-end
-
-local function isRodOwned(shopName, entry)
-    if not LocalPlayer then
-        return false
-    end
-
-    -- Coba deteksi Tool berdasarkan nama internal tanpa spasi
-    local invName = shopName:gsub("%s+", "")
-
-    local function hasTool(container)
-        return container and container:FindFirstChild(invName) ~= nil
-    end
-
-    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-    local char     = LocalPlayer.Character
-    local starter  = LocalPlayer:FindFirstChild("StarterGear")
-
-    if hasTool(backpack) or hasTool(char) or hasTool(starter) then
-        return true
-    end
-
-    if entry and entry.Type == "GamePass" and typeof(entry.Price) == "number" then
-        local owned = false
-        pcall(function()
-            owned = MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, entry.Price)
-        end)
-        if owned then
-            return true
-        end
-    end
-
-    return false
-end
-
 ------------------- CASH LISTENER -------------------
 local function initCashListener()
     local ls = LocalPlayer:FindFirstChild("leaderstats")
@@ -1196,7 +1139,7 @@ local function initCashListener()
                 totalSellIncomeLabel.Text = "Total Sell Income: " .. tostring(totalSellIncome)
             end
         end
-        -- delta < 0 (Drop Money atau belanja) tetap meng-update Cash saja.
+        -- delta < 0 (Drop Money / belanja) hanya update Cash.
     end)
 end
 
@@ -1534,71 +1477,258 @@ local function initFishDropdown()
     buildFishDropdownItems()
 end
 
-------------------- DROPDOWN ROD MINI GAME -------------------
-local function buildRodDropdownItems()
-    if not rodDropdownListFrame then return end
+------------------- OWNED ROD (DARI BACKPACK/CHAR/STARTERGEAR) -------------------
+local function rescanOwnedRods()
+    for _, name in ipairs(rodOptions) do
+        ownedRodMap[name] = false
+    end
 
-    for _, child in ipairs(rodDropdownListFrame:GetChildren()) do
-        if child:IsA("TextButton") then
+    local function scan(container)
+        if not container then return end
+        for _, inst in ipairs(container:GetChildren()) do
+            if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
+                ownedRodMap[inst.Name] = true
+            end
+        end
+    end
+
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    local char     = LocalPlayer.Character
+    local starter  = LocalPlayer:FindFirstChild("StarterGear")
+
+    scan(backpack)
+    scan(char)
+    scan(starter)
+end
+
+local function refreshRodShopOwnedVisual()
+    if not rodShopScroll then return end
+    for toolName, info in pairs(rodShopItems) do
+        local owned = ownedRodMap[toolName]
+        local btn = info and info.buyButton
+        if btn then
+            if owned then
+                btn.Text = "Owned"
+                btn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+            else
+                if info.priceText then
+                    btn.Text = info.priceText
+                else
+                    btn.Text = "Buy"
+                end
+                btn.BackgroundColor3 = Color3.fromRGB(52, 73, 94)
+            end
+        end
+    end
+end
+
+local function watchRodContainer(container)
+    if not container then return end
+
+    container.ChildAdded:Connect(function(inst)
+        if not alive then return end
+        if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
+            ownedRodMap[inst.Name] = true
+            refreshRodShopOwnedVisual()
+        end
+    end)
+
+    container.ChildRemoved:Connect(function(inst)
+        if not alive then return end
+        if inst:IsA("Tool") and rodOptionsMap[inst.Name] then
+            -- full rescan untuk aman (misal berpindah kontainer)
+            rescanOwnedRods()
+            refreshRodShopOwnedVisual()
+        end
+    end)
+end
+
+local function initOwnedRodWatch()
+    rescanOwnedRods()
+
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
+    watchRodContainer(backpack)
+
+    if LocalPlayer.Character then
+        watchRodContainer(LocalPlayer.Character)
+    end
+
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        if not alive then return end
+        watchRodContainer(char)
+        rescanOwnedRods()
+        refreshRodShopOwnedVisual()
+    end)
+end
+
+------------------- ROD SHOP DATA & BUILD -------------------
+local function getFormattedPriceString(priceData)
+    if not priceData then
+        return "Buy"
+    end
+    if priceData.Type == "Cash" then
+        local value = tonumber(priceData.Price) or 0
+        local s = tostring(math.floor(value))
+        local formatted = s
+        local k
+        repeat
+            formatted, k = formatted:gsub("^(-?%d+)(%d%d%d)", "%1.%2")
+        until k == 0
+        return "Rp." .. formatted
+    elseif priceData.Type == "GamePass" then
+        return "GamePass"
+    end
+    return "Buy"
+end
+
+local function buildRodShopUI()
+    if not rodShopScroll or rodShopLoaded then return end
+    rodShopLoaded = true
+
+    -- Panggil GetShopData satu kali
+    if GetShopDataRemote then
+        local ok, res = pcall(function()
+            return GetShopDataRemote:InvokeServer()
+        end)
+        if ok and type(res) == "table" then
+            rodShopData = res
+        else
+            rodShopData = {}
+        end
+    end
+
+    -- Bersihkan isi scroll
+    for _, child in ipairs(rodShopScroll:GetChildren()) do
+        if child:IsA("Frame") then
             child:Destroy()
         end
     end
-    local rodOptionButtons = {}
+    rodShopItems = {}
 
-    for _, rodName in ipairs(rodOptions) do
-        local btn = Instance.new("TextButton")
-        btn.Name = "RodItem_" .. rodName
-        btn.Parent = rodDropdownListFrame
-        btn.Size = UDim2.new(1, 0, 0, 22)
-        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-        btn.AutoButtonColor = true
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 12
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
-        btn.Text = rodName
+    for _, toolName in ipairs(rodOptions) do
+        local shopName = getShopNameFromTool(toolName)
+        local entry    = rodShopData[shopName]
 
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 4)
-        c.Parent = btn
+        local row = Instance.new("Frame")
+        row.Name = "RodRow_" .. toolName
+        row.Parent = rodShopScroll
+        row.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        row.BackgroundTransparency = 0
+        row.Size = UDim2.new(1, -4, 0, 64)
 
-        rodOptionButtons[rodName] = btn
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = row
 
-        btn.MouseButton1Click:Connect(function()
-            currentRodName = rodName
-            if rodDropdownButton then
-                rodDropdownButton.Text = "Rod: " .. rodName
-            end
+        local pad = Instance.new("UIPadding")
+        pad.Parent = row
+        pad.PaddingTop = UDim.new(0, 4)
+        pad.PaddingBottom = UDim.new(0, 4)
+        pad.PaddingLeft = UDim.new(0, 6)
+        pad.PaddingRight = UDim.new(0, 6)
 
-            for rn, b in pairs(rodOptionButtons) do
-                if rn == currentRodName then
-                    b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-                    b.TextColor3       = Color3.fromRGB(245, 245, 255)
-                else
-                    b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-                    b.TextColor3       = Color3.fromRGB(220, 220, 230)
+        local img = Instance.new("ImageLabel")
+        img.Name = "Icon"
+        img.Parent = row
+        img.BackgroundTransparency = 1
+        img.Size = UDim2.new(0, 52, 0, 52)
+        img.Position = UDim2.new(0, 0, 0, 0)
+        img.Image = entry and tostring(entry.ImageId or "") or ""
+        img.ScaleType = Enum.ScaleType.Fit
+
+        local imgCorner = Instance.new("UICorner")
+        imgCorner.CornerRadius = UDim.new(0, 6)
+        imgCorner.Parent = img
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Name = "NameLabel"
+        nameLbl.Parent = row
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Position = UDim2.new(0, 60, 0, 2)
+        nameLbl.Size = UDim2.new(1, -160, 0, 18)
+        nameLbl.Font = Enum.Font.GothamBold
+        nameLbl.TextSize = 13
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.TextColor3 = Color3.fromRGB(220, 220, 235)
+        nameLbl.Text = shopName
+
+        local infoLbl = Instance.new("TextLabel")
+        infoLbl.Name = "InfoLabel"
+        infoLbl.Parent = row
+        infoLbl.BackgroundTransparency = 1
+        infoLbl.Position = UDim2.new(0, 60, 0, 22)
+        infoLbl.Size = UDim2.new(1, -160, 0, 36)
+        infoLbl.Font = Enum.Font.Gotham
+        infoLbl.TextSize = 11
+        infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+        infoLbl.TextYAlignment = Enum.TextYAlignment.Top
+        infoLbl.TextWrapped = true
+        infoLbl.TextColor3 = Color3.fromRGB(180, 200, 230)
+
+        local minW, maxW, rarityText = "-", "-", "Common"
+        if entry and entry.Stats and entry.Stats.WeightTiers then
+            local tiers = entry.Stats.WeightTiers
+            local minVal, maxVal = 999999, 0
+            for _, t in pairs(tiers) do
+                if t.MinWeight and t.MinWeight < minVal then
+                    minVal = t.MinWeight
+                end
+                if t.MaxWeight and t.MaxWeight > maxVal then
+                    maxVal = t.MaxWeight
                 end
             end
-
-            if rodDropdownListFrame then
-                rodDropdownListFrame.Visible = false
-                rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+            if minVal < 999999 then
+                minW = tostring(minVal) .. " KG"
             end
-
-            appendLog("[Rod] Rod MiniGame diubah ke: " .. rodName)
-        end)
-    end
-
-    -- highlight rod aktif
-    for rn, b in pairs(rodOptionButtons) do
-        if rn == currentRodName then
-            b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-            b.TextColor3       = Color3.fromRGB(245, 245, 255)
-        else
-            b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-            b.TextColor3       = Color3.fromRGB(220, 220, 230)
+            if maxVal > 0 then
+                maxW = tostring(maxVal) .. " KG"
+            end
         end
+
+        if entry and entry.Stats and entry.Stats.Probabilities then
+            local probs = entry.Stats.Probabilities
+            local parts = {}
+            local order = { "Mythical", "Legendary", "Epic", "Rare" }
+            for _, key in ipairs(order) do
+                local val = probs[key]
+                if val and val > 0 then
+                    table.insert(parts, key .. " " .. tostring(val) .. "%")
+                end
+            end
+            if #parts > 0 then
+                rarityText = table.concat(parts, " | ")
+            end
+        end
+
+        infoLbl.Text = string.format("Min %s\nMax %s\n%s", minW, maxW, rarityText)
+
+        local buyBtn = Instance.new("TextButton")
+        buyBtn.Name = "BuyButton"
+        buyBtn.Parent = row
+        buyBtn.Size = UDim2.new(0, 90, 0, 26)
+        buyBtn.Position = UDim2.new(1, -96, 0.5, -13)
+        buyBtn.BackgroundColor3 = Color3.fromRGB(52, 73, 94)
+        buyBtn.AutoButtonColor = true
+        buyBtn.Font = Enum.Font.GothamBold
+        buyBtn.TextSize = 12
+        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+
+        local buyCorner = Instance.new("UICorner")
+        buyCorner.CornerRadius = UDim.new(0, 6)
+        buyCorner.Parent = buyBtn
+
+        local priceText = getFormattedPriceString(entry)
+
+        rodShopItems[toolName] = {
+            frame      = row,
+            buyButton  = buyBtn,
+            priceText  = priceText,
+            shopName   = shopName,
+            entry      = entry,
+        }
     end
+
+    refreshRodShopOwnedVisual()
 end
 
 ------------------- HELPER: REQUEST 1 FISH (MiniGame Complete) -------------------
@@ -1613,7 +1743,7 @@ local function requestOneFish()
 
     local rod = char:FindFirstChild(currentRodName)
     if not (rod and rod:FindFirstChild("MiniGame")) then
-        appendLog(string.format("[Fish] %s.MiniGame tidak ditemukan di Character.", tostring(currentRodName)))
+        appendLog("[Fish] " .. tostring(currentRodName) .. ".MiniGame tidak ditemukan di Character.")
         return nil
     end
 
@@ -1630,12 +1760,12 @@ local function requestOneFish()
         return nil
     end
 
-    local fishName = "Fish (Complete " .. tostring(currentRodName) .. ")"
+    local fishName = "Fish (Complete)"
     if lastFishLabel then
         lastFishLabel.Text = "Last Fish: " .. fishName
     end
 
-    appendLog("Got Fish via MiniGame [" .. tostring(currentRodName) .. "]: " .. fishName)
+    appendLog("Got Fish via MiniGame: " .. fishName .. " (" .. currentRodName .. ")")
 
     applyAutoSellAfterCatch()
 
@@ -1788,268 +1918,82 @@ local function startAutoDrop1B()
     scheduleAutoDrop("1B", thisId, 1000000000)
 end
 
-------------------- ROD SHOP BUILD -------------------
-local function rebuildRodShop()
-    if not rodShopScroll then return end
+------------------- ROD DROPDOWN BUILD -------------------
+local function buildRodDropdownItems()
+    if not rodDropdownListFrame then return end
 
-    for _, child in ipairs(rodShopScroll:GetChildren()) do
-        if child:IsA("Frame") then
+    for _, child in ipairs(rodDropdownListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
             child:Destroy()
         end
     end
-    rodShopItems       = {}
-    rodShopGamePassMap = {}
+    rodDropdownButtons = {}
 
-    if not GetShopDataRemote then
-        local lbl = Instance.new("TextLabel")
-        lbl.Name = "RodShopInfo"
-        lbl.Parent = rodShopScroll
-        lbl.BackgroundTransparency = 1
-        lbl.Size = UDim2.new(1, -4, 0, 40)
-        lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 12
-        lbl.TextWrapped = true
-        lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
-        lbl.Text = "Remotes.GetShopData tidak ditemukan."
-        return
-    end
+    for _, rodName in ipairs(rodOptions) do
+        local btn = Instance.new("TextButton")
+        btn.Name = "Rod_" .. rodName
+        btn.Parent = rodDropdownListFrame
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.AutoButtonColor = true
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+        btn.Text = rodName
 
-    local ok, dataOrErr = pcall(function()
-        return GetShopDataRemote:InvokeServer()
-    end)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = btn
 
-    if not ok or type(dataOrErr) ~= "table" then
-        local lbl = Instance.new("TextLabel")
-        lbl.Name = "RodShopInfo"
-        lbl.Parent = rodShopScroll
-        lbl.BackgroundTransparency = 1
-        lbl.Size = UDim2.new(1, -4, 0, 40)
-        lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 12
-        lbl.TextWrapped = true
-        lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
-        lbl.Text = "Gagal memuat Rod Shop: " .. tostring(dataOrErr)
-        return
-    end
+        rodDropdownButtons[rodName] = btn
 
-    local shopData = dataOrErr
+        btn.MouseButton1Click:Connect(function()
+            currentRodName = rodName
+            if rodDropdownButton then
+                rodDropdownButton.Text = rodName
+            end
+            if rodCurrentLabel then
+                rodCurrentLabel.Text = "Current Rod: " .. rodName
+            end
 
-    for _, internalName in ipairs(rodOptions) do
-        local meta     = rodMeta[internalName] or {}
-        local shopName = meta.shopName or internalName
-        local entry    = shopData[shopName]
-
-        -- Frame item
-        local item = Instance.new("Frame")
-        item.Name = "RodItem_" .. internalName
-        item.Parent = rodShopScroll
-        item.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
-        item.BackgroundTransparency = 0.05
-        item.BorderSizePixel = 0
-        item.Size = UDim2.new(1, -4, 0, 70)
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = item
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Parent = item
-        stroke.Thickness = 1
-        stroke.Transparency = 0.4
-        stroke.Color = Color3.fromRGB(60, 60, 85)
-
-        local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Parent = item
-        icon.BackgroundTransparency = 1
-        icon.Position = UDim2.new(0, 4, 0, 4)
-        icon.Size = UDim2.new(0, 52, 0, 52)
-        icon.ScaleType = Enum.ScaleType.Fit
-        icon.Image = entry and entry.ImageId or ""
-
-        local nameLbl = Instance.new("TextLabel")
-        nameLbl.Name = "NameLabel"
-        nameLbl.Parent = item
-        nameLbl.BackgroundTransparency = 1
-        nameLbl.Position = UDim2.new(0, 60, 0, 4)
-        nameLbl.Size = UDim2.new(1, -160, 0, 20)
-        nameLbl.Font = Enum.Font.GothamBold
-        nameLbl.TextSize = 12
-        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-        nameLbl.TextColor3 = Color3.fromRGB(230, 230, 245)
-        nameLbl.Text = shopName
-
-        local statsLbl = Instance.new("TextLabel")
-        statsLbl.Name = "StatsLabel"
-        statsLbl.Parent = item
-        statsLbl.BackgroundTransparency = 1
-        statsLbl.Position = UDim2.new(0, 60, 0, 26)
-        statsLbl.Size = UDim2.new(1, -160, 0, 40)
-        statsLbl.Font = Enum.Font.Gotham
-        statsLbl.TextSize = 11
-        statsLbl.TextWrapped = true
-        statsLbl.TextXAlignment = Enum.TextXAlignment.Left
-        statsLbl.TextYAlignment = Enum.TextYAlignment.Top
-        statsLbl.TextColor3 = Color3.fromRGB(200, 210, 235)
-
-        local priceLbl = Instance.new("TextLabel")
-        priceLbl.Name = "PriceLabel"
-        priceLbl.Parent = item
-        priceLbl.BackgroundTransparency = 1
-        priceLbl.Position = UDim2.new(1, -90, 0, 4)
-        priceLbl.Size = UDim2.new(0, 80, 0, 18)
-        priceLbl.Font = Enum.Font.Gotham
-        priceLbl.TextSize = 11
-        priceLbl.TextXAlignment = Enum.TextXAlignment.Right
-        priceLbl.TextColor3 = Color3.fromRGB(220, 220, 200)
-        priceLbl.Text = "-"
-
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.Position = UDim2.new(1, -90, 0, 28)
-        buyBtn.Size = UDim2.new(0, 80, 0, 26)
-        buyBtn.BackgroundColor3 = Color3.fromRGB(52, 73, 94)
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamBold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-        buyBtn.Text = "Buy"
-
-        local buyCorner = Instance.new("UICorner")
-        buyCorner.CornerRadius = UDim.new(0, 6)
-        buyCorner.Parent = buyBtn
-
-        -- Isi stats (Min / Max / Rarity)
-        if entry and entry.Stats then
-            local minW, maxW = computeMinMaxWeight(entry.Stats.WeightTiers)
-            local rarityText = buildRarityText(entry.Stats.Probabilities)
-            statsLbl.Text = string.format("Min %d KG | Max %d KG\n%s", minW, maxW, rarityText)
-        else
-            statsLbl.Text = "Data stats tidak tersedia."
-        end
-
-        -- Price text
-        if entry then
-            if entry.Type == "Cash" then
-                priceLbl.Text = "Rp." .. formatNumberWithDots(entry.Price or 0)
-            elseif entry.Type == "GamePass" then
-                priceLbl.Text = "GamePass"
-                -- Coba ambil harga Robux (opsional)
-                task.spawn(function()
-                    local okGP, info = pcall(function()
-                        return MarketplaceService:GetProductInfo(entry.Price, Enum.InfoType.GamePass)
-                    end)
-                    if okGP and info and priceLbl then
-                        priceLbl.Text = "R$" .. formatNumberWithDots(info.PriceInRobux or 0)
-                    end
-                end)
-                if typeof(entry.Price) == "number" then
-                    rodShopGamePassMap[entry.Price] = internalName
+            for name, b in pairs(rodDropdownButtons) do
+                if name == currentRodName then
+                    b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+                    b.TextColor3       = Color3.fromRGB(245, 245, 255)
+                else
+                    b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                    b.TextColor3       = Color3.fromRGB(220, 220, 230)
                 end
-            else
-                priceLbl.Text = "Unknown"
-            end
-        else
-            statsLbl.Text = "Rod tidak ditemukan di GetShopData."
-            priceLbl.Text = "-"
-        end
-
-        -- Owned detection
-        local owned = entry and isRodOwned(shopName, entry) or false
-        if owned then
-            buyBtn.Text = "Owned"
-            buyBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-        end
-
-        -- Click Buy
-        buyBtn.MouseButton1Click:Connect(function()
-            if not alive then return end
-            if not BuyItemRemote then
-                notify("Rod Shop", "Remote BuyItem tidak ditemukan.", 4)
-                return
-            end
-            if buyBtn.Text == "Owned" then
-                notify("Rod Shop", shopName .. " sudah dimiliki.", 3)
-                return
-            end
-            if not entry then
-                notify("Rod Shop", "Data rod tidak ditemukan.", 3)
-                return
             end
 
-            local status, extra
-            local okBuy, errBuy = pcall(function()
-                status, extra = BuyItemRemote:InvokeServer(shopName)
-            end)
-            if not okBuy then
-                notify("Rod Shop", "Gagal membeli: " .. tostring(errBuy), 4)
-                return
-            end
+            rodDropdownListFrame.Visible = false
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
 
-            if status == "PromptPurchase" then
-                if typeof(extra) == "number" then
-                    MarketplaceService:PromptGamePassPurchase(LocalPlayer, extra)
-                end
-            elseif status == "Success" or status == true then
-                buyBtn.Text = "Owned"
-                buyBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-                notify("Rod Shop", "Berhasil membeli " .. shopName, 4)
-            else
-                notify("Rod Shop", "Gagal membeli: " .. tostring(extra or status), 4)
-            end
+            appendLog("[Rod] Current Rod diubah ke: " .. currentRodName)
         end)
+    end
 
-        rodShopItems[internalName] = {
-            frame     = item,
-            buyButton = buyBtn,
-            priceLbl  = priceLbl,
-            shopName  = shopName,
-            data      = entry,
-        }
+    -- highlight current
+    for name, b in pairs(rodDropdownButtons) do
+        if name == currentRodName then
+            b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+            b.TextColor3       = Color3.fromRGB(245, 245, 255)
+        else
+            b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            b.TextColor3       = Color3.fromRGB(220, 220, 230)
+        end
     end
 end
 
--- Update status GamePass setelah pembelian selesai
-if MarketplaceService and LocalPlayer then
-    MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
-        if player ~= LocalPlayer or not wasPurchased then
-            return
-        end
-        local internalName = rodShopGamePassMap[gamePassId]
-        if internalName then
-            local info = rodShopItems[internalName]
-            if info and info.buyButton then
-                info.buyButton.Text = "Owned"
-                info.buyButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-            end
-        end
-    end)
-end
+buildRodDropdownItems()
+initOwnedRodWatch()
+buildRodShopUI()
 
 ------------------- UI EVENTS -------------------
 initFishDropdown()
-rebuildRodShop()
 
--- Rod dropdown build + open/close
-if rodDropdownButton then
-    buildRodDropdownItems()
-    rodDropdownButton.Text = "Rod: " .. tostring(currentRodName)
-
-    rodDropdownButton.MouseButton1Click:Connect(function()
-        if not rodDropdownListFrame then return end
-
-        local open = not rodDropdownListFrame.Visible
-        rodDropdownListFrame.Visible = open
-        if open then
-            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, math.min(#rodOptions * 24 + 6, 180))
-        else
-            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
-        end
-    end)
-end
-
--- Refresh dropdown fish
+-- Refresh button dropdown fish
 if fishRefreshButton then
     fishRefreshButton.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -2059,7 +2003,7 @@ if fishRefreshButton then
     end)
 end
 
--- Buka dropdown fish = auto scan & rebuild
+-- Buka dropdown Fish = auto scan & rebuild
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
@@ -2138,7 +2082,12 @@ setSellMode(SellMode.Disable)
 -- Drop Money UI events
 if dropInputBox then
     dropInputBox.FocusLost:Connect(function()
-        local n = tonumber(dropInputBox.Text)
+        local raw = dropInputBox.Text
+        if raw == "" then
+            -- biarkan kosong, hanya placeholder
+            return
+        end
+        local n = tonumber(raw)
         if not n or n <= 0 then
             dropInputBox.Text = ""
         end
@@ -2198,6 +2147,74 @@ if autoDrop1BToggleBtn then
             notify("Indo Ocean - Drop Money", "Auto Drop 1 Miliar dimatikan.", 3)
         end
     end)
+end
+
+-- Rod dropdown open/close
+if rodDropdownButton and rodDropdownListFrame then
+    rodDropdownButton.MouseButton1Click:Connect(function()
+        if not alive then return end
+        local open = not rodDropdownListFrame.Visible
+        rodDropdownListFrame.Visible = open
+        if open then
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 160)
+        else
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+        end
+    end)
+end
+
+-- Rod Shop Buy events
+for toolName, info in pairs(rodShopItems) do
+    local btn = info.buyButton
+    if btn then
+        btn.MouseButton1Click:Connect(function()
+            if not alive then return end
+
+            if ownedRodMap[toolName] then
+                notify("Rod Shop", toolName .. " sudah Owned (dari Backpack).", 3)
+                return
+            end
+
+            local shopName = info.shopName
+            local entry    = info.entry
+
+            if not (BuyItemRemote and shopName and entry) then
+                notify("Rod Shop", "Data Rod/Remote tidak lengkap.", 3)
+                return
+            end
+
+            if entry.Type == "GamePass" then
+                MarketplaceService:PromptGamePassPurchase(LocalPlayer, entry.Price)
+                return
+            end
+
+            local ok, status, msg = pcall(function()
+                local s, err = BuyItemRemote:InvokeServer(shopName)
+                return s, err
+            end)
+
+            if not ok then
+                notify("Rod Shop", "Error BuyItem: " .. tostring(status), 4)
+                appendLog("[RodShop] Error BuyItem(" .. tostring(shopName) .. "): " .. tostring(status))
+                return
+            end
+
+            local result, errMsg = status, msg
+
+            if result == "Success" then
+                appendLog("[RodShop] Pembelian " .. tostring(shopName) .. " Success.")
+                -- mark Owned manual, nanti rescanOwnedRods juga akan sync
+                ownedRodMap[toolName] = true
+                refreshRodShopOwnedVisual()
+            elseif result == "Failed" then
+                notify("Rod Shop", "Gagal: " .. tostring(errMsg), 4)
+                appendLog("[RodShop] Failed " .. tostring(shopName) .. ": " .. tostring(errMsg))
+            elseif result == "PromptPurchase" then
+                -- harusnya untuk GamePass, tapi sudah ditangani di atas
+                appendLog("[RodShop] PromptPurchase " .. tostring(shopName))
+            end
+        end)
+    end
 end
 
 ------------------- TAB CLEANUP -------------------
