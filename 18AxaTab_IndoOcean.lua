@@ -1,6 +1,6 @@
 --==========================================================
 --  18AxaTab_IndoOcean.lua
---  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame + Auto Sell + Drop Money)"
+--  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame Complete + Auto Sell + Drop Money)"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
@@ -108,10 +108,6 @@ local autoDrop100MLoopId   = 0
 local autoDrop1BLoopId     = 0
 
 ------------------- STATE ROD MINI GAME -------------------
-local rodDropdownButton
-local rodDropdownListFrame
-local rodDropdownButtons = {}
-
 local rodOptions = {
     "NormalRod",
     "SteakRod",
@@ -130,7 +126,6 @@ local rodOptions = {
 }
 
 local currentRodName = "NormalRod"
-local currentRodKey  = "NormalRod"
 
 ------------------- UI REFERENCES -------------------
 local headerFrame
@@ -164,6 +159,11 @@ local lastSellIncomeLabel
 local totalSellIncomeLabel
 
 local currentDropdownKey = "__DISABLE__"
+
+-- Rod dropdown UI
+local rodDropdownButton
+local rodDropdownListFrame
+local rodOptionButtons = {}
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -206,7 +206,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2"
+    title.Text = "Indo Ocean - Fish Giver V2.2"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -359,7 +359,7 @@ local function createFishGiverCard(parent, order)
     local card = createCard(
         parent,
         "Fish Giver Control",
-        "MiniGame: Rod terpilih .MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
+        "MiniGame: Rod pilihan.MiniGame:FireServer(\"Complete\") - Get Fish Input / Nonstop",
         order
     )
 
@@ -374,7 +374,7 @@ local function createFishGiverCard(parent, order)
     lastLbl.TextColor3 = Color3.fromRGB(180, 220, 255)
     lastLbl.Text = "Last Fish: -"
 
-    -- Rod selector label
+    -- Rod label
     local rodLbl = Instance.new("TextLabel")
     rodLbl.Name = "RodLabel"
     rodLbl.Parent = card
@@ -536,6 +536,7 @@ local function createSellFishCard(parent, order)
         sellModeButtons[mode] = btn
     end
 
+    -- Mode 1–9 sesuai permintaan
     addSellButton(SellMode.Disable,      "Disable")
     addSellButton(SellMode.Kg1_10,       "Sell 1–10 Kg")
     addSellButton(SellMode.Kg0_100,      "Sell 0–100 Kg")
@@ -609,7 +610,7 @@ local function createSellFishCard(parent, order)
     local ddPad = Instance.new("UIPadding")
     ddPad.Parent = ddList
     ddPad.PaddingTop = UDim.new(0, 2)
-    ddPad.PaddingBottom = UDim.new(0, 4)
+    ddPad.PaddingBottom = UDim.New(0, 4)
     ddPad.PaddingLeft = UDim.new(0, 2)
     ddPad.PaddingRight = UDim.new(0, 2)
 
@@ -721,8 +722,8 @@ local function createDropMoneyCard(parent, order)
     input.TextSize = 13
     input.TextColor3 = Color3.fromRGB(225, 225, 235)
     input.TextXAlignment = Enum.TextXAlignment.Left
-    input.Text = ""
-    input.PlaceholderText = "Input Drop Money"
+    input.Text = ""                                    -- default kosong
+    input.PlaceholderText = "Input Drop Money"        -- placeholder sesuai permintaan
     input.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
 
     local inputCorner = Instance.new("UICorner")
@@ -761,8 +762,8 @@ end
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
 
-fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox,
-    lastFishLabel, inputProgressLabel, rodDropdownButton, rodDropdownListFrame =
+fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel,
+    rodDropdownButton, rodDropdownListFrame =
     createFishGiverCard(bodyFrame, 1)
 
 sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
@@ -776,6 +777,7 @@ dropCard, dropInputBox, dropOnceButton,
     autoDrop10MToggleBtn, autoDrop100MToggleBtn, autoDrop1BToggleBtn =
     createDropMoneyCard(bodyFrame, 4)
 
+-- Init toggle visual
 updateToggleVisual(getFishInputToggleBtn, false)
 updateToggleVisual(getFishNonstopToggleBtn, false)
 updateToggleVisual(logToggleBtn, false)
@@ -810,7 +812,7 @@ local function appendLog(text)
     end
 end
 
-------------------- PROGRESS LABEL HELPER -------------------
+------------------- HELPER: PROGRESS LABEL (GET FISH) -------------------
 local function updateInputProgressLabel()
     if not inputProgressLabel then return end
 
@@ -826,6 +828,7 @@ local function updateInputProgressLabel()
     end
 end
 
+------------------- HELPER: PROGRESS LABEL (SELL THIS FISH) -------------------
 local function updateSellProgressLabel()
     if not sellProgressLabel then return end
 
@@ -838,7 +841,7 @@ local function updateSellProgressLabel()
     sellProgressLabel.Text = string.format("Sell Progress: %d %s", count, selectedFishCategory)
 end
 
-------------------- CLEAN NAMA IKAN -------------------
+------------------- HELPER: CLEAN NAMA IKAN -------------------
 local function cleanFishName(raw)
     if type(raw) ~= "string" then
         return ""
@@ -858,7 +861,7 @@ local function cleanFishName(raw)
     return name
 end
 
-------------------- IGNORE TOOL (ROD/TORCH/PICKAXE) -------------------
+------------------- HELPER: IGNORE TOOL (ROD/TORCH/PICKAXE) -------------------
 local function isIgnoredToolForDropdown(toolName)
     if type(toolName) ~= "string" then return false end
 
@@ -919,7 +922,7 @@ local function scanBackpack()
     end)
 end
 
-------------------- CARI TOOL FISH PER KATEGORI -------------------
+------------------- HELPER: CARI TOOL FISH PER KATEGORI -------------------
 local function findFishToolByCategory(categoryName)
     if not categoryName or categoryName == "" then
         return nil
@@ -932,7 +935,9 @@ local function findFishToolByCategory(categoryName)
         if not container then return nil end
         for _, inst in ipairs(container:GetChildren()) do
             if inst:IsA("Tool") then
-                if not isIgnoredToolForDropdown(inst.Name) then
+                if isIgnoredToolForDropdown(inst.Name) then
+                    -- skip
+                else
                     local cname = cleanFishName(inst.Name)
                     if cname == categoryName then
                         return inst
@@ -948,7 +953,7 @@ local function findFishToolByCategory(categoryName)
     return searchContainer(backpack)
 end
 
-------------------- HITUNG FISH KATEGORI -------------------
+------------------- HELPER: HITUNG FISH KATEGORI -------------------
 local function countFishToolsInCategory(categoryName)
     if not categoryName or categoryName == "" then
         return 0
@@ -979,7 +984,7 @@ local function countFishToolsInCategory(categoryName)
     return count
 end
 
-------------------- CASH LISTENER (FIX FindChild -> FindFirstChild) -------------------
+------------------- CASH LISTENER -------------------
 local function initCashListener()
     local ls = LocalPlayer:FindFirstChild("leaderstats")
     if not ls then
@@ -1042,12 +1047,13 @@ local function initCashListener()
                 totalSellIncomeLabel.Text = "Total Sell Income: " .. tostring(totalSellIncome)
             end
         end
+        -- delta < 0 (Drop Money atau belanja) tetap meng-update Cash saja.
     end)
 end
 
 initCashListener()
 
-------------------- SELL RANGE VIA REMOTEFISH -------------------
+------------------- HELPER: SELL RANGE VIA REMOTEFISH -------------------
 local function fireSellRange(rangeKey)
     if not JualIkanRemote then
         appendLog("[Sell] RemoteFish.JualIkanRemote tidak ditemukan.")
@@ -1367,10 +1373,19 @@ end
 local function initFishDropdown()
     if not sellDropdownButton or not sellDropdownListFrame then return end
     scanBackpack()
+
+    if #fishCategoryList == 0 then
+        if sellDropdownButton then
+            sellDropdownButton.Text = "Disable (Backpack kosong / fish tidak ditemukan)"
+        end
+        buildFishDropdownItems()
+        return
+    end
+
     buildFishDropdownItems()
 end
 
-------------------- ROD DROPDOWN (FIX: build list dan toggle) -------------------
+------------------- DROPDOWN ROD MINI GAME -------------------
 local function buildRodDropdownItems()
     if not rodDropdownListFrame then return end
 
@@ -1379,7 +1394,7 @@ local function buildRodDropdownItems()
             child:Destroy()
         end
     end
-    rodDropdownButtons = {}
+    rodOptionButtons = {}
 
     for _, rodName in ipairs(rodOptions) do
         local btn = Instance.new("TextButton")
@@ -1398,18 +1413,16 @@ local function buildRodDropdownItems()
         c.CornerRadius = UDim.new(0, 4)
         c.Parent = btn
 
-        rodDropdownButtons[rodName] = btn
+        rodOptionButtons[rodName] = btn
 
         btn.MouseButton1Click:Connect(function()
             currentRodName = rodName
-            currentRodKey  = rodName
-
             if rodDropdownButton then
-                rodDropdownButton.Text = "Rod: " .. tostring(currentRodName)
+                rodDropdownButton.Text = "Rod: " .. rodName
             end
 
-            for key, b in pairs(rodDropdownButtons) do
-                if key == currentRodKey then
+            for rn, b in pairs(rodOptionButtons) do
+                if rn == currentRodName then
                     b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
                     b.TextColor3       = Color3.fromRGB(245, 245, 255)
                 else
@@ -1423,12 +1436,13 @@ local function buildRodDropdownItems()
                 rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
             end
 
-            appendLog("[Rod] MiniGame Rod diubah ke: " .. tostring(currentRodName))
+            appendLog("[Rod] Rod MiniGame diubah ke: " .. rodName)
         end)
     end
 
-    for key, b in pairs(rodDropdownButtons) do
-        if key == currentRodKey then
+    -- highlight rod aktif
+    for rn, b in pairs(rodOptionButtons) do
+        if rn == currentRodName then
             b.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
             b.TextColor3       = Color3.fromRGB(245, 245, 255)
         else
@@ -1438,7 +1452,7 @@ local function buildRodDropdownItems()
     end
 end
 
-------------------- REQUEST 1 FISH (MiniGame Complete) -------------------
+------------------- HELPER: REQUEST 1 FISH (MiniGame Complete) -------------------
 local function requestOneFish()
     if not alive then return nil end
 
@@ -1450,7 +1464,7 @@ local function requestOneFish()
 
     local rod = char:FindFirstChild(currentRodName)
     if not (rod and rod:FindFirstChild("MiniGame")) then
-        appendLog("[Fish] " .. tostring(currentRodName) .. ".MiniGame tidak ditemukan di Character.")
+        appendLog(string.format("[Fish] %s.MiniGame tidak ditemukan di Character.", tostring(currentRodName)))
         return nil
     end
 
@@ -1461,18 +1475,18 @@ local function requestOneFish()
     end)
 
     if not ok then
-        local msg = "Error MiniGame Complete (" .. tostring(currentRodName) .. "): " .. tostring(err)
+        local msg = "Error MiniGame Complete: " .. tostring(err)
         warn("[IndoOcean] " .. msg)
         appendLog(msg)
         return nil
     end
 
-    local fishName = "Fish (Complete via " .. tostring(currentRodName) .. ")"
+    local fishName = "Fish (Complete " .. tostring(currentRodName) .. ")"
     if lastFishLabel then
         lastFishLabel.Text = "Last Fish: " .. fishName
     end
 
-    appendLog("Got Fish via MiniGame: " .. fishName)
+    appendLog("Got Fish via MiniGame [" .. tostring(currentRodName) .. "]: " .. fishName)
 
     applyAutoSellAfterCatch()
 
@@ -1626,11 +1640,27 @@ local function startAutoDrop1B()
 end
 
 ------------------- UI EVENTS -------------------
--- Init dropdown fish & rod pertama kali
 initFishDropdown()
-buildRodDropdownItems()
 
--- Refresh dropdown fish manual
+-- Build Rod dropdown items + handler
+if rodDropdownButton then
+    buildRodDropdownItems()
+    rodDropdownButton.Text = "Rod: " .. tostring(currentRodName)
+
+    rodDropdownButton.MouseButton1Click:Connect(function()
+        if not rodDropdownListFrame then return end
+
+        local open = not rodDropdownListFrame.Visible
+        rodDropdownListFrame.Visible = open
+        if open then
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, math.min(#rodOptions * 24 + 6, 180))
+        else
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
+        end
+    end)
+end
+
+-- Refresh button dropdown fish
 if fishRefreshButton then
     fishRefreshButton.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1640,7 +1670,7 @@ if fishRefreshButton then
     end)
 end
 
--- Buka dropdown fish
+-- Buka dropdown fish = auto scan & rebuild
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
@@ -1654,26 +1684,6 @@ if sellDropdownButton then
             sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 120)
         else
             sellDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
-        end
-    end)
-end
-
--- Buka dropdown rod (FIX: build setiap klik + tinggi list)
-if rodDropdownButton then
-    rodDropdownButton.MouseButton1Click:Connect(function()
-        if not alive then return end
-        if not rodDropdownListFrame then return end
-
-        buildRodDropdownItems()
-
-        local open = not rodDropdownListFrame.Visible
-        rodDropdownListFrame.Visible = open
-        if open then
-            local visibleCount = math.min(#rodOptions, 6)
-            local height = 22 * visibleCount + 8
-            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, height)
-        else
-            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
         end
     end)
 end
@@ -1741,6 +1751,7 @@ if dropInputBox then
     dropInputBox.FocusLost:Connect(function()
         local n = tonumber(dropInputBox.Text)
         if not n or n <= 0 then
+            -- biarkan kosong jika tidak valid, sesuai permintaan input box kosong default
             dropInputBox.Text = ""
         end
     end)
