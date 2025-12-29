@@ -1,6 +1,6 @@
 --==========================================================
 --  18AxaTab_IndoOcean.lua
---  TAB 18: "Indo Ocean - Fish Giver V3 (MiniGame Complete + Auto Sell)"
+--  TAB 18: "Indo Ocean - Fish Giver V2 (MiniGame Complete + Auto Sell + Drop Money)"
 --==========================================================
 
 ------------------- ENV / TAB -------------------
@@ -22,14 +22,22 @@ frame:ClearAllChildren()
 frame.BackgroundTransparency = 1
 
 ------------------- CONFIG (Indo Ocean) -------------------
--- Remote Indo Ocean - Sell Fish
+-- Remote Sell Fish (Indo Ocean)
 local RemoteFishFolder = ReplicatedStorage:WaitForChild("RemoteFish", 5)
 local JualIkanRemote   = RemoteFishFolder and RemoteFishFolder:WaitForChild("JualIkanRemote", 5)
 
--- TUNING Get Fish
+-- Remote Drop Money
+local DropEventFolder = ReplicatedStorage:WaitForChild("DropEvent", 5)
+local DropCashEvent   = DropEventFolder and DropEventFolder:WaitForChild("DropCashEvent", 5)
+
+-- TUNING Fish Giver
 local INPUT_DELAY          = 0.01
 local NONSTOP_DELAY        = 0.01
 local SELL_THIS_FISH_DELAY = 0.4
+
+-- TUNING Drop Money
+local DROP_DELAY_MIN = 5
+local DROP_DELAY_MAX = 8
 
 ------------------- STATE UTAMA - FISH -------------------
 local alive                  = true
@@ -77,6 +85,28 @@ local logRawEnabled           = false
 local nonstopLoopId           = 0
 local sellThisFishLoopId      = 0
 
+------------------- STATE CASH -------------------
+local cashValueObj        = nil
+local currentCash         = 0
+local lastSellIncome      = 0
+local totalSellIncome     = 0
+local cashConn            = nil
+
+------------------- STATE DROP MONEY -------------------
+local dropInputBox
+local dropOnceButton
+local autoDrop10MToggleBtn
+local autoDrop100MToggleBtn
+local autoDrop1BToggleBtn
+
+local autoDrop10MEnabled   = false
+local autoDrop100MEnabled  = false
+local autoDrop1BEnabled    = false
+
+local autoDrop10MLoopId    = 0
+local autoDrop100MLoopId   = 0
+local autoDrop1BLoopId     = 0
+
 ------------------- UI REFERENCES -------------------
 local headerFrame
 local bodyFrame
@@ -85,6 +115,7 @@ local bodyFrame
 local fishCard
 local sellCard
 local logCard
+local dropCard
 
 local getFishInputToggleBtn
 local getFishNonstopToggleBtn
@@ -98,9 +129,14 @@ local sellModeButtons = {}
 local sellDropdownButton
 local sellDropdownListFrame
 local dropdownItemButtons = {}
+local fishRefreshButton
 
 local sellProgressLabel
 local logToggleBtn
+
+local cashLabel
+local lastSellIncomeLabel
+local totalSellIncomeLabel
 
 local currentDropdownKey = "__DISABLE__"
 
@@ -113,6 +149,18 @@ local function notify(title, text, dur)
             Duration = dur or 5
         })
     end)
+end
+
+------------------- HELPER: TOGGLE VISUAL -------------------
+local function updateToggleVisual(button, state)
+    if not button then return end
+    if state then
+        button.Text = "ON"
+        button.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    else
+        button.Text = "OFF"
+        button.BackgroundColor3 = Color3.fromRGB(52, 73, 94)
+    end
 end
 
 ------------------- HELPER: UI CREATION -------------------
@@ -133,7 +181,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V1"
+    title.Text = "Indo Ocean - Fish Giver V2"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -145,7 +193,7 @@ local function createHeader(parent)
     desc.TextSize = 12
     desc.TextXAlignment = Enum.TextXAlignment.Left
     desc.TextColor3 = Color3.fromRGB(180, 180, 195)
-    desc.Text = "MiniGame Complete (NormalRod) + Get Fish Input / Nonstop + Auto Sell RemoteFish"
+    desc.Text = "MiniGame Complete (NormalRod) + Auto Sell RemoteFish + Drop Money"
 
     return h
 end
@@ -346,8 +394,8 @@ end
 local function createSellFishCard(parent, order)
     local card = createCard(
         parent,
-        "Sell Fish Control (Auto Sell Mode)",
-        "Auto Sell via RemoteFish.JualIkanRemote + Sell This Fish (Hand) + Sell All",
+        "Sell Fish Control (Auto Sell Mode + Cash Info)",
+        "RemoteFish.JualIkanRemote (1–10 / 0–100 / 100–200 / 300–500 / 500–1000 / 1000–3000 / Hand / All)",
         order
     )
 
@@ -410,7 +458,7 @@ local function createSellFishCard(parent, order)
     addSellButton(SellMode.Kg300_500,    "Sell 300–500 Kg")
     addSellButton(SellMode.Kg500_1000,   "Sell 500–1000 Kg")
     addSellButton(SellMode.Kg1000_3000,  "Sell 1000–3000 Kg")
-    addSellButton(SellMode.ThisFish,     "Sell This Fish")
+    addSellButton(SellMode.ThisFish,     "Sell This Fish (Hand Loop)")
     addSellButton(SellMode.AllFish,      "Sell All Fish")
 
     local selLabel = Instance.new("TextLabel")
@@ -423,6 +471,21 @@ local function createSellFishCard(parent, order)
     selLabel.TextXAlignment = Enum.TextXAlignment.Left
     selLabel.TextColor3 = Color3.fromRGB(180, 200, 230)
     selLabel.Text = "Selected Fish (Sell This Fish):"
+
+    local refreshBtn = Instance.new("TextButton")
+    refreshBtn.Name = "RefreshFishButton"
+    refreshBtn.Parent = card
+    refreshBtn.Size = UDim2.new(1, 0, 0, 24)
+    refreshBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    refreshBtn.AutoButtonColor = true
+    refreshBtn.Font = Enum.Font.Gotham
+    refreshBtn.TextSize = 12
+    refreshBtn.TextColor3 = Color3.fromRGB(220, 220, 235)
+    refreshBtn.Text = "Refresh Fish Dropdown (Scan Backpack)"
+
+    local rfCorner = Instance.new("UICorner")
+    rfCorner.CornerRadius = UDim.new(0, 6)
+    rfCorner.Parent = refreshBtn
 
     local ddButton = Instance.new("TextButton")
     ddButton.Name = "FishDropdownButton"
@@ -482,7 +545,40 @@ local function createSellFishCard(parent, order)
     prog.TextColor3 = Color3.fromRGB(190, 220, 255)
     prog.Text = "Sell Progress: -"
 
-    return card, ddButton, ddList, prog
+    local cashLbl = Instance.new("TextLabel")
+    cashLbl.Name = "CashLabel"
+    cashLbl.Parent = card
+    cashLbl.BackgroundTransparency = 1
+    cashLbl.Size = UDim2.new(1, 0, 0, 18)
+    cashLbl.Font = Enum.Font.Gotham
+    cashLbl.TextSize = 11
+    cashLbl.TextXAlignment = Enum.TextXAlignment.Left
+    cashLbl.TextColor3 = Color3.fromRGB(200, 230, 200)
+    cashLbl.Text = "Cash: -"
+
+    local lastSellLbl = Instance.new("TextLabel")
+    lastSellLbl.Name = "LastSellIncomeLabel"
+    lastSellLbl.Parent = card
+    lastSellLbl.BackgroundTransparency = 1
+    lastSellLbl.Size = UDim2.new(1, 0, 0, 18)
+    lastSellLbl.Font = Enum.Font.Gotham
+    lastSellLbl.TextSize = 11
+    lastSellLbl.TextXAlignment = Enum.TextXAlignment.Left
+    lastSellLbl.TextColor3 = Color3.fromRGB(220, 220, 200)
+    lastSellLbl.Text = "Last Sell Income: 0"
+
+    local totalIncomeLbl = Instance.new("TextLabel")
+    totalIncomeLbl.Name = "TotalSellIncomeLabel"
+    totalIncomeLbl.Parent = card
+    totalIncomeLbl.BackgroundTransparency = 1
+    totalIncomeLbl.Size = UDim2.new(1, 0, 0, 18)
+    totalIncomeLbl.Font = Enum.Font.Gotham
+    totalIncomeLbl.TextSize = 11
+    totalIncomeLbl.TextXAlignment = Enum.TextXAlignment.Left
+    totalIncomeLbl.TextColor3 = Color3.fromRGB(220, 220, 200)
+    totalIncomeLbl.Text = "Total Sell Income: 0"
+
+    return card, ddButton, ddList, prog, refreshBtn, cashLbl, lastSellLbl, totalIncomeLbl
 end
 
 local function createFishLogCard(parent, order)
@@ -522,6 +618,60 @@ local function createFishLogCard(parent, order)
     return card, logFrame, toggleBtn
 end
 
+local function createDropMoneyCard(parent, order)
+    local card = createCard(
+        parent,
+        "Drop Money Control",
+        "Drop manual + Auto Drop 10 jt / 100 jt / 1 Miliar (5–8 detik)",
+        order
+    )
+
+    local input = Instance.new("TextBox")
+    input.Name = "DropAmountInput"
+    input.Parent = card
+    input.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    input.Size = UDim2.new(1, 0, 0, 26)
+    input.ClearTextOnFocus = false
+    input.Font = Enum.Font.Gotham
+    input.TextSize = 13
+    input.TextColor3 = Color3.fromRGB(225, 225, 235)
+    input.TextXAlignment = Enum.TextXAlignment.Left
+    input.Text = "10000"
+    input.PlaceholderText = "Nominal Drop (contoh: 10000)"
+    input.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 6)
+    inputCorner.Parent = input
+
+    local inputStroke = Instance.new("UIStroke")
+    inputStroke.Parent = input
+    inputStroke.Thickness = 1
+    inputStroke.Transparency = 0.3
+    inputStroke.Color = Color3.fromRGB(60, 60, 85)
+
+    local manualBtn = Instance.new("TextButton")
+    manualBtn.Name = "DropOnceButton"
+    manualBtn.Parent = card
+    manualBtn.Size = UDim2.new(1, 0, 0, 26)
+    manualBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    manualBtn.AutoButtonColor = true
+    manualBtn.Font = Enum.Font.GothamBold
+    manualBtn.TextSize = 12
+    manualBtn.TextColor3 = Color3.fromRGB(230, 230, 240)
+    manualBtn.Text = "Drop Sekali (Manual)"
+
+    local manualCorner = Instance.new("UICorner")
+    manualCorner.CornerRadius = UDim.new(0, 6)
+    manualCorner.Parent = manualBtn
+
+    local _, auto10Btn = createToggleButton(card, "Auto Drop 10.000.000 (10 jt)")
+    local _, auto100Btn = createToggleButton(card, "Auto Drop 100.000.000 (100 jt)")
+    local _, auto1BBtn  = createToggleButton(card, "Auto Drop 1.000.000.000 (1 Miliar)")
+
+    return card, input, manualBtn, auto10Btn, auto100Btn, auto1BBtn
+end
+
 ------------------- BUILD UI -------------------
 headerFrame = createHeader(frame)
 bodyFrame   = createBody(frame)
@@ -529,27 +679,24 @@ bodyFrame   = createBody(frame)
 fishCard, getFishInputToggleBtn, getFishNonstopToggleBtn, fishCountInputBox, lastFishLabel, inputProgressLabel =
     createFishGiverCard(bodyFrame, 1)
 
-sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel =
+sellCard, sellDropdownButton, sellDropdownListFrame, sellProgressLabel,
+    fishRefreshButton, cashLabel, lastSellIncomeLabel, totalSellIncomeLabel =
     createSellFishCard(bodyFrame, 2)
 
 logCard, logScrollFrame, logToggleBtn =
     createFishLogCard(bodyFrame, 3)
 
-------------------- HELPER: TOGGLE VISUAL -------------------
-local function updateToggleVisual(button, state)
-    if not button then return end
-    if state then
-        button.Text = "ON"
-        button.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-    else
-        button.Text = "OFF"
-        button.BackgroundColor3 = Color3.fromRGB(52, 73, 94)
-    end
-end
+dropCard, dropInputBox, dropOnceButton,
+    autoDrop10MToggleBtn, autoDrop100MToggleBtn, autoDrop1BToggleBtn =
+    createDropMoneyCard(bodyFrame, 4)
 
+-- Init toggle visual
 updateToggleVisual(getFishInputToggleBtn, false)
 updateToggleVisual(getFishNonstopToggleBtn, false)
 updateToggleVisual(logToggleBtn, false)
+updateToggleVisual(autoDrop10MToggleBtn, false)
+updateToggleVisual(autoDrop100MToggleBtn, false)
+updateToggleVisual(autoDrop1BToggleBtn, false)
 
 ------------------- HELPER: LOG -------------------
 local function appendLog(text)
@@ -649,9 +796,8 @@ local function isIgnoredToolForDropdown(toolName)
     return false
 end
 
-------------------- BACKPACK SCAN (FISH, SEKALI DIAWAL) -------------------
-local function scanBackpackOnce()
-    if scannedBackpack then return end
+------------------- BACKPACK SCAN (FISH, BISA REFRESH) -------------------
+local function scanBackpack()
     scannedBackpack = true
 
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:FindFirstChild("Backpack")
@@ -664,13 +810,13 @@ local function scanBackpackOnce()
         end
     end
 
+    fishCategoryList = {}
+    fishCategoryMap  = {}
+
     if not backpack then
         appendLog("[Dropdown] Backpack tidak ditemukan untuk scan.")
         return
     end
-
-    fishCategoryList = {}
-    fishCategoryMap  = {}
 
     for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") then
@@ -750,6 +896,75 @@ local function countFishToolsInCategory(categoryName)
 
     return count
 end
+
+------------------- CASH LISTENER -------------------
+local function initCashListener()
+    local ls = LocalPlayer:FindFirstChild("leaderstats")
+    if not ls then
+        local ok, res = pcall(function()
+            return LocalPlayer:WaitForChild("leaderstats", 10)
+        end)
+        if ok then
+            ls = res
+        end
+    end
+
+    if not ls then
+        appendLog("[Cash] leaderstats tidak ditemukan.")
+        return
+    end
+
+    local cashNames = { "Cash", "Money", "Coins" }
+    for _, name in ipairs(cashNames) do
+        local v = ls:FindFirstChild(name)
+        if v and v:IsA("NumberValue") or v and v:IsA("IntValue") then
+            cashValueObj = v
+            break
+        end
+    end
+
+    if not cashValueObj then
+        appendLog("[Cash] Tidak menemukan value Cash/Money/Coins di leaderstats.")
+        return
+    end
+
+    currentCash = tonumber(cashValueObj.Value) or 0
+
+    if cashLabel then
+        cashLabel.Text = "Cash: " .. tostring(currentCash)
+    end
+    if lastSellIncomeLabel then
+        lastSellIncomeLabel.Text = "Last Sell Income: 0"
+    end
+    if totalSellIncomeLabel then
+        totalSellIncomeLabel.Text = "Total Sell Income: 0"
+    end
+
+    cashConn = cashValueObj.Changed:Connect(function(newValue)
+        local newCash = tonumber(newValue) or tonumber(cashValueObj.Value) or 0
+        local delta   = newCash - currentCash
+        currentCash   = newCash
+
+        if cashLabel then
+            cashLabel.Text = "Cash: " .. tostring(currentCash)
+        end
+
+        if delta > 0 then
+            lastSellIncome  = delta
+            totalSellIncome = totalSellIncome + delta
+
+            if lastSellIncomeLabel then
+                lastSellIncomeLabel.Text = "Last Sell Income: " .. tostring(lastSellIncome)
+            end
+            if totalSellIncomeLabel then
+                totalSellIncomeLabel.Text = "Total Sell Income: " .. tostring(totalSellIncome)
+            end
+        end
+        -- delta < 0 (Drop Money atau belanja) tetap meng-update Cash saja.
+    end)
+end
+
+initCashListener()
 
 ------------------- HELPER: SELL RANGE VIA REMOTEFISH -------------------
 local function fireSellRange(rangeKey)
@@ -1070,7 +1285,7 @@ end
 
 local function initFishDropdown()
     if not sellDropdownButton or not sellDropdownListFrame then return end
-    scanBackpackOnce()
+    scanBackpack()
 
     if #fishCategoryList == 0 then
         if sellDropdownButton then
@@ -1112,7 +1327,6 @@ local function requestOneFish()
         return nil
     end
 
-    -- FireServer tidak mengembalikan nama ikan, tampilkan generic label saja
     local fishName = "Fish (Complete)"
     if lastFishLabel then
         lastFishLabel.Text = "Last Fish: " .. fishName
@@ -1209,16 +1423,88 @@ local function startGetFishNonstop()
     scheduleNonstopStep(thisLoopId)
 end
 
+------------------- DROP MONEY LOGIC -------------------
+local function dropCashOnce(amount)
+    if not DropCashEvent then
+        appendLog("[Drop] DropCashEvent tidak ditemukan.")
+        return
+    end
+    if not amount or amount <= 0 then
+        notify("Indo Ocean - Drop Money", "Nominal drop tidak valid (>0).", 4)
+        return
+    end
+
+    local ok, err = pcall(function()
+        local args = { [1] = amount }
+        DropCashEvent:FireServer(unpack(args))
+    end)
+
+    if not ok then
+        appendLog("[Drop] Error DropCash(" .. tostring(amount) .. "): " .. tostring(err))
+    else
+        appendLog("[Drop] DropCash(" .. tostring(amount) .. ") OK.")
+    end
+end
+
+local function scheduleAutoDrop(loopType, loopId, amount)
+    task.spawn(function()
+        if not alive then return end
+        if loopType == "10M" and (not autoDrop10MEnabled or loopId ~= autoDrop10MLoopId) then return end
+        if loopType == "100M" and (not autoDrop100MEnabled or loopId ~= autoDrop100MLoopId) then return end
+        if loopType == "1B" and (not autoDrop1BEnabled or loopId ~= autoDrop1BLoopId) then return end
+
+        dropCashOnce(amount)
+
+        local delaySec = math.random(DROP_DELAY_MIN, DROP_DELAY_MAX)
+        task.wait(delaySec)
+
+        if not alive then return end
+        if loopType == "10M" and (not autoDrop10MEnabled or loopId ~= autoDrop10MLoopId) then return end
+        if loopType == "100M" and (not autoDrop100MEnabled or loopId ~= autoDrop100MLoopId) then return end
+        if loopType == "1B" and (not autoDrop1BEnabled or loopId ~= autoDrop1BLoopId) then return end
+
+        scheduleAutoDrop(loopType, loopId, amount)
+    end)
+end
+
+local function startAutoDrop10M()
+    autoDrop10MLoopId += 1
+    local thisId = autoDrop10MLoopId
+    scheduleAutoDrop("10M", thisId, 10000000)
+end
+
+local function startAutoDrop100M()
+    autoDrop100MLoopId += 1
+    local thisId = autoDrop100MLoopId
+    scheduleAutoDrop("100M", thisId, 100000000)
+end
+
+local function startAutoDrop1B()
+    autoDrop1BLoopId += 1
+    local thisId = autoDrop1BLoopId
+    scheduleAutoDrop("1B", thisId, 1000000000)
+end
+
 ------------------- UI EVENTS -------------------
 initFishDropdown()
 
+-- Refresh button dropdown fish
+if fishRefreshButton then
+    fishRefreshButton.MouseButton1Click:Connect(function()
+        if not alive then return end
+        scanBackpack()
+        buildFishDropdownItems()
+        appendLog("[Dropdown] Manual Refresh Fish Dropdown (Backpack discan ulang).")
+    end)
+end
+
+-- Buka dropdown = auto scan & rebuild
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
 
-        if not scannedBackpack then
-            initFishDropdown()
-        end
+        scanBackpack()
+        buildFishDropdownItems()
 
         local open = not sellDropdownListFrame.Visible
         sellDropdownListFrame.Visible = open
@@ -1281,12 +1567,77 @@ for mode, btn in pairs(sellModeButtons) do
     btn.MouseButton1Click:Connect(function()
         if not alive then return end
         setSellMode(mode)
-        -- Klik tombol juga langsung eksekusi sekali
+        -- Klik tombol juga langsung eksekusi sekali (kecuali Disable)
         applyAutoSellAfterCatch()
     end)
 end
 
 setSellMode(SellMode.Disable)
+
+-- Drop Money UI events
+if dropInputBox then
+    dropInputBox.FocusLost:Connect(function()
+        local n = tonumber(dropInputBox.Text)
+        if not n or n <= 0 then
+            dropInputBox.Text = "10000"
+        end
+    end)
+end
+
+if dropOnceButton then
+    dropOnceButton.MouseButton1Click:Connect(function()
+        if not alive then return end
+        local raw = dropInputBox and dropInputBox.Text or ""
+        local amount = tonumber(raw)
+        if not amount or amount <= 0 then
+            notify("Indo Ocean - Drop Money", "Masukkan nominal drop > 0.", 4)
+            return
+        end
+        dropCashOnce(amount)
+    end)
+end
+
+if autoDrop10MToggleBtn then
+    autoDrop10MToggleBtn.MouseButton1Click:Connect(function()
+        if not alive then return end
+        autoDrop10MEnabled = not autoDrop10MEnabled
+        updateToggleVisual(autoDrop10MToggleBtn, autoDrop10MEnabled)
+        if autoDrop10MEnabled then
+            startAutoDrop10M()
+            notify("Indo Ocean - Drop Money", "Auto Drop 10 jt dimulai.", 3)
+        else
+            notify("Indo Ocean - Drop Money", "Auto Drop 10 jt dimatikan.", 3)
+        end
+    end)
+end
+
+if autoDrop100MToggleBtn then
+    autoDrop100MToggleBtn.MouseButton1Click:Connect(function()
+        if not alive then return end
+        autoDrop100MEnabled = not autoDrop100MEnabled
+        updateToggleVisual(autoDrop100MToggleBtn, autoDrop100MEnabled)
+        if autoDrop100MEnabled then
+            startAutoDrop100M()
+            notify("Indo Ocean - Drop Money", "Auto Drop 100 jt dimulai.", 3)
+        else
+            notify("Indo Ocean - Drop Money", "Auto Drop 100 jt dimatikan.", 3)
+        end
+    end)
+end
+
+if autoDrop1BToggleBtn then
+    autoDrop1BToggleBtn.MouseButton1Click:Connect(function()
+        if not alive then return end
+        autoDrop1BEnabled = not autoDrop1BEnabled
+        updateToggleVisual(autoDrop1BToggleBtn, autoDrop1BEnabled)
+        if autoDrop1BEnabled then
+            startAutoDrop1B()
+            notify("Indo Ocean - Drop Money", "Auto Drop 1 Miliar dimulai.", 3)
+        else
+            notify("Indo Ocean - Drop Money", "Auto Drop 1 Miliar dimatikan.", 3)
+        end
+    end)
+end
 
 ------------------- TAB CLEANUP -------------------
 _G.AxaHub = _G.AxaHub or {}
@@ -1301,4 +1652,16 @@ _G.AxaHub.TabCleanup[tabId] = function()
 
     sellThisFishLoopId = sellThisFishLoopId + 1
     nonstopLoopId      = nonstopLoopId + 1
+
+    autoDrop10MEnabled  = false
+    autoDrop100MEnabled = false
+    autoDrop1BEnabled   = false
+    autoDrop10MLoopId   = autoDrop10MLoopId + 1
+    autoDrop100MLoopId  = autoDrop100MLoopId + 1
+    autoDrop1BLoopId    = autoDrop1BLoopId + 1
+
+    if cashConn then
+        cashConn:Disconnect()
+        cashConn = nil
+    end
 end
