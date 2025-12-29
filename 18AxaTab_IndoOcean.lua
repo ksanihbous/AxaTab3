@@ -206,7 +206,7 @@ local function createHeader(parent)
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    title.Text = "Indo Ocean - Fish Giver V2+"
+    title.Text = "Indo Ocean - Fish Giver V2"
 
     local desc = Instance.new("TextLabel")
     desc.Name = "SubTitle"
@@ -374,7 +374,7 @@ local function createFishGiverCard(parent, order)
     lastLbl.TextColor3 = Color3.fromRGB(180, 220, 255)
     lastLbl.Text = "Last Fish: -"
 
-    -- Rod selector
+    -- Rod selector label
     local rodLbl = Instance.new("TextLabel")
     rodLbl.Name = "RodLabel"
     rodLbl.Parent = card
@@ -386,6 +386,7 @@ local function createFishGiverCard(parent, order)
     rodLbl.TextColor3 = Color3.fromRGB(190, 200, 230)
     rodLbl.Text = "Rod MiniGame (Default: NormalRod)"
 
+    -- Rod dropdown button
     local rodBtn = Instance.new("TextButton")
     rodBtn.Name = "RodDropdownButton"
     rodBtn.Parent = card
@@ -408,6 +409,7 @@ local function createFishGiverCard(parent, order)
     rodStroke.Transparency = 0.3
     rodStroke.Color = Color3.fromRGB(60, 60, 85)
 
+    -- Rod dropdown list
     local rodList = Instance.new("ScrollingFrame")
     rodList.Name = "RodDropdownList"
     rodList.Parent = card
@@ -534,7 +536,6 @@ local function createSellFishCard(parent, order)
         sellModeButtons[mode] = btn
     end
 
-    -- Mode 1–9 sesuai permintaan
     addSellButton(SellMode.Disable,      "Disable")
     addSellButton(SellMode.Kg1_10,       "Sell 1–10 Kg")
     addSellButton(SellMode.Kg0_100,      "Sell 0–100 Kg")
@@ -775,7 +776,6 @@ dropCard, dropInputBox, dropOnceButton,
     autoDrop10MToggleBtn, autoDrop100MToggleBtn, autoDrop1BToggleBtn =
     createDropMoneyCard(bodyFrame, 4)
 
--- Init toggle visual
 updateToggleVisual(getFishInputToggleBtn, false)
 updateToggleVisual(getFishNonstopToggleBtn, false)
 updateToggleVisual(logToggleBtn, false)
@@ -810,7 +810,7 @@ local function appendLog(text)
     end
 end
 
-------------------- HELPER: PROGRESS LABEL (GET FISH) -------------------
+------------------- PROGRESS LABEL HELPER -------------------
 local function updateInputProgressLabel()
     if not inputProgressLabel then return end
 
@@ -826,7 +826,6 @@ local function updateInputProgressLabel()
     end
 end
 
-------------------- HELPER: PROGRESS LABEL (SELL THIS FISH) -------------------
 local function updateSellProgressLabel()
     if not sellProgressLabel then return end
 
@@ -839,7 +838,7 @@ local function updateSellProgressLabel()
     sellProgressLabel.Text = string.format("Sell Progress: %d %s", count, selectedFishCategory)
 end
 
-------------------- HELPER: CLEAN NAMA IKAN -------------------
+------------------- CLEAN NAMA IKAN -------------------
 local function cleanFishName(raw)
     if type(raw) ~= "string" then
         return ""
@@ -859,7 +858,7 @@ local function cleanFishName(raw)
     return name
 end
 
-------------------- HELPER: IGNORE TOOL (ROD/TORCH/PICKAXE) -------------------
+------------------- IGNORE TOOL (ROD/TORCH/PICKAXE) -------------------
 local function isIgnoredToolForDropdown(toolName)
     if type(toolName) ~= "string" then return false end
 
@@ -920,7 +919,7 @@ local function scanBackpack()
     end)
 end
 
-------------------- HELPER: CARI TOOL FISH PER KATEGORI -------------------
+------------------- CARI TOOL FISH PER KATEGORI -------------------
 local function findFishToolByCategory(categoryName)
     if not categoryName or categoryName == "" then
         return nil
@@ -933,9 +932,7 @@ local function findFishToolByCategory(categoryName)
         if not container then return nil end
         for _, inst in ipairs(container:GetChildren()) do
             if inst:IsA("Tool") then
-                if isIgnoredToolForDropdown(inst.Name) then
-                    -- skip
-                else
+                if not isIgnoredToolForDropdown(inst.Name) then
                     local cname = cleanFishName(inst.Name)
                     if cname == categoryName then
                         return inst
@@ -951,7 +948,7 @@ local function findFishToolByCategory(categoryName)
     return searchContainer(backpack)
 end
 
-------------------- HELPER: HITUNG FISH KATEGORI -------------------
+------------------- HITUNG FISH KATEGORI -------------------
 local function countFishToolsInCategory(categoryName)
     if not categoryName or categoryName == "" then
         return 0
@@ -982,7 +979,7 @@ local function countFishToolsInCategory(categoryName)
     return count
 end
 
-------------------- CASH LISTENER -------------------
+------------------- CASH LISTENER (FIX FindChild -> FindFirstChild) -------------------
 local function initCashListener()
     local ls = LocalPlayer:FindFirstChild("leaderstats")
     if not ls then
@@ -1001,7 +998,7 @@ local function initCashListener()
 
     local cashNames = { "Cash", "Money", "Coins" }
     for _, name in ipairs(cashNames) do
-        local v = ls:FindChild(name) or ls:FindFirstChild(name)
+        local v = ls:FindFirstChild(name)
         if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
             cashValueObj = v
             break
@@ -1045,13 +1042,12 @@ local function initCashListener()
                 totalSellIncomeLabel.Text = "Total Sell Income: " .. tostring(totalSellIncome)
             end
         end
-        -- delta < 0 (Drop Money atau belanja) tetap meng-update Cash saja.
     end)
 end
 
 initCashListener()
 
-------------------- HELPER: SELL RANGE VIA REMOTEFISH -------------------
+------------------- SELL RANGE VIA REMOTEFISH -------------------
 local function fireSellRange(rangeKey)
     if not JualIkanRemote then
         appendLog("[Sell] RemoteFish.JualIkanRemote tidak ditemukan.")
@@ -1371,19 +1367,10 @@ end
 local function initFishDropdown()
     if not sellDropdownButton or not sellDropdownListFrame then return end
     scanBackpack()
-
-    if #fishCategoryList == 0 then
-        if sellDropdownButton then
-            sellDropdownButton.Text = "Disable (Backpack kosong / fish tidak ditemukan)"
-        end
-        buildFishDropdownItems()
-        return
-    end
-
     buildFishDropdownItems()
 end
 
-------------------- ROD DROPDOWN -------------------
+------------------- ROD DROPDOWN (FIX: build list dan toggle) -------------------
 local function buildRodDropdownItems()
     if not rodDropdownListFrame then return end
 
@@ -1451,7 +1438,7 @@ local function buildRodDropdownItems()
     end
 end
 
-------------------- HELPER: REQUEST 1 FISH (MiniGame Complete) -------------------
+------------------- REQUEST 1 FISH (MiniGame Complete) -------------------
 local function requestOneFish()
     if not alive then return nil end
 
@@ -1639,9 +1626,11 @@ local function startAutoDrop1B()
 end
 
 ------------------- UI EVENTS -------------------
+-- Init dropdown fish & rod pertama kali
 initFishDropdown()
+buildRodDropdownItems()
 
--- Refresh button dropdown fish
+-- Refresh dropdown fish manual
 if fishRefreshButton then
     fishRefreshButton.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1651,7 +1640,7 @@ if fishRefreshButton then
     end)
 end
 
--- Buka dropdown fish = auto scan & rebuild
+-- Buka dropdown fish
 if sellDropdownButton then
     sellDropdownButton.MouseButton1Click:Connect(function()
         if not sellDropdownListFrame then return end
@@ -1669,7 +1658,7 @@ if sellDropdownButton then
     end)
 end
 
--- Rod dropdown
+-- Buka dropdown rod (FIX: build setiap klik + tinggi list)
 if rodDropdownButton then
     rodDropdownButton.MouseButton1Click:Connect(function()
         if not alive then return end
@@ -1680,7 +1669,9 @@ if rodDropdownButton then
         local open = not rodDropdownListFrame.Visible
         rodDropdownListFrame.Visible = open
         if open then
-            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 22 * math.min(#rodOptions, 6) + 8)
+            local visibleCount = math.min(#rodOptions, 6)
+            local height = 22 * visibleCount + 8
+            rodDropdownListFrame.Size = UDim2.new(1, 0, 0, height)
         else
             rodDropdownListFrame.Size = UDim2.new(1, 0, 0, 0)
         end
