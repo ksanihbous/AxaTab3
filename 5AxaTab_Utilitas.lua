@@ -891,7 +891,7 @@ do
 end
 
 ------------------- INVISIBLE (NO VISUAL, REAL/FAKE CHARACTER) -------------------
-local Invis_Keybind        = "H"    -- tombol keyboard untuk toggle
+local Invis_Keybind        = "E"    -- tombol keyboard untuk toggle
 local Invis_Transparency   = true   -- fake character transparan (local)
 local Invis_NoClipOn       = false  -- minta NoClip saat Invisible
 local Invis_IsInvisible    = false
@@ -1215,7 +1215,7 @@ do
     local rowInvisible = createToggleRow(
         scroll,
         "0a_InvisibleToggle",
-        "Invisible / Visible (toggle key H, No Visual)",
+        "Invisible / Visible (toggle key E, No Visual)",
         false
     )
     rowInvisible.OnChanged(function(state)
