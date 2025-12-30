@@ -1,79 +1,90 @@
 --==========================================================
---  1AxaTab_SpectateESP.lua
+--  1AxaTab_SpectateESP.lua (WindUI Edition)
 --  Spectate + ESP + TP FORCE + SPECT PRO + SPECT DRONE + ESP ANTENA
---  Env: TAB_FRAME, TAB_ID, Players, LocalPlayer, RunService, Camera
+--  Env baru (AxaHub Panel WindUI):
+--    TAB / AXA_TAB  : objek WindUI:Tab
+--    AXA_UI         : WindUI root
+--    AXA_WINDOW     : Axa Window
+--    Players, LocalPlayer, RunService, Workspace, StarterGui, etc
 --==========================================================
-local frame      = TAB_FRAME
-local player     = LocalPlayer
-local players    = Players
-local runService = RunService
-local Workspace  = game:GetService("Workspace")
 
-local rows, activeESP, conns = {}, {}, {}
-local antennaLinks = {}
-local currentSpectateTarget, spectateMode, respawnConn = nil, "none", nil
-local espAllOn, espAntennaOn, STUDS_TO_METERS = false, false, 1
-local miniNav
-local currentIndex, currentTotal = 0, 0
-local proLastCF = nil -- cache CFrame target (dipakai PRO & DRONE)
+--================= ENV & SERVICES =================
+local Tab        = TAB or AXA_TAB       -- WindUI Tab object
+local Window     = AXA_WINDOW           -- AxaHub Window (WindUI)
+local UI         = AXA_UI               -- WindUI root (punya :Notify, dst)
 
--- FOV default & FOV drone
+local Players    = Players     or game:GetService("Players")
+local RunService = RunService  or game:GetService("RunService")
+local Workspace  = Workspace   or workspace
+local StarterGui = StarterGui  or game:GetService("StarterGui")
+local LocalPlayer= LocalPlayer or Players.LocalPlayer
+
+local Camera     = Camera or Workspace.CurrentCamera
+
+--================= STATE GLOBAL =================
+local conns              = {}
+local activeESP          = {}   -- [Player] = true/false
+local antennaLinks       = {}   -- [Player] = {beam, attachLocal, attachTarget, charConn}
+local espAllOn           = false
+local espAntennaOn       = false
+local STUDS_TO_METERS    = 1
+
+local currentSpectateTarget = nil
+local spectateMode          = "none"  -- "none" / "custom" / "free" / "pro" / "drone"
+local respawnConn           = nil
+local proLastCF             = nil
+local currentIndex          = 0
+local currentTotal          = 0
+local miniNav               = nil
+
+-- FOV
 local defaultFOV = (Workspace.CurrentCamera and Workspace.CurrentCamera.FieldOfView) or 70
 local DRONE_FOV  = 80
 
--- Raycast param untuk anti tembok kamera drone
+-- Raycast param drone anti tembok
 local droneRayParams = RaycastParams.new()
-droneRayParams.FilterType = Enum.RaycastFilterType.Blacklist
-droneRayParams.IgnoreWater = true
+droneRayParams.FilterType   = Enum.RaycastFilterType.Blacklist
+droneRayParams.IgnoreWater  = true
 
--- Folder untuk antena (beam merah)
+-- Folder antena di Workspace
 local antennaFolder = Instance.new("Folder")
 antennaFolder.Name = "AxaSpect_AntennaFolder"
-antennaFolder.Parent = workspace
+antennaFolder.Parent = Workspace
 
--- ========== SMALL HELPERS ==========
-local function makeCorner(gui, px)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, px or 8)
-    c.Parent = gui
-    return c
-end
-
-local function makeButton(parent, name, text, size, pos, bg, tc, ts, font)
-    local b = Instance.new("TextButton")
-    b.Name, b.Size, b.Position = name, size, pos or UDim2.new()
-    b.BackgroundColor3 = bg or Color3.fromRGB(230,230,245)
-    b.BorderSizePixel, b.Font = 0, font or Enum.Font.GothamBold
-    b.TextSize, b.TextColor3, b.Text = ts or 13, tc or Color3.fromRGB(40,40,60), text or ""
-    b.AutoButtonColor = true
-    b.Parent = parent
-    makeCorner(b, 8)
-    return b
-end
-
-local function makeLabel(parent, name, text, size, pos, p)
-    local l = Instance.new("TextLabel")
-    l.Name, l.Size, l.Position = name, size, pos or UDim2.new()
-    l.BackgroundTransparency = 1
-    l.Font       = p and p.Font or Enum.Font.Gotham
-    l.TextSize   = p and p.TextSize or 12
-    l.TextColor3 = p and p.TextColor3 or Color3.fromRGB(40,40,60)
-    l.TextXAlignment = p and p.XAlign or Enum.TextXAlignment.Left
-    l.TextYAlignment = p and p.YAlign or Enum.TextYAlignment.Center
-    l.TextWrapped    = p and p.Wrapped or false
-    l.Text, l.Parent = text or "", parent
-    return l
-end
-
+--================= SMALL HELPERS =================
 local function connect(sig, fn)
+    if not sig then return nil end
     local c = sig:Connect(fn)
     conns[#conns+1] = c
     return c
 end
 
--- helper aman untuk AudioListener (biar nggak error di client lama)
+local function notifySys(title, text, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title    = title or "AxaHub",
+            Text     = text or "",
+            Duration = dur or 4
+        })
+    end)
+end
+
+local function uiNotify(opts)
+    opts = opts or {}
+    if UI and type(UI)=="table" and UI.Notify then
+        pcall(function() UI:Notify({
+            Title    = opts.Title or "AxaHub",
+            Content  = opts.Content or opts.Desc or "",
+            Duration = opts.Duration or 4,
+            Icon     = opts.Icon or "info"
+        }) end)
+    else
+        notifySys(opts.Title, opts.Content or opts.Desc, opts.Duration)
+    end
+end
+
 local function safeSetAudioListener(mode)
-    local cam = workspace.CurrentCamera
+    local cam = Workspace.CurrentCamera
     if not cam then return end
     if mode == "Camera" or mode == "Character" then
         pcall(function()
@@ -83,20 +94,28 @@ local function safeSetAudioListener(mode)
 end
 
 local function setDefaultFOV()
-    local cam = workspace.CurrentCamera
-    if cam then
-        cam.FieldOfView = defaultFOV
-    end
+    local cam = Workspace.CurrentCamera
+    if cam then cam.FieldOfView = defaultFOV end
 end
 
 local function setDroneFOV()
-    local cam = workspace.CurrentCamera
-    if cam then
-        cam.FieldOfView = DRONE_FOV
-    end
+    local cam = Workspace.CurrentCamera
+    if cam then cam.FieldOfView = DRONE_FOV end
 end
 
---========== ANTENA MERAH (BEAM DARI BADAN KAMU KE PLAYER) ==========
+local function getPrettyName(plr)
+    if not plr then return "None" end
+    return string.format("%s (@%s)", plr.DisplayName or plr.Name, plr.Name)
+end
+
+--================= ANTENA MERAH =================
+local function getTorsoForAntenna(char)
+    if not char then return nil end
+    return char:FindFirstChild("UpperTorso")
+        or char:FindFirstChild("Torso")
+        or char:FindFirstChild("HumanoidRootPart")
+end
+
 local function clearAntennaLink(plr, link)
     if not link then return end
 
@@ -119,36 +138,23 @@ local function clearAntennaLink(plr, link)
     end)
 
     if link.charConn then
-        pcall(function()
-            link.charConn:Disconnect()
-        end)
+        pcall(function() link.charConn:Disconnect() end)
     end
-end
-
-local function getTorsoForAntenna(char)
-    if not char then return nil end
-    return char:FindFirstChild("UpperTorso")
-        or char:FindFirstChild("Torso")
-        or char:FindFirstChild("HumanoidRootPart")
 end
 
 local function setAntennaForPlayer(plr, enabled)
     local old = antennaLinks[plr]
     if not enabled then
-        if old then
-            clearAntennaLink(plr, old)
-        end
+        if old then clearAntennaLink(plr, old) end
         antennaLinks[plr] = nil
         return
     end
 
-    local localChar  = player.Character
+    local localChar  = LocalPlayer.Character
     local torsoLocal = getTorsoForAntenna(localChar)
     if not torsoLocal then return end
 
-    if old then
-        clearAntennaLink(plr, old)
-    end
+    if old then clearAntennaLink(plr, old) end
 
     local attachLocal = Instance.new("Attachment")
     attachLocal.Name = "AxaSpect_Local_" .. plr.Name
@@ -204,8 +210,8 @@ local function setAntennaForPlayer(plr, enabled)
     end)
 end
 
--- Rebind attachment LocalPlayer kalau respawn
-connect(player.CharacterAdded, function(newChar)
+-- Rebind attachment LocalPlayer saat respawn
+connect(LocalPlayer.CharacterAdded, function(newChar)
     local torsoLocal = getTorsoForAntenna(newChar)
     if not torsoLocal then return end
 
@@ -228,118 +234,10 @@ connect(player.CharacterAdded, function(newChar)
     end
 end)
 
--- ========== HEADER ==========
-makeLabel(frame,"Header","🎥 Spectate + ESP V1",
-    UDim2.new(1,-10,0,22),UDim2.new(0,5,0,6),
-    {Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.fromRGB(40,40,60),XAlign=Enum.TextXAlignment.Left}
-)
-makeLabel(frame,"Sub",
-    "Pilih player, nyalakan ESP (meter), SPECT POV, SPECT FREE, SPECT PRO, SPECT DRONE, atau teleport (TP / TP FORCE).",
-    UDim2.new(1,-10,0,32),UDim2.new(0,5,0,26),
-    {Font=Enum.Font.Gotham,TextSize=12,TextColor3=Color3.fromRGB(90,90,120),
-     XAlign=Enum.TextXAlignment.Left,YAlign=Enum.TextYAlignment.Top,Wrapped=true}
-)
-
--- ========== SEARCH BOX ==========
-local searchBox = Instance.new("TextBox")
-searchBox.Name, searchBox.PlaceholderText = "SearchBox","Search player..."
-searchBox.Size  = UDim2.new(1,-12,0,24)
-searchBox.Position = UDim2.new(0,6,0,60)
-searchBox.BackgroundColor3 = Color3.fromRGB(230,230,245)
-searchBox.TextColor3, searchBox.Font, searchBox.TextSize = Color3.fromRGB(40,40,60), Enum.Font.Gotham, 13
-searchBox.TextXAlignment, searchBox.Text = Enum.TextXAlignment.Left, ""
-searchBox.ClearTextOnFocus, searchBox.BorderSizePixel = false, 0
-searchBox.Parent = frame
-makeCorner(searchBox, 8)
-
--- ========== PLAYER LIST ==========
-local list = Instance.new("ScrollingFrame")
-list.Name = "PlayerList"
-list.Position = UDim2.new(0,6,0,88)
-list.Size = UDim2.new(1,-12,1,-130)
-list.BackgroundTransparency, list.BorderSizePixel = 1, 0
-list.ScrollBarThickness = 4
-list.ScrollingDirection = Enum.ScrollingDirection.Y
-list.CanvasSize = UDim2.new(0,0,0,0)
-list.Parent = frame
-
-local layout = Instance.new("UIListLayout")
-layout.FillDirection, layout.SortOrder = Enum.FillDirection.Vertical, Enum.SortOrder.Name
-layout.Padding, layout.Parent = UDim.new(0,4), list
-connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
-    list.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+6)
-end)
-
--- ========== TOP BAR ==========
-local topBar = Instance.new("Frame")
-topBar.Name  = "TopBar"
-topBar.Size  = UDim2.new(1,-12,0,28)
-topBar.Position = UDim2.new(0,6,1,-34)
-topBar.BackgroundTransparency = 1
-topBar.Parent = frame
-
-local statusLabel = makeLabel(
-    topBar,"StatusLabel","Status: Idle",
-    UDim2.new(1,-360,1,0),UDim2.new(0,0,0,0),
-    {Font=Enum.Font.Gotham,TextSize=13,TextColor3=Color3.fromRGB(70,70,100),XAlign=Enum.TextXAlignment.Left}
-)
-
--- ganti tombol STOP menjadi tombol ESP ANTENA (di kiri ESP ALL)
-local espAntennaBtn = makeButton(
-    topBar,"ESPAntennaButton","ESP ANTENA: OFF",
-    UDim2.new(0,120,1,0),UDim2.new(1,-304,0,0),
-    Color3.fromRGB(80,80,120),Color3.fromRGB(255,255,255)
-)
-
-local espAllBtn = makeButton(
-    topBar,"ESPAllButton","ESP ALL: OFF",
-    UDim2.new(0,100,1,0),UDim2.new(1,-174,0,0),
-    Color3.fromRGB(80,80,120),Color3.fromRGB(255,255,255)
-)
-
-local scrollLeftBtn = makeButton(
-    topBar,"SpectPrevBtn","<",
-    UDim2.new(0,24,0,24),UDim2.new(1,-64,0.5,-12),
-    Color3.fromRGB(220,220,235),Color3.fromRGB(60,60,90),14
-)
-
-local scrollRightBtn = makeButton(
-    topBar,"SpectNextBtn",">",
-    UDim2.new(0,24,0,24),UDim2.new(1,-34,0.5,-12),
-    Color3.fromRGB(220,220,235),Color3.fromRGB(60,60,90),14
-)
-
--- ========== SPECTATE STATE ==========
-local function setSpectateStatus(t) statusLabel.Text = "Status: "..t end
-
-local function disconnectRespawn()
-    if respawnConn then respawnConn:Disconnect() end
-    respawnConn = nil
-end
-
-local function hardResetCameraToLocal()
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    local char = player.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
-    cam.CameraType, cam.CameraSubject = Enum.CameraType.Custom, hum or nil
-    safeSetAudioListener("Camera")
-    setDefaultFOV()
-end
-
--- ========== MINI NAV UI ==========
+--================= MINI NAV SPECTATE =================
 local function destroyMiniNav()
     if miniNav and miniNav.Parent then miniNav:Destroy() end
     miniNav = nil
-end
-
-local function minimizeCoreToDock()
-    local core = rawget(_G,"AxaHubCore"); if not core then return end
-    local blur = game:GetService("Lighting"):FindFirstChild("AxaHubGlassBlur")
-    if blur then blur.Enabled, blur.Size = false, 0 end
-    local back = core.ScreenGui and core.ScreenGui:FindFirstChild("CheckerBackdrop")
-    if back then back.Visible = false end
-    if core.MainFrame then core.MainFrame.Visible = false end
 end
 
 local function updateMiniNavInfo()
@@ -348,37 +246,54 @@ local function updateMiniNavInfo()
     if not label or not label:IsA("TextLabel") then return end
 
     if currentSpectateTarget and currentTotal > 0 and currentIndex > 0 then
-        local dn, un = currentSpectateTarget.DisplayName or currentSpectateTarget.Name, currentSpectateTarget.Name
+        local dn = currentSpectateTarget.DisplayName or currentSpectateTarget.Name
+        local un = currentSpectateTarget.Name
         label.Text = string.format("%s (@%s)\n%d/%d", dn, un, currentIndex, currentTotal)
     else
-        label.Text = "Tidak Ada Target\n0/0"
+        label.Text = "Target: None\n0/0"
     end
 end
 
 local function ensureMiniNav()
     local core = rawget(_G,"AxaHubCore")
-    if not core or not core.ScreenGui then return end
-    local existed = core.ScreenGui:FindFirstChild("AxaMiniSpectNav")
-    if existed then miniNav = existed; updateMiniNavInfo(); return end
+    if not core then return end
+    local root = core.WindowGui or core.Window and core.Window.Base
+    if not root then return end
 
-    miniNav = Instance.new("Frame")
-    miniNav.Name = "AxaMiniSpectNav"
-    miniNav.AnchorPoint = Vector2.new(1,1)
-    miniNav.Position = UDim2.new(1,-12,1,-12)
-    miniNav.Size = UDim2.new(0,210,0,52)
-    miniNav.BackgroundColor3 = Color3.fromRGB(18,18,24)
-    miniNav.BorderSizePixel = 0
-    miniNav.Parent = core.ScreenGui
-    makeCorner(miniNav,10)
+    -- kalau sudah ada
+    local existed = root:FindFirstChild("AxaMiniSpectNav")
+    if existed then
+        miniNav = existed
+        updateMiniNavInfo()
+        return
+    end
 
-    local st = Instance.new("UIStroke")
-    st.Thickness, st.Color, st.Transparency = 1, Color3.fromRGB(70,70,90), 0.35
-    st.Parent = miniNav
+    -- buat baru
+    local frame = Instance.new("Frame")
+    frame.Name = "AxaMiniSpectNav"
+    frame.AnchorPoint = Vector2.new(1,1)
+    frame.Position = UDim2.new(1,-12,1,-12)
+    frame.Size = UDim2.new(0,220,0,52)
+    frame.BackgroundColor3 = Color3.fromRGB(18,18,24)
+    frame.BorderSizePixel  = 0
+    frame.Parent = root
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0,10)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness     = 1
+    stroke.Color         = Color3.fromRGB(70,70,90)
+    stroke.Transparency  = 0.35
+    stroke.Parent = frame
 
     local pad = Instance.new("UIPadding")
-    pad.PaddingTop, pad.PaddingBottom = UDim.new(0,6), UDim.new(0,6)
-    pad.PaddingLeft, pad.PaddingRight = UDim.new(0,8), UDim.new(0,8)
-    pad.Parent = miniNav
+    pad.PaddingTop    = UDim.new(0,6)
+    pad.PaddingBottom = UDim.new(0,6)
+    pad.PaddingLeft   = UDim.new(0,8)
+    pad.PaddingRight  = UDim.new(0,8)
+    pad.Parent = frame
 
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "Info"
@@ -391,225 +306,127 @@ local function ensureMiniNav()
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
     infoLabel.TextYAlignment = Enum.TextYAlignment.Top
     infoLabel.TextWrapped = true
-    infoLabel.Parent = miniNav
-    infoLabel.Text = "Tidak Ada Target\n0/0"
+    infoLabel.Text = "Target: None\n0/0"
+    infoLabel.Parent = frame
 
-    local prevBtn = makeButton(
-        miniNav,"Prev","<",
-        UDim2.new(0,24,0,24),UDim2.new(1,-52,0.5,-12),
-        Color3.fromRGB(230,230,240),Color3.fromRGB(40,40,70),16
-    )
-    local nextBtn = makeButton(
-        miniNav,"Next",">",
-        UDim2.new(0,24,0,24),UDim2.new(1,-24,0.5,-12),
-        Color3.fromRGB(230,230,240),Color3.fromRGB(40,40,70),16
-    )
+    local function makeMiniBtn(name, txt, pos)
+        local b = Instance.new("TextButton")
+        b.Name = name
+        b.Size = UDim2.new(0,24,0,24)
+        b.Position = pos
+        b.BackgroundColor3 = Color3.fromRGB(230,230,240)
+        b.BorderSizePixel = 0
+        b.AutoButtonColor = true
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 14
+        b.TextColor3 = Color3.fromRGB(40,40,70)
+        b.Text = txt
+        b.Parent = frame
 
-    connect(prevBtn.MouseButton1Click, function() _G.__AxaSpect_Step(-1) end)
-    connect(nextBtn.MouseButton1Click, function() _G.__AxaSpect_Step(1) end)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(1,0)
+        c.Parent = b
 
-    local main = core.MainFrame
-    if main then
-        connect(main:GetPropertyChangedSignal("Visible"), function()
-            if main.Visible then destroyMiniNav() end
-        end)
+        return b
     end
 
+    local prevBtn = makeMiniBtn("Prev","<", UDim2.new(1,-52,0.5,-12))
+    local nextBtn = makeMiniBtn("Next",">", UDim2.new(1,-24,0.5,-12))
+
+    connect(prevBtn.MouseButton1Click, function()
+        if _G.__AxaSpect_Step then _G.__AxaSpect_Step(-1, true) end
+    end)
+    connect(nextBtn.MouseButton1Click, function()
+        if _G.__AxaSpect_Step then _G.__AxaSpect_Step(1, true) end
+    end)
+
+    -- kalau window ditutup (destroy), mini nav ikut hilang otomatis
+    miniNav = frame
     updateMiniNavInfo()
+end
+
+--================= CAMERA & SPECTATE =================
+local function disconnectRespawn()
+    if respawnConn then respawnConn:Disconnect() end
+    respawnConn = nil
+end
+
+local function hardResetCameraToLocal()
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    cam.CameraType   = Enum.CameraType.Custom
+    cam.CameraSubject= hum or nil
+    safeSetAudioListener("Camera")
+    setDefaultFOV()
 end
 
 local function stopSpectate()
     disconnectRespawn()
-    currentSpectateTarget, spectateMode = nil, "none"
-    currentIndex, currentTotal = 0, 0
-    proLastCF = nil
+    currentSpectateTarget = nil
+    spectateMode          = "none"
+    currentIndex, currentTotal = 0,0
+    proLastCF             = nil
     setDefaultFOV()
     hardResetCameraToLocal()
-    setSpectateStatus("Idle")
     destroyMiniNav()
+    uiNotify({
+        Title   = "Spectate",
+        Content = "Spectate berhenti.",
+        Duration= 3,
+        Icon    = "stop-circle"
+    })
 end
 
--- ========== GLOBAL HOOKS ==========
+-- expose ke global core (dipakai tombol dock, dll)
 _G.AxaHub = _G.AxaHub or {}
-_G.AxaHub.StopSpectate = stopSpectate
-_G.AxaHub_StopSpectate = stopSpectate
-_G.AxaSpectate_Stop    = stopSpectate
-_G.Axa_StopSpectate    = stopSpectate
+_G.AxaHub.StopSpectate   = stopSpectate
+_G.AxaHub_StopSpectate   = stopSpectate
+_G.AxaSpectate_Stop      = stopSpectate
+_G.Axa_StopSpectate      = stopSpectate
 
--- ========== FILTER & ROW ==========
-local function matchesSearch(plr)
-    local q = string.lower(searchBox.Text or "")
-    if q == "" then return true end
-    local dn, un = string.lower(plr.DisplayName or plr.Name), string.lower(plr.Name)
-    return dn:find(q,1,true) or un:find(q,1,true)
-end
+-- robust posisi karakter
+local function getCharPosition(char)
+    if not char or not char:IsA("Model") then return nil, nil end
 
-local function applySearchFilter()
-    for plr,row in pairs(rows) do
-        local m = matchesSearch(plr)
-        row.Visible = m
-        row.Size = UDim2.new(1,0,0,m and 40 or 0)
-    end
-end
-
-local function buildRow(plr)
-    local row = Instance.new("Frame")
-    row.Name = plr.Name
-    row.Size = UDim2.new(1,0,0,40)
-    row.BackgroundColor3, row.BackgroundTransparency = Color3.fromRGB(230,230,244), 0.1
-    row.BorderSizePixel, row.Parent = 0, list
-    makeCorner(row,8)
-
-    local rs = Instance.new("UIStroke")
-    rs.Thickness, rs.Color = 1, Color3.fromRGB(200,200,220)
-    rs.Parent = row
-    if plr == player then
-        row.BackgroundColor3 = Color3.fromRGB(210,230,255)
-        rs.Color = Color3.fromRGB(120,160,235)
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:IsA("BasePart") then
+        return hrp.Position, hrp.CFrame
     end
 
-    local hScroll = Instance.new("ScrollingFrame")
-    hScroll.Name = "RowScroll"
-    hScroll.Position = UDim2.new(0,4,0,4)
-    hScroll.Size = UDim2.new(1,-8,1,-8)
-    hScroll.BackgroundTransparency, hScroll.BorderSizePixel = 1, 0
-    hScroll.ScrollBarThickness = 3
-    hScroll.ScrollingDirection = Enum.ScrollingDirection.X
-    hScroll.CanvasSize = UDim2.new(0,0,0,0)
-    hScroll.ScrollBarImageTransparency = 0.1
-    hScroll.Parent = row
-
-    local content = Instance.new("Frame")
-    content.Name = "Content"
-    content.Size = UDim2.new(0,420,1,0)
-    content.BackgroundTransparency, content.BorderSizePixel = 1, 0
-    content.Parent = hScroll
-
-    makeLabel(
-        content,"Name",
-        string.format("%s (@%s)",plr.DisplayName or plr.Name,plr.Name),
-        UDim2.new(0,170,1,0),UDim2.new(0,6,0,0),
-        {Font=Enum.Font.GothamBold,TextSize=13,TextColor3=Color3.fromRGB(50,50,75),XAlign=Enum.TextXAlignment.Left}
-    )
-
-    local baseX, btnW, btnH, spacing = 190, 60, 24, 4
-    local curX = baseX
-
-    local espBtn = makeButton(
-        content,"ESPBtn","ESP",
-        UDim2.new(0,btnW,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(220,220,230),Color3.fromRGB(60,60,90),12
-    )
-    curX = curX + btnW + spacing
-
-    local spectateWidth = btnW + 4
-    local spectateBtn = makeButton(
-        content,"SpectateBtn","SPECT POV",
-        UDim2.new(0,spectateWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(200,230,255),Color3.fromRGB(40,60,110),12
-    )
-    curX = curX + spectateWidth + spacing
-
-    local spectFreeWidth = btnW + 12
-    local spectFreeBtn = makeButton(
-        content,"SpectFreeBtn","SPECT FREE",
-        UDim2.new(0,spectFreeWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(210,220,255),Color3.fromRGB(40,60,120),12
-    )
-    curX = curX + spectFreeWidth + spacing
-
-    local spectProWidth = btnW + 20
-    local spectProBtn = makeButton(
-        content,"SpectProBtn","SPECT PRO",
-        UDim2.new(0,spectProWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(180,220,255),Color3.fromRGB(20,50,120),12
-    )
-    curX = curX + spectProWidth + spacing
-
-    local spectDroneWidth = btnW + 28
-    local spectDroneBtn = makeButton(
-        content,"SpectDroneBtn","SPECT DRONE",
-        UDim2.new(0,spectDroneWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(170,235,255),Color3.fromRGB(15,40,120),12
-    )
-    curX = curX + spectDroneWidth + spacing
-
-    local tpBtn = makeButton(
-        content,"TPBtn","TP",
-        UDim2.new(0,btnW,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(210,240,220),Color3.fromRGB(40,90,60),12
-    )
-    curX = curX + btnW + spacing
-
-    local tpForceWidth = btnW + 24
-    local tpForceBtn = makeButton(
-        content,"TPForceBtn","TP FORCE",
-        UDim2.new(0,tpForceWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(190,255,210),Color3.fromRGB(20,80,40),12
-    )
-    curX = curX + tpForceWidth + spacing
-
-    local lastRight = curX + 8
-    content.Size, hScroll.CanvasSize = UDim2.new(0,lastRight,1,0), UDim2.new(0,lastRight,0,0)
-
-    connect(espBtn.MouseButton1Click,function()
-        local s = not activeESP[plr]
-        setESPOnTarget(plr,s)
-        if s then
-            espBtn.Text, espBtn.BackgroundColor3 = "ESP ON", Color3.fromRGB(130,190,255)
-        else
-            espBtn.Text, espBtn.BackgroundColor3 = "ESP", Color3.fromRGB(220,220,230)
-        end
-    end)
-    connect(spectateBtn.MouseButton1Click,function()
-        minimizeCoreToDock(); ensureMiniNav()
-        startCustomSpectate(plr)
-    end)
-    connect(spectFreeBtn.MouseButton1Click,function()
-        minimizeCoreToDock(); ensureMiniNav()
-        startFreeSpectate(plr)
-    end)
-    connect(spectProBtn.MouseButton1Click,function()
-        minimizeCoreToDock(); ensureMiniNav()
-        startProSpectate(plr)
-    end)
-    connect(spectDroneBtn.MouseButton1Click,function()
-        minimizeCoreToDock(); ensureMiniNav()
-        startDroneSpectate(plr)
-    end)
-    connect(tpBtn.MouseButton1Click,function()
-        teleportToPlayer(plr)
-    end)
-    connect(tpForceBtn.MouseButton1Click,function()
-        teleportToPlayerForce(plr)
-    end)
-
-    rows[plr] = row
-end
-
-local function rebuildList()
-    for _,plr in ipairs(players:GetPlayers()) do
-        if not rows[plr] then buildRow(plr) end
+    local primary = char.PrimaryPart
+    if primary and primary:IsA("BasePart") then
+        return primary.Position, primary.CFrame
     end
-    applySearchFilter()
+
+    local ok, cf = pcall(function()
+        return char:GetPivot()
+    end)
+    if ok and typeof(cf)=="CFrame" then
+        return cf.Position, cf
+    end
+
+    return nil, nil
 end
 
--- ========== SPECTATE LIST & INDEX ==========
+--================= LIST PLAYER UNTUK SPECTATE =================
 local function getSpectateList()
     local arr = {}
-    for _,plr in ipairs(players:GetPlayers()) do
-        if plr ~= player then
-            local row = rows[plr]
-            if row and row.Visible ~= false then arr[#arr+1] = plr end
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            table.insert(arr, plr)
         end
     end
-    table.sort(arr,function(a,b) return string.lower(a.Name) < string.lower(b.Name) end)
+    table.sort(arr, function(a,b)
+        return string.lower(a.Name) < string.lower(b.Name)
+    end)
     return arr
 end
 
 local function locateIndexInList(plr)
     local lp = getSpectateList()
-    local n = #lp
+    local n  = #lp
     currentTotal = n
     currentIndex = 0
     if n == 0 or not plr then
@@ -625,72 +442,196 @@ local function locateIndexInList(plr)
     updateMiniNavInfo()
 end
 
--- ========== SPECTATE MODES ==========
-function startCustomSpectate(plr)
-    disconnectRespawn()
-    setDefaultFOV()
-    currentSpectateTarget, spectateMode = plr, "custom"
-    proLastCF = nil
-    setSpectateStatus(plr and ("Spectate → "..(plr.DisplayName or plr.Name)) or "Idle")
-    locateIndexInList(plr)
+local function selectStep(dir)
+    local lp = getSpectateList()
+    local n  = #lp
+    if n == 0 then
+        currentSpectateTarget = nil
+        currentIndex, currentTotal = 0,0
+        updateMiniNavInfo()
+        uiNotify({
+            Title   = "Spectate",
+            Content = "Tidak ada player lain.",
+            Duration= 3,
+            Icon    = "alert-triangle"
+        })
+        return
+    end
+
+    dir = dir or 1
+    local idx
+
+    if currentSpectateTarget then
+        for i,p in ipairs(lp) do
+            if p == currentSpectateTarget then
+                idx = i
+                break
+            end
+        end
+    end
+
+    if not idx then
+        idx = (dir >= 0) and 1 or n
+    else
+        idx = idx + dir
+        if idx < 1 then idx = n end
+        if idx > n then idx = 1 end
+    end
+
+    local target = lp[idx]
+    currentSpectateTarget = target
+    currentIndex  = idx
+    currentTotal  = n
+    updateMiniNavInfo()
+
+    uiNotify({
+        Title   = "Target Selected",
+        Content = getPrettyName(target),
+        Duration= 3,
+        Icon    = "user"
+    })
 end
 
-function startFreeSpectate(plr)
+-- versi yang memulai spectate free langsung (dipakai mini nav)
+local function spectateStep(dir, fromMiniNav)
+    selectStep(dir)
+    if fromMiniNav and currentSpectateTarget then
+        -- mini nav: auto SPECT FREE
+        spectateMode = "none"
+        _G.__AxaSpect_LastMode = "free"
+        -- jalankan free
+        local t = currentSpectateTarget
+        if t then
+            -- calling after tiny delay untuk jaga camera ready
+            task.defer(function()
+                if t == currentSpectateTarget then
+                    -- re-check
+                    if t then
+                        _G.__AxaSpect_StartFree(t)
+                    end
+                end
+            end)
+        end
+    end
+end
+
+_G.__AxaSpect_Step = spectateStep
+
+--================= SPECT MODES =================
+local function startCustomSpectate(plr)
+    if not plr then
+        uiNotify({Title="Spectate",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
+    end
     disconnectRespawn()
     setDefaultFOV()
-    currentSpectateTarget, spectateMode = plr, "free"
-    proLastCF = nil
+    currentSpectateTarget = plr
+    spectateMode          = "custom"
+    proLastCF             = nil
+    locateIndexInList(plr)
+    ensureMiniNav()
 
-    local cam = workspace.CurrentCamera
-    if plr and plr.Character and cam then
-        local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+    uiNotify({
+        Title   = "Spectate",
+        Content = "SPECT POV → " .. getPrettyName(plr),
+        Duration= 3,
+        Icon    = "video"
+    })
+end
+
+local function startFreeSpectate(plr)
+    if not plr then
+        uiNotify({Title="Spectate",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
+    end
+    disconnectRespawn()
+    setDefaultFOV()
+    currentSpectateTarget = plr
+    spectateMode          = "free"
+    proLastCF             = nil
+
+    local cam = Workspace.CurrentCamera
+    local char = plr.Character
+    if cam and char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
         if hum then
-            cam.CameraSubject, cam.CameraType = hum, Enum.CameraType.Custom
+            cam.CameraSubject = hum
+            cam.CameraType    = Enum.CameraType.Custom
             safeSetAudioListener("Character")
         end
     end
 
-    respawnConn = plr and plr.CharacterAdded:Connect(function(char)
+    respawnConn = connect(plr.CharacterAdded, function(char)
         local hum2 = char:WaitForChild("Humanoid")
-        local cam2 = workspace.CurrentCamera
+        local cam2 = Workspace.CurrentCamera
         if cam2 and hum2 then
-            cam2.CameraSubject, cam2.CameraType = hum2, Enum.CameraType.Custom
+            cam2.CameraSubject = hum2
+            cam2.CameraType    = Enum.CameraType.Custom
             safeSetAudioListener("Character")
         end
-    end) or nil
+    end)
 
-    setSpectateStatus(plr and ("SPECT FREE → "..(plr.DisplayName or plr.Name)) or "Idle")
     locateIndexInList(plr)
+    ensureMiniNav()
+
+    uiNotify({
+        Title   = "Spectate",
+        Content = "SPECT FREE → " .. getPrettyName(plr),
+        Duration= 3,
+        Icon    = "camera"
+    })
 end
 
-function startProSpectate(plr)
+local function startProSpectate(plr)
+    if not plr then
+        uiNotify({Title="Spectate",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
+    end
     disconnectRespawn()
     setDefaultFOV()
-    currentSpectateTarget, spectateMode = plr, "pro"
-    proLastCF = nil
-    setSpectateStatus(plr and ("SPECT PRO → "..(plr.DisplayName or plr.Name)) or "Idle")
+    currentSpectateTarget = plr
+    spectateMode          = "pro"
+    proLastCF             = nil
     locateIndexInList(plr)
+    ensureMiniNav()
+
+    uiNotify({
+        Title   = "Spectate",
+        Content = "SPECT PRO → " .. getPrettyName(plr),
+        Duration= 3,
+        Icon    = "focus"
+    })
 end
 
-function startDroneSpectate(plr)
+local function startDroneSpectate(plr)
+    if not plr then
+        uiNotify({Title="Spectate",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
+    end
     disconnectRespawn()
-    currentSpectateTarget, spectateMode = plr, "drone"
-    proLastCF = nil
+    currentSpectateTarget = plr
+    spectateMode          = "drone"
+    proLastCF             = nil
     setDroneFOV()
-    setSpectateStatus(plr and ("SPECT DRONE → "..(plr.DisplayName or plr.Name)) or "Idle")
     locateIndexInList(plr)
+    ensureMiniNav()
+
+    uiNotify({
+        Title   = "Spectate",
+        Content = "SPECT DRONE → " .. getPrettyName(plr),
+        Duration= 3,
+        Icon    = "drone"
+    })
 end
 
--- ========== ESP ==========
-function setESPOnTarget(plr, enabled)
-    if not plr then return end
+_G.__AxaSpect_StartFree = startFreeSpectate
 
-    -- flag aktif ESP per-player
+--================= ESP =================
+local function setESPOnTarget(plr, enabled)
+    if not plr then return end
     activeESP[plr] = enabled or nil
 
-    -- ANTENA PER-PLAYER:
-    --  - kalau global ESP ANTENA OFF → ESP per-player ikut hidupkan/matikan antena untuk plr itu
-    --  - kalau global ESP ANTENA ON  → antena diatur tombol global, jadi di-skip di sini
+    -- antena per-player kalau global OFF
     if not espAntennaOn then
         setAntennaForPlayer(plr, enabled and true or false)
     end
@@ -717,18 +658,31 @@ function setESPOnTarget(plr, enabled)
             bb = Instance.new("BillboardGui")
             bb.Name = "AxaESPDistGui"
             bb.Size = UDim2.new(0,260,0,26)
-            bb.StudsOffset, bb.AlwaysOnTop, bb.MaxDistance = Vector3.new(0,3,0), true, 2000
+            bb.StudsOffset = Vector3.new(0,3,0)
+            bb.AlwaysOnTop = true
+            bb.MaxDistance = 2000
             bb.Parent = head
 
             local t = Instance.new("TextLabel")
-            t.Name, t.Size = "Text", UDim2.new(1,0,1,0)
-            t.BackgroundColor3, t.BackgroundTransparency = Color3.fromRGB(0,0,0), 0.35
-            t.BorderSizePixel, t.Font, t.TextSize = 0, Enum.Font.GothamBold, 13
+            t.Name = "Text"
+            t.Size = UDim2.new(1,0,1,0)
+            t.BackgroundColor3 = Color3.fromRGB(0,0,0)
+            t.BackgroundTransparency = 0.35
+            t.BorderSizePixel = 0
+            t.Font = Enum.Font.GothamBold
+            t.TextSize = 13
             t.TextColor3 = Color3.fromRGB(255,255,255)
-            t.TextStrokeTransparency, t.TextStrokeColor3 = 0.4, Color3.fromRGB(0,0,0)
-            t.TextWrapped, t.TextXAlignment, t.TextYAlignment = true, Enum.TextXAlignment.Center, Enum.TextYAlignment.Center
-            t.Text, t.ZIndex, t.Parent = "", 2, bb
-            makeCorner(t,6)
+            t.TextStrokeTransparency = 0.4
+            t.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+            t.TextWrapped = true
+            t.TextXAlignment = Enum.TextXAlignment.Center
+            t.TextYAlignment = Enum.TextYAlignment.Center
+            t.ZIndex = 2
+            t.Parent = bb
+
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(0,6)
+            c.Parent = t
         end
     else
         if hl then hl:Destroy() end
@@ -736,281 +690,152 @@ function setESPOnTarget(plr, enabled)
     end
 end
 
--- ========== TELEPORT (AKURAT 0 STUD, HRP ↔ HRP) ==========
-function teleportToPlayer(target)
-    if not target then return end
+--================= TELEPORT =================
+local function teleportToPlayer(target)
+    if not target then
+        uiNotify({Title="Teleport",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
+    end
+
     local targetChar = target.Character
     if not targetChar then return end
 
-    local char = player.Character or player.CharacterAdded:Wait()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
     local thrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
 
     if hrp and thrp then
-        hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        hrp.AssemblyLinearVelocity  = Vector3.new(0,0,0)
+        hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
         hrp.CFrame = thrp.CFrame
     end
 end
 
--- helper posisi robust (HRP → PrimaryPart → GetPivot)
-local function getCharPosition(char)
-    if not char or not char:IsA("Model") then return nil, nil end
-
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp and hrp:IsA("BasePart") then
-        return hrp.Position, hrp.CFrame
+local function teleportToPlayerForce(target)
+    if not target then
+        uiNotify({Title="Teleport Force",Content="Pilih target dulu.",Duration=3,Icon="alert-triangle"})
+        return
     end
 
-    local primary = char.PrimaryPart
-    if primary and primary:IsA("BasePart") then
-        return primary.Position, primary.CFrame
-    end
-
-    local ok, cf = pcall(function()
-        return char:GetPivot()
-    end)
-    if ok and typeof(cf) == "CFrame" then
-        return cf.Position, cf
-    end
-
-    return nil, nil
-end
-
--- ========== TELEPORT FORCE 0 STUD (pakai posisi robust) ==========
-function teleportToPlayerForce(target)
-    if not target then return end
     local targetChar = target.Character
     if not targetChar then return end
 
     local targetPos = getCharPosition(targetChar)
     if not targetPos then return end
 
-    local char = player.Character or player.CharacterAdded:Wait()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    hrp.AssemblyLinearVelocity  = Vector3.new(0,0,0)
+    hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
     hrp.CFrame = CFrame.new(targetPos)
 end
 
--- ========== SPECTATE SEQUENCE (< & >) ==========
-local function spectateStep(dir)
-    local lp = getSpectateList()
-    local n = #lp
-    if n == 0 then
-        stopSpectate()
-        return
-    end
-
-    local idx
-    if currentSpectateTarget then
-        for i,plr in ipairs(lp) do
-            if plr == currentSpectateTarget then
-                idx = i
-                break
-            end
-        end
-    end
-
-    dir = dir or 1
-    if not idx then
-        idx = (dir >= 0) and 1 or n
-    else
-        idx = idx + dir
-        if idx < 1 then
-            idx = n
-        elseif idx > n then
-            idx = 1
-        end
-    end
-
-    local target = lp[idx]
-    currentTotal = n
-    currentIndex = idx
-
-    if target then
-        -- DEFAULT KHUSUS TOMBOL < & > = SPECT FREE SELALU
-        startFreeSpectate(target)
-    else
-        stopSpectate()
-    end
-
-    updateMiniNavInfo()
-end
-
-_G.__AxaSpect_Step = spectateStep
-
--- ========== WIRING ==========
-connect(searchBox:GetPropertyChangedSignal("Text"), applySearchFilter)
-
-connect(players.PlayerAdded,function(plr)
-    buildRow(plr); applySearchFilter()
-    if espAntennaOn and plr ~= player then
-        setAntennaForPlayer(plr, true)
-    end
-end)
-
-connect(players.PlayerRemoving,function(plr)
-    local row = rows[plr]
-    if row then row:Destroy() rows[plr] = nil end
-    setESPOnTarget(plr,false)
-
-    local link = antennaLinks[plr]
-    if link then
-        clearAntennaLink(plr, link)
-        antennaLinks[plr] = nil
-    end
-
-    if plr == currentSpectateTarget then stopSpectate() end
-end)
-
--- tombol ESP ANTENA global
-connect(espAntennaBtn.MouseButton1Click,function()
-    espAntennaOn = not espAntennaOn
-    espAntennaBtn.Text = espAntennaOn and "ESP ANTENA: ON" or "ESP ANTENA: OFF"
-    espAntennaBtn.BackgroundColor3 = espAntennaOn and Color3.fromRGB(190,80,80) or Color3.fromRGB(80,80,120)
-
-    if espAntennaOn then
-        local char = player.Character
-        local torsoLocal = char and getTorsoForAntenna(char)
-        if not torsoLocal then
-            -- kalau badan kamu belum siap, balikin OFF biar nggak error
-            espAntennaOn = false
-            espAntennaBtn.Text = "ESP ANTENA: OFF"
-            espAntennaBtn.BackgroundColor3 = Color3.fromRGB(80,80,120)
-            return
-        end
-
-        for _,plr in ipairs(players:GetPlayers()) do
-            if plr ~= player then
-                setAntennaForPlayer(plr, true)
-            end
-        end
-    else
-        for plr, link in pairs(antennaLinks) do
-            clearAntennaLink(plr, link)
-        end
-        table.clear(antennaLinks)
-    end
-end)
-
-connect(espAllBtn.MouseButton1Click,function()
-    espAllOn = not espAllOn
-    espAllBtn.Text = espAllOn and "ESP ALL: ON" or "ESP ALL: OFF"
-    espAllBtn.BackgroundColor3 = espAllOn and Color3.fromRGB(110,150,255) or Color3.fromRGB(80,80,120)
-    for plr in pairs(rows) do
-        if plr ~= player then setESPOnTarget(plr,espAllOn) end
-    end
-end)
-
-connect(scrollLeftBtn.MouseButton1Click,function()
-    minimizeCoreToDock(); ensureMiniNav(); spectateStep(-1)
-end)
-connect(scrollRightBtn.MouseButton1Click,function()
-    minimizeCoreToDock(); ensureMiniNav(); spectateStep(1)
-end)
-
--- ========== CAMERA & DISTANCE UPDATE ==========
-connect(runService.RenderStepped,function()
-    if not currentSpectateTarget or spectateMode == "none" then
-        if statusLabel.Text ~= "Status: Idle" then setSpectateStatus("Idle") end
-    end
-
+--================= CAMERA / ESP UPDATE LOOP =================
+connect(RunService.RenderStepped, function()
+    -- Camera follow
     if currentSpectateTarget and spectateMode ~= "none" then
-        local cam, char = workspace.CurrentCamera, currentSpectateTarget.Character
-        if cam then
-            if spectateMode == "custom" and char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    cam.CameraType = Enum.CameraType.Scriptable
-                    local offset = hrp.CFrame.LookVector * -8 + Vector3.new(0,4,0)
-                    cam.CFrame = CFrame.new(hrp.Position + offset, hrp.Position)
-                    safeSetAudioListener("Camera")
-                end
-            elseif spectateMode == "free" and char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    cam.CameraType, cam.CameraSubject = Enum.CameraType.Custom, hum
-                    safeSetAudioListener("Character")
-                end
-            elseif spectateMode == "pro" then
-                cam.CameraType = Enum.CameraType.Scriptable
-                local pos, cf = nil, nil
-                if char then
-                    local p, fullCF = getCharPosition(char)
-                    if p and fullCF then
-                        pos, cf = p, fullCF
-                        proLastCF = fullCF
-                    end
-                end
-                if not cf and proLastCF then
-                    cf = proLastCF
-                    pos = proLastCF.Position
-                end
-                if cf and pos then
-                    local offset   = cf.LookVector * -10 + Vector3.new(0,5,0)
-                    local targetCF = CFrame.new(pos + offset, pos)
-                    if cam.CFrame then
-                        cam.CFrame = cam.CFrame:Lerp(targetCF, 0.25)
-                    else
-                        cam.CFrame = targetCF
-                    end
-                    safeSetAudioListener("Camera")
-                end
-            elseif spectateMode == "drone" then
-                cam.CameraType = Enum.CameraType.Scriptable
-                local pos, cf = nil, nil
-                if char then
-                    local p, fullCF = getCharPosition(char)
-                    if p and fullCF then
-                        pos, cf = p, fullCF
-                        proLastCF = fullCF
-                    end
-                end
-                if not cf and proLastCF then
-                    cf  = proLastCF
-                    pos = proLastCF.Position
-                end
-                if cf and pos then
-                    -- Posisi kamera drone: lebih tinggi + agak jauh di belakang, plus anti tembok
-                    local from    = pos + Vector3.new(0,3,0)
-                    local lookDir = (-cf.LookVector).Unit
-                    local baseOffset = lookDir * 28 + Vector3.new(0,40,0)
-                    local desiredPos = pos + baseOffset
-                    local dir = desiredPos - from
-                    local finalPos = desiredPos
+        local cam = Workspace.CurrentCamera
+        local char = currentSpectateTarget.Character
+        if not cam then return end
 
-                    if dir.Magnitude > 1e-3 then
-                        droneRayParams.FilterDescendantsInstances = { char, player.Character }
-                        local result = Workspace:Raycast(from, dir, droneRayParams)
-                        if result then
-                            finalPos = result.Position - dir.Unit * 2
-                        end
-                    end
+        if spectateMode == "custom" and char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                cam.CameraType = Enum.CameraType.Scriptable
+                local offset = hrp.CFrame.LookVector * -8 + Vector3.new(0,4,0)
+                cam.CFrame = CFrame.new(hrp.Position + offset, hrp.Position)
+                safeSetAudioListener("Camera")
+            end
 
-                    local targetCF = CFrame.new(finalPos, pos)
-                    if cam.CFrame then
-                        cam.CFrame = cam.CFrame:Lerp(targetCF, 0.25)
-                    else
-                        cam.CFrame = targetCF
-                    end
-                    cam.FieldOfView = DRONE_FOV
-                    safeSetAudioListener("Camera")
+        elseif spectateMode == "free" and char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                cam.CameraType   = Enum.CameraType.Custom
+                cam.CameraSubject= hum
+                safeSetAudioListener("Character")
+            end
+
+        elseif spectateMode == "pro" then
+            cam.CameraType = Enum.CameraType.Scriptable
+            local pos, cf = nil, nil
+            if char then
+                local p, fullCF = getCharPosition(char)
+                if p and fullCF then
+                    pos, cf = p, fullCF
+                    proLastCF = fullCF
                 end
+            end
+            if not cf and proLastCF then
+                cf  = proLastCF
+                pos = proLastCF.Position
+            end
+            if cf and pos then
+                local offset   = cf.LookVector * -10 + Vector3.new(0,5,0)
+                local targetCF = CFrame.new(pos + offset, pos)
+                if cam.CFrame then
+                    cam.CFrame = cam.CFrame:Lerp(targetCF, 0.25)
+                else
+                    cam.CFrame = targetCF
+                end
+                safeSetAudioListener("Camera")
+            end
+
+        elseif spectateMode == "drone" then
+            cam.CameraType = Enum.CameraType.Scriptable
+            local pos, cf = nil, nil
+            if char then
+                local p, fullCF = getCharPosition(char)
+                if p and fullCF then
+                    pos, cf = p, fullCF
+                    proLastCF = fullCF
+                end
+            end
+            if not cf and proLastCF then
+                cf  = proLastCF
+                pos = proLastCF.Position
+            end
+            if cf and pos then
+                local from    = pos + Vector3.new(0,3,0)
+                local lookDir = (-cf.LookVector).Unit
+                local baseOffset = lookDir * 28 + Vector3.new(0,40,0)
+                local desiredPos = pos + baseOffset
+                local dir = desiredPos - from
+                local finalPos = desiredPos
+
+                if dir.Magnitude > 1e-3 then
+                    droneRayParams.FilterDescendantsInstances = {
+                        char,
+                        LocalPlayer.Character
+                    }
+                    local result = Workspace:Raycast(from, dir, droneRayParams)
+                    if result then
+                        finalPos = result.Position - dir.Unit * 2
+                    end
+                end
+
+                local targetCF = CFrame.new(finalPos, pos)
+                if cam.CFrame then
+                    cam.CFrame = cam.CFrame:Lerp(targetCF, 0.25)
+                else
+                    cam.CFrame = targetCF
+                end
+                cam.FieldOfView = DRONE_FOV
+                safeSetAudioListener("Camera")
             end
         end
     end
 
-    local myChar, myHRP = player.Character, nil
-    if myChar then myHRP = myChar:FindFirstChild("HumanoidRootPart") end
+    -- Update teks jarak ESP
+    local myChar = LocalPlayer.Character
+    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
     if not myHRP then return end
 
     for plr in pairs(activeESP) do
         local char = plr.Character
         if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hrp  = char:FindFirstChild("HumanoidRootPart")
             local head = char:FindFirstChild("Head") or hrp
             if hrp and head then
                 local gui = head:FindFirstChild("AxaESPDistGui")
@@ -1028,18 +853,298 @@ connect(runService.RenderStepped,function()
     end
 end)
 
--- ========== INIT ==========
-rebuildList()
-setSpectateStatus("Idle")
+--================= PLAYER ADDED / REMOVED =================
+connect(Players.PlayerAdded, function(plr)
+    if espAllOn and plr ~= LocalPlayer then
+        setESPOnTarget(plr, true)
+    end
+    if espAntennaOn and plr ~= LocalPlayer then
+        setAntennaForPlayer(plr, true)
+    end
+end)
 
--- ========== TAB CLEANUP ==========
-_G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
-_G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = function()
-    stopSpectate()
-    for plr in pairs(activeESP) do
-        setESPOnTarget(plr,false)
+connect(Players.PlayerRemoving, function(plr)
+    if activeESP[plr] then
+        setESPOnTarget(plr, false)
+        activeESP[plr] = nil
     end
 
+    local link = antennaLinks[plr]
+    if link then
+        clearAntennaLink(plr, link)
+        antennaLinks[plr] = nil
+    end
+
+    if plr == currentSpectateTarget then
+        stopSpectate()
+    end
+end)
+
+--================= WINDUI: BUILD TAB UI =================
+Tab:Section({
+    Title  = "Spectate + ESP",
+    Opened = true
+})
+
+Tab:Paragraph({
+    Title  = "Deskripsi",
+    Desc   = "• Pilih target player, lalu jalankan mode Spectate (POV / FREE / PRO / DRONE)." ..
+             "\n• ESP bisa per-target atau semua player." ..
+             "\n• ESP Antena = beam merah dari karakter kamu ke semua player.",
+    Color  = "Blue",
+    Image  = "info",
+    ImageSize = 22
+})
+
+-- PILIH / GANTI TARGET
+Tab:Section({
+    Title  = "Target Player",
+    Opened = true
+})
+
+Tab:Button({
+    Title    = "Pilih Target Berikutnya",
+    Desc     = "Urut alfabet (skip diri sendiri).",
+    Icon     = "chevron-right",
+    Locked   = false,
+    Callback = function()
+        selectStep(1)
+    end
+})
+
+Tab:Button({
+    Title    = "Pilih Target Sebelumnya",
+    Desc     = "Urut alfabet mundur.",
+    Icon     = "chevron-left",
+    Locked   = false,
+    Callback = function()
+        selectStep(-1)
+    end
+})
+
+Tab:Button({
+    Title    = "Info Target Saat Ini",
+    Desc     = "Tampilkan info target yang sedang dipilih.",
+    Icon     = "user",
+    Locked   = false,
+    Callback = function()
+        if not currentSpectateTarget then
+            uiNotify({
+                Title   = "Target",
+                Content = "Belum ada target yang dipilih.",
+                Duration= 3,
+                Icon    = "alert-circle"
+            })
+            return
+        end
+        uiNotify({
+            Title   = "Target Saat Ini",
+            Content = getPrettyName(currentSpectateTarget),
+            Duration= 4,
+            Icon    = "user"
+        })
+    end
+})
+
+-- MODE SPECTATE
+Tab:Section({
+    Title  = "Mode Spectate",
+    Opened = true
+})
+
+Tab:Button({
+    Title    = "SPECT POV (Custom Cam)",
+    Desc     = "Kamera di belakang kepala target (third person).",
+    Icon     = "video",
+    Locked   = false,
+    Callback = function()
+        startCustomSpectate(currentSpectateTarget)
+    end
+})
+
+Tab:Button({
+    Title    = "SPECT FREE (Follow Humanoid)",
+    Desc     = "Kamera sama seperti kamu jadi player target.",
+    Icon     = "camera",
+    Locked   = false,
+    Callback = function()
+        startFreeSpectate(currentSpectateTarget)
+    end
+})
+
+Tab:Button({
+    Title    = "SPECT PRO (Cinematic Smooth)",
+    Desc     = "Gerakan kamera smooth, angle sinematik.",
+    Icon     = "focus",
+    Locked   = false,
+    Callback = function()
+        startProSpectate(currentSpectateTarget)
+    end
+})
+
+Tab:Button({
+    Title    = "SPECT DRONE (Overhead + Anti Tembok)",
+    Desc     = "Drone tinggi di belakang target, FOV lebih lebar.",
+    Icon     = "drone",
+    Locked   = false,
+    Callback = function()
+        startDroneSpectate(currentSpectateTarget)
+    end
+})
+
+Tab:Button({
+    Title    = "Stop Spectate",
+    Desc     = "Reset kamera ke karakter kamu.",
+    Icon     = "x-octagon",
+    Locked   = false,
+    Callback = function()
+        stopSpectate()
+    end
+})
+
+-- ESP SETTINGS
+Tab:Section({
+    Title  = "ESP Settings",
+    Opened = true
+})
+
+Tab:Toggle({
+    Title    = "ESP ALL",
+    Desc     = "Nyalakan ESP untuk semua player (kecuali kamu).",
+    Icon     = "scan-eye",
+    Type     = "Checkbox",
+    Value    = false,
+    Callback = function(state)
+        espAllOn = state and true or false
+        for _,plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                setESPOnTarget(plr, espAllOn)
+            end
+        end
+        uiNotify({
+            Title   = "ESP ALL",
+            Content = espAllOn and "ESP ALL: ON" or "ESP ALL: OFF",
+            Duration= 3,
+            Icon    = "scan-eye"
+        })
+    end
+})
+
+Tab:Toggle({
+    Title    = "ESP ANTENA Global",
+    Desc     = "Tampilkan beam merah dari kamu ke semua player.",
+    Icon     = "radar",
+    Type     = "Checkbox",
+    Value    = false,
+    Callback = function(state)
+        espAntennaOn = state and true or false
+
+        if espAntennaOn then
+            local char = LocalPlayer.Character
+            local torso = char and getTorsoForAntenna(char)
+            if not torso then
+                espAntennaOn = false
+                uiNotify({
+                    Title   = "ESP ANTENA",
+                    Content = "Gagal ON: badan karakter belum siap.",
+                    Duration= 4,
+                    Icon    = "alert-triangle"
+                })
+                return
+            end
+            for _,plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    setAntennaForPlayer(plr, true)
+                end
+            end
+            uiNotify({
+                Title   = "ESP ANTENA",
+                Content = "ESP ANTENA: ON (semua player).",
+                Duration= 3,
+                Icon    = "radar"
+            })
+        else
+            for plr, link in pairs(antennaLinks) do
+                clearAntennaLink(plr, link)
+            end
+            table.clear(antennaLinks)
+            uiNotify({
+                Title   = "ESP ANTENA",
+                Content = "ESP ANTENA: OFF",
+                Duration= 3,
+                Icon    = "radar"
+            })
+        end
+    end
+})
+
+Tab:Button({
+    Title    = "Toggle ESP Target (On/Off)",
+    Desc     = "ESP hanya untuk target yang sedang dipilih.",
+    Icon     = "user-check",
+    Locked   = false,
+    Callback = function()
+        if not currentSpectateTarget then
+            uiNotify({
+                Title   = "ESP Target",
+                Content = "Belum ada target yang dipilih.",
+                Duration= 3,
+                Icon    = "alert-triangle"
+            })
+            return
+        end
+        local cur = activeESP[currentSpectateTarget] and true or false
+        setESPOnTarget(currentSpectateTarget, not cur)
+        uiNotify({
+            Title   = "ESP Target",
+            Content = string.format("%s → %s",
+                getPrettyName(currentSpectateTarget),
+                (not cur) and "ESP ON" or "ESP OFF"),
+            Duration= 3,
+            Icon    = "user-check"
+        })
+    end
+})
+
+-- TELEPORT
+Tab:Section({
+    Title  = "Teleport",
+    Opened = true
+})
+
+Tab:Button({
+    Title    = "TP ke Target",
+    Desc     = "Teleport HRP kamu ke HRP target (0 stud).",
+    Icon     = "navigation",
+    Locked   = false,
+    Callback = function()
+        teleportToPlayer(currentSpectateTarget)
+    end
+})
+
+Tab:Button({
+    Title    = "TP FORCE ke Target",
+    Desc     = "Versi lebih paksa (pakai GetPivot / PrimaryPart).",
+    Icon     = "navigation-2",
+    Locked   = false,
+    Callback = function()
+        teleportToPlayerForce(currentSpectateTarget)
+    end
+})
+
+--================= TAB CLEANUP =================
+_G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
+_G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = function()
+    -- Matikan spectate
+    stopSpectate()
+
+    -- Matikan semua ESP
+    for plr in pairs(activeESP) do
+        setESPOnTarget(plr, false)
+    end
+    table.clear(activeESP)
+
+    -- Bersihkan antena
     for plr, link in pairs(antennaLinks) do
         clearAntennaLink(plr, link)
     end
@@ -1051,6 +1156,7 @@ _G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = function()
         end
     end)
 
+    -- Disconnect semua koneksi
     for _,c in ipairs(conns) do
         pcall(function() c:Disconnect() end)
     end
