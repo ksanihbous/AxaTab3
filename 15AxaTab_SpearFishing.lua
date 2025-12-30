@@ -55,7 +55,7 @@ local spearInitTried  = false
 local Remotes        = ReplicatedStorage:FindFirstChild("Remotes")
 local FireRE         = Remotes and Remotes:FindFirstChild("FireRE")   -- Fire harpoon
 local ToolRE         = Remotes and Remotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
-local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish + Skill
+local FishRE         = Remotes and Remotes:FindFirstChild("FishRE")   -- Sell spear-fish + Skill + Album
 local BaitRE         = Remotes and Remotes:FindFirstChild("BaitRE")   -- Buy bait
 local DailyRE        = Remotes and Remotes:FindFirstChild("DailyRE")  -- Daily reward claim
 
@@ -87,6 +87,11 @@ local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")
 local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")
 local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
 
+-- Tambahan untuk Album
+local ResFish        = safeRequire(ConfigFolder,  "ResFish")
+local ResFishWeight  = safeRequire(ConfigFolder,  "ResFishWeight")
+local FishUtil       = safeRequire(UtilityFolder, "FishUtil")
+
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
     pcall(function()
@@ -96,6 +101,21 @@ local function notify(title, text, dur)
             Duration = dur or 4
         })
     end)
+end
+
+local function formatWeight(fishId, weight)
+    if FishUtil and fishId and type(weight) == "number" then
+        local ok, txt = pcall(function()
+            return FishUtil:getDescWeight(fishId, weight)
+        end)
+        if ok and txt then
+            return txt
+        end
+    end
+    if type(weight) == "number" then
+        return tostring(weight)
+    end
+    return "-"
 end
 
 ------------------- ID LIST -------------------
@@ -226,6 +246,16 @@ local updateAutoDailyUI = nil
 -- Skill cooldown UI updater (akan diisi setelah label dibuat)
 local updateSkillCooldownUI = nil
 
+-- Album Collect UI state
+local AlbumData              = nil
+local autoAlbumCollect       = false
+local albumRowsById          = {}
+local albumStatusLabel       = nil
+local albumWatcherStarted    = false
+local albumCollectAllRunning = false
+
+local ALBUM_MUTATION_KEYS = { "Marsh", "Rain", "Big", "Iceborne", "Snow", "Iris" }
+
 local function createMainLayout()
     -- Header
     local header = Instance.new("Frame")
@@ -256,7 +286,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.1"
+    title.Text = "Spear Fishing V4"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -656,6 +686,522 @@ local function sellAllFish()
     end
 end
 
+------------------- ALBUM COLLECT: DATA & HELPERS -------------------
+local function ensureAlbumData()
+    if AlbumData or not alive then
+        return AlbumData
+    end
+
+    -- coba via shared.WaitPlayerData("Album")
+    local waitFn
+    local okFn, fn = pcall(function()
+        return shared and shared.WaitPlayerData
+    end)
+    if okFn and typeof(fn) == "function" then
+        waitFn = fn
+    end
+
+    if waitFn then
+        local ok, result = pcall(function()
+            return waitFn("Album")
+        end)
+        if ok and result and typeof(result) == "Instance" then
+            AlbumData = result
+            return AlbumData
+        end
+    end
+
+    -- fallback: Folder "Album" di LocalPlayer
+    local folder = LocalPlayer:FindFirstChild("Album")
+    if folder and folder:IsA("Folder") then
+        AlbumData = folder
+    end
+
+    return AlbumData
+end
+
+local function getFishNumericId(fishId)
+    if type(fishId) ~= "string" then return math.huge end
+    local numStr = fishId:match("(%d+)$")
+    if not numStr then
+        return math.huge
+    end
+    local n = tonumber(numStr)
+    return n or math.huge
+end
+
+local function computeMissingAlbumParams(node)
+    local missing = {}
+    if not node then
+        return missing
+    end
+
+    -- First unlock (GetThing)
+    if not node:GetAttribute("GetThing") then
+        table.insert(missing, "GetThing")
+    end
+
+    -- Max / Min thing (server akan validasi sendiri)
+    if not node:GetAttribute("GetMaxThing") then
+        table.insert(missing, "GetMaxThing")
+    end
+    if not node:GetAttribute("GetMinThing") then
+        table.insert(missing, "GetMinThing")
+    end
+
+    -- Mutation / climate-based thing
+    for _, key in ipairs(ALBUM_MUTATION_KEYS) do
+        local discovered = node:GetAttribute(key)
+        local paramName  = "Get" .. key .. "Thing"
+        if discovered and not node:GetAttribute(paramName) then
+            table.insert(missing, paramName)
+        end
+    end
+
+    return missing
+end
+
+local function describeMissingParams(missing)
+    if #missing == 0 then
+        return "Status Album: COMPLETE"
+    end
+    local labelNames = {}
+    for _, param in ipairs(missing) do
+        if param == "GetThing" then
+            table.insert(labelNames, "First")
+        elseif param == "GetMaxThing" then
+            table.insert(labelNames, "Max")
+        elseif param == "GetMinThing" then
+            table.insert(labelNames, "Min")
+        else
+            local key = param:match("^Get(.+)Thing$")
+            table.insert(labelNames, key or param)
+        end
+    end
+    return "Status Album: Missing " .. table.concat(labelNames, ", ")
+end
+
+local function fireAlbumGetThing(fishId, param)
+    if not FishRE then
+        warn("[SpearFishing] FishRE tidak ditemukan untuk AlbumGetThing.")
+        return
+    end
+    if not fishId or not param then
+        return
+    end
+
+    local args = {
+        [1] = "AlbumGetThing",
+        [2] = {
+            ["ID"]    = fishId,
+            ["Param"] = param
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("[SpearFishing] AlbumGetThing gagal:", fishId, param, err)
+    end
+end
+
+local function updateAlbumStatusSummary()
+    if not albumStatusLabel then
+        return
+    end
+
+    local data = AlbumData or ensureAlbumData()
+    if not data then
+        albumStatusLabel.Text = "Album: data belum siap."
+        return
+    end
+
+    local fishCount = 0
+    local pending   = 0
+
+    for _, child in ipairs(data:GetChildren()) do
+        if child:IsA("Folder") or child:IsA("Instance") then
+            fishCount = fishCount + 1
+            local missing = computeMissingAlbumParams(child)
+            pending = pending + #missing
+        end
+    end
+
+    albumStatusLabel.Text = string.format(
+        "Album: %d fish, pending %d tugas collect. Auto: %s",
+        fishCount,
+        pending,
+        autoAlbumCollect and "ON" or "OFF"
+    )
+end
+
+local function formatFishNameAndIcon(fishId)
+    local name = fishId
+    local icon = ""
+    if ItemUtil and fishId then
+        local okName, resName = pcall(function()
+            return ItemUtil:getName(fishId)
+        end)
+        if okName and resName then
+            name = resName
+        end
+
+        local okIcon, resIcon = pcall(function()
+            return ItemUtil:getIcon(fishId)
+        end)
+        if okIcon and resIcon then
+            icon = resIcon
+        end
+    end
+    return name, icon
+end
+
+local function updateAlbumRow(fishId)
+    local row = albumRowsById[fishId]
+    if not row then
+        return
+    end
+    local data = AlbumData or ensureAlbumData()
+    if not data then
+        return
+    end
+    local node = data:FindFirstChild(fishId)
+    if not node then
+        -- Node hilang, sembunyikan row
+        row.frame.Visible = false
+        return
+    end
+
+    row.frame.Visible = true
+
+    local count = node:GetAttribute("Count") or 0
+    if row.countLabel then
+        row.countLabel.Text = "Count: " .. tostring(count)
+    end
+
+    local minW = node:GetAttribute("MinWeight")
+    local maxW = node:GetAttribute("MaxWeight")
+
+    if row.minLabel then
+        if minW then
+            row.minLabel.Text = "Min: " .. formatWeight(fishId, minW)
+        else
+            row.minLabel.Text = "Min: -"
+        end
+    end
+
+    if row.maxLabel then
+        if maxW then
+            row.maxLabel.Text = "Max: " .. formatWeight(fishId, maxW)
+        else
+            row.maxLabel.Text = "Max: -"
+        end
+    end
+
+    local missing = computeMissingAlbumParams(node)
+    local desc    = describeMissingParams(missing)
+    if row.missLabel then
+        row.missLabel.Text = desc
+    end
+
+    if row.collectButton then
+        if #missing == 0 then
+            row.collectButton.Text = "Done"
+            row.collectButton.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
+            row.collectButton.AutoButtonColor  = false
+        else
+            row.collectButton.Text = "Collect (" .. tostring(#missing) .. ")"
+            row.collectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            row.collectButton.AutoButtonColor  = true
+        end
+    end
+end
+
+local function collectAlbumForFish(fishId)
+    local data = AlbumData or ensureAlbumData()
+    if not data then
+        notify("Spear Fishing", "Album data belum siap.", 3)
+        return
+    end
+
+    local node = data:FindFirstChild(fishId)
+    if not node then
+        notify("Spear Fishing", "Album untuk " .. tostring(fishId) .. " tidak ditemukan.", 3)
+        return
+    end
+
+    local missing = computeMissingAlbumParams(node)
+    if #missing == 0 then
+        notify("Spear Fishing", "Album " .. tostring(fishId) .. " sudah lengkap.", 3)
+        return
+    end
+
+    notify("Spear Fishing", "Collect Album " .. tostring(fishId) .. " (" .. #missing .. " tugas).", 3)
+
+    task.spawn(function()
+        for _, param in ipairs(missing) do
+            if not alive then break end
+            fireAlbumGetThing(fishId, param)
+            task.wait(0.05)
+        end
+    end)
+end
+
+local function startCollectAllAlbum()
+    local data = AlbumData or ensureAlbumData()
+    if not data then
+        notify("Spear Fishing", "Album data belum siap.", 3)
+        return
+    end
+    if albumCollectAllRunning then
+        notify("Spear Fishing", "Collect All Album masih berjalan.", 3)
+        return
+    end
+
+    local jobs = {}
+    for _, child in ipairs(data:GetChildren()) do
+        local fishId = child.Name
+        local missing = computeMissingAlbumParams(child)
+        for _, param in ipairs(missing) do
+            table.insert(jobs, { id = fishId, param = param })
+        end
+    end
+
+    if #jobs == 0 then
+        notify("Spear Fishing", "Semua Album sudah lengkap.", 3)
+        updateAlbumStatusSummary()
+        return
+    end
+
+    albumCollectAllRunning = true
+    notify("Spear Fishing", "Collect All Album dimulai (" .. #jobs .. " tugas).", 3)
+
+    task.spawn(function()
+        for _, job in ipairs(jobs) do
+            if not alive then break end
+            fireAlbumGetThing(job.id, job.param)
+            task.wait(0.05)
+        end
+        albumCollectAllRunning = false
+        notify("Spear Fishing", "Collect All Album selesai.", 3)
+        updateAlbumStatusSummary()
+    end)
+end
+
+local function createAlbumRowForNode(node, scrollFrame)
+    if not node or not scrollFrame then return end
+    local fishId = node.Name
+
+    local existing = albumRowsById[fishId]
+    if existing and existing.frame and existing.frame.Parent then
+        updateAlbumRow(fishId)
+        return
+    end
+
+    local row = Instance.new("Frame")
+    row.Name = fishId
+    row.Parent = scrollFrame
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    row.BackgroundTransparency = 0.1
+    row.BorderSizePixel = 0
+    row.Size = UDim2.new(1, -4, 0, 72)
+    row.LayoutOrder = getFishNumericId(fishId)
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = row
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(70, 70, 70)
+    stroke.Thickness = 1
+    stroke.Parent = row
+
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "Icon"
+    icon.Parent = row
+    icon.BackgroundTransparency = 1
+    icon.BorderSizePixel = 0
+    icon.Position = UDim2.new(0, 6, 0, 10)
+    icon.Size = UDim2.new(0, 52, 0, 52)
+    icon.ScaleType = Enum.ScaleType.Fit
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "Name"
+    nameLabel.Parent = row
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamSemibold
+    nameLabel.TextSize = 12
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextYAlignment = Enum.TextYAlignment.Top
+    nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
+    nameLabel.Position = UDim2.new(0, 64, 0, 4)
+    nameLabel.Size = UDim2.new(1, -180, 0, 16)
+    nameLabel.TextWrapped = true
+
+    local minLabel = Instance.new("TextLabel")
+    minLabel.Name = "MinLabel"
+    minLabel.Parent = row
+    minLabel.BackgroundTransparency = 1
+    minLabel.Font = Enum.Font.Gotham
+    minLabel.TextSize = 11
+    minLabel.TextXAlignment = Enum.TextXAlignment.Left
+    minLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+    minLabel.Position = UDim2.new(0, 64, 0, 22)
+    minLabel.Size = UDim2.new(0, 110, 0, 16)
+    minLabel.Text = "Min: -"
+
+    local maxLabel = Instance.new("TextLabel")
+    maxLabel.Name = "MaxLabel"
+    maxLabel.Parent = row
+    maxLabel.BackgroundTransparency = 1
+    maxLabel.Font = Enum.Font.Gotham
+    maxLabel.TextSize = 11
+    maxLabel.TextXAlignment = Enum.TextXAlignment.Left
+    maxLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+    maxLabel.Position = UDim2.new(0, 64 + 110, 0, 22)
+    maxLabel.Size = UDim2.new(0, 110, 0, 16)
+    maxLabel.Text = "Max: -"
+
+    local countLabel = Instance.new("TextLabel")
+    countLabel.Name = "CountLabel"
+    countLabel.Parent = row
+    countLabel.BackgroundTransparency = 1
+    countLabel.Font = Enum.Font.Gotham
+    countLabel.TextSize = 11
+    countLabel.TextXAlignment = Enum.TextXAlignment.Left
+    countLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+    countLabel.Position = UDim2.new(0, 64, 0, 40)
+    countLabel.Size = UDim2.new(0, 150, 0, 16)
+    countLabel.Text = "Count: -"
+
+    local missLabel = Instance.new("TextLabel")
+    missLabel.Name = "MissLabel"
+    missLabel.Parent = row
+    missLabel.BackgroundTransparency = 1
+    missLabel.Font = Enum.Font.Gotham
+    missLabel.TextSize = 11
+    missLabel.TextXAlignment = Enum.TextXAlignment.Left
+    missLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+    missLabel.Position = UDim2.new(0, 64, 0, 56)
+    missLabel.Size = UDim2.new(1, -180, 0, 14)
+    missLabel.Text = "Status Album: -"
+
+    local collectBtn = Instance.new("TextButton")
+    collectBtn.Name = "CollectButton"
+    collectBtn.Parent = row
+    collectBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    collectBtn.BorderSizePixel = 0
+    collectBtn.AutoButtonColor = true
+    collectBtn.Font = Enum.Font.GothamSemibold
+    collectBtn.TextSize = 11
+    collectBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
+    collectBtn.Text = "Collect"
+    collectBtn.Position = UDim2.new(1, -100, 0.5, -12)
+    collectBtn.Size = UDim2.new(0, 90, 0, 24)
+
+    local cornerBtn = Instance.new("UICorner")
+    cornerBtn.CornerRadius = UDim.new(0, 6)
+    cornerBtn.Parent = collectBtn
+
+    local fishName, fishIcon = formatFishNameAndIcon(fishId)
+    nameLabel.Text = fishName or fishId
+    icon.Image     = fishIcon or ""
+
+    local rowData = {
+        frame         = row,
+        icon          = icon,
+        nameLabel     = nameLabel,
+        minLabel      = minLabel,
+        maxLabel      = maxLabel,
+        countLabel    = countLabel,
+        missLabel     = missLabel,
+        collectButton = collectBtn,
+    }
+
+    albumRowsById[fishId] = rowData
+
+    local connBtn = collectBtn.MouseButton1Click:Connect(function()
+        collectAlbumForFish(fishId)
+    end)
+    table.insert(connections, connBtn)
+
+    if node.AttributeChanged then
+        local c = node.AttributeChanged:Connect(function()
+            if not alive then return end
+            updateAlbumRow(fishId)
+            updateAlbumStatusSummary()
+        end)
+        table.insert(connections, c)
+    end
+
+    updateAlbumRow(fishId)
+end
+
+local function buildAlbumRows(scrollFrame)
+    local data = AlbumData or ensureAlbumData()
+    if not data then
+        return
+    end
+
+    for _, node in ipairs(data:GetChildren()) do
+        createAlbumRowForNode(node, scrollFrame)
+    end
+
+    updateAlbumStatusSummary()
+end
+
+local function initAlbumWatcher(scrollFrame)
+    if albumWatcherStarted then
+        return
+    end
+    albumWatcherStarted = true
+
+    task.spawn(function()
+        local data = AlbumData
+        while alive and not data do
+            data = ensureAlbumData()
+            if data then
+                break
+            end
+            task.wait(0.3)
+        end
+
+        if not alive or not data then
+            if albumStatusLabel then
+                albumStatusLabel.Text = "Album: data tidak ditemukan."
+            end
+            return
+        end
+
+        AlbumData = data
+        buildAlbumRows(scrollFrame)
+
+        if data.ChildAdded then
+            local c1 = data.ChildAdded:Connect(function(child)
+                if not alive then return end
+                createAlbumRowForNode(child, scrollFrame)
+                updateAlbumStatusSummary()
+            end)
+            table.insert(connections, c1)
+        end
+
+        if data.ChildRemoved then
+            local c2 = data.ChildRemoved:Connect(function(child)
+                if not alive then return end
+                local fishId = child.Name
+                local row = albumRowsById[fishId]
+                if row and row.frame then
+                    row.frame:Destroy()
+                end
+                albumRowsById[fishId] = nil
+                updateAlbumStatusSummary()
+            end)
+            table.insert(connections, c2)
+        end
+    end)
+end
+
 ------------------- AUTO SKILL 1 & 2 (SEQUENCE, COOLDOWN HANYA DI UI) -------------------
 -- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
@@ -674,7 +1220,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill03" -- Skill09 (CHAIN LIGHTNING)
+            ["ID"] = "Skill03" -- Skill03
         }
     }
 
@@ -699,7 +1245,7 @@ local function fireSkill2()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill01" -- Thunder
+            ["ID"] = "Skill01" -- Skill01
         }
     }
 
@@ -1973,6 +2519,117 @@ local function buildDailyRewardCard(parent)
     return card
 end
 
+------------------- ALBUM COLLECT CARD: UI -------------------
+local function buildAlbumCollectCard(parent)
+    local card, _, _ = createCard(
+        parent,
+        "Album Collect - Spear Fishing",
+        "Collect Album First/Min/Max + Weather/Mutation untuk setiap ikan spear.",
+        6,     -- setelah Bait Shop (5), card baru ini 6
+        320
+    )
+
+    local content = Instance.new("Frame")
+    content.Name = "AlbumContent"
+    content.Parent = card
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.Position = UDim2.new(0, 0, 0, 40)
+    content.Size = UDim2.new(1, 0, 1, -40)
+
+    local topRow = Instance.new("Frame")
+    topRow.Name = "TopRow"
+    topRow.Parent = content
+    topRow.BackgroundTransparency = 1
+    topRow.BorderSizePixel = 0
+    topRow.Position = UDim2.new(0, 0, 0, 0)
+    topRow.Size = UDim2.new(1, 0, 0, 30)
+
+    local autoBtn, updateAutoAlbumUI = createToggleButton(topRow, "Auto Collect Album", autoAlbumCollect)
+    autoBtn.Size = UDim2.new(0.5, -4, 1, 0)
+    autoBtn.Position = UDim2.new(0, 0, 0, 0)
+
+    local collectAllBtn = Instance.new("TextButton")
+    collectAllBtn.Name = "CollectAllButton"
+    collectAllBtn.Parent = topRow
+    collectAllBtn.BackgroundColor3 = Color3.fromRGB(70, 50, 70)
+    collectAllBtn.BorderSizePixel = 0
+    collectAllBtn.AutoButtonColor = true
+    collectAllBtn.Font = Enum.Font.GothamSemibold
+    collectAllBtn.TextSize = 12
+    collectAllBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+    collectAllBtn.Text = "Collect All Album"
+    collectAllBtn.Position = UDim2.new(0.5, 4, 0, 0)
+    collectAllBtn.Size = UDim2.new(0.5, -4, 1, 0)
+
+    local collectAllCorner = Instance.new("UICorner")
+    collectAllCorner.CornerRadius = UDim.new(0, 8)
+    collectAllCorner.Parent = collectAllBtn
+
+    local status = Instance.new("TextLabel")
+    status.Name = "AlbumStatus"
+    status.Parent = content
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 11
+    status.TextColor3 = Color3.fromRGB(185, 185, 185)
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.TextWrapped = true
+    status.Position = UDim2.new(0, 0, 0, 34)
+    status.Size = UDim2.new(1, 0, 0, 24)
+    status.Text = "Album: data belum siap."
+    albumStatusLabel = status
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "AlbumScroll"
+    scroll.Parent = content
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.Position = UDim2.new(0, 0, 0, 62)
+    scroll.Size = UDim2.new(1, 0, 1, -66)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+
+    local padding = Instance.new("UIPadding")
+    padding.Parent = scroll
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingBottom = UDim.new(0, 4)
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 4)
+
+    local connLayout = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
+    end)
+    table.insert(connections, connLayout)
+
+    updateAutoAlbumUI(autoAlbumCollect)
+
+    local connToggle = autoBtn.MouseButton1Click:Connect(function()
+        autoAlbumCollect = not autoAlbumCollect
+        updateAutoAlbumUI(autoAlbumCollect)
+        updateAlbumStatusSummary()
+        notify("Spear Fishing", "Auto Collect Album: " .. (autoAlbumCollect and "ON" or "OFF"), 2)
+    end)
+    table.insert(connections, connToggle)
+
+    local connCollectAll = collectAllBtn.MouseButton1Click:Connect(function()
+        startCollectAllAlbum()
+    end)
+    table.insert(connections, connCollectAll)
+
+    initAlbumWatcher(scroll)
+    updateAlbumStatusSummary()
+
+    return card
+end
+
 ------------------- TOOLSDATA INIT (UNTUK OWNERSHIP REFRESH) -------------------
 local function initToolsDataWatcher()
     task.spawn(function()
@@ -2284,6 +2941,7 @@ buildDailyRewardCard(bodyScroll)
 buildHarpoonShopCard(bodyScroll)
 buildBasketShopCard(bodyScroll)
 buildBaitShopCard(bodyScroll)
+buildAlbumCollectCard(bodyScroll)
 
 -- setelah semua card terbentuk, inisialisasi ToolsData & DailyData watcher
 initToolsDataWatcher()
@@ -2299,6 +2957,7 @@ do
                 refreshHarpoonOwnership()
                 refreshBasketOwnership()
                 refreshDailyUI()
+                updateAlbumStatusSummary()
             end
         end)
     end)
@@ -2432,6 +3091,28 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Album Collect (ringan, 1 tugas per iterasi)
+task.spawn(function()
+    while alive do
+        if autoAlbumCollect then
+            pcall(function()
+                local data = AlbumData or ensureAlbumData()
+                if data then
+                    for _, child in ipairs(data:GetChildren()) do
+                        local missing = computeMissingAlbumParams(child)
+                        if #missing > 0 then
+                            fireAlbumGetThing(child.Name, missing[1])
+                            break
+                        end
+                    end
+                    updateAlbumStatusSummary()
+                end
+            end)
+        end
+        task.wait(0.5)
+    end
+end)
+
 ------------------- TAB CLEANUP INTEGRASI CORE -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
     alive           = false
@@ -2441,6 +3122,7 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoDailyReward = false
     autoSkill1      = false
     autoSkill2      = false
+    autoAlbumCollect = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
@@ -2450,6 +3132,9 @@ _G.AxaHub.TabCleanup[tabId] = function()
         end
     end
     connections = {}
+
+    albumRowsById    = {}
+    AlbumData        = nil
 
     if frame then
         pcall(function()
