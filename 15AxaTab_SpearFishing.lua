@@ -244,7 +244,7 @@ local updateSkillCooldownUI = nil
 -- Album Collect UI state
 local albumCardsByFishId   = {}  -- fishId -> {frame, collectButton, ...}
 local albumSeaButtons      = {}  -- seaName -> button
-local albumSeaList         = {}  -- list of seaName (ALL + climates/events/worlds)
+local albumSeaList         = {}  -- list of seaName (ALL + climates/events)
 local albumCurrentSea      = nil
 local albumStatusLabel     = nil
 local albumAutoToggleFn    = nil
@@ -255,37 +255,6 @@ local albumAllFishIds      = {}  -- semua FishID yg muncul di ResFishPool
 -- Nama mutation yg digunakan untuk Album (total 6) → total 9 album/task per fish:
 -- 1x GetThing + 2x Size (Min/Max) + 6x Mutation di bawah:
 local ALBUM_MUTATION_NAMES = { "Marsh", "Rain", "Big", "Iceborne", "Snow", "Iris" }
-
--- Helper nilai Album (bisa Attribute atau ValueObject)
-local function getAlbumRecordValue(record, names)
-    if not record then return nil end
-    for _, key in ipairs(names) do
-        if typeof(key) == "string" and key ~= "" then
-            local v = record:GetAttribute(key)
-            if v ~= nil then
-                return v
-            end
-            local obj = record:FindFirstChild(key)
-            if obj and obj.Value ~= nil then
-                return obj.Value
-            end
-        end
-    end
-    return nil
-end
-
-local function albumValueIsTrue(v)
-    if v == nil then return false end
-    local t = typeof(v)
-    if t == "boolean" then
-        return v
-    elseif t == "number" then
-        return v ~= 0
-    elseif t == "string" then
-        return v == "true" or v == "True" or v == "TRUE" or v == "1"
-    end
-    return false
-end
 
 ------------------- BASIC UI FACTORIES -------------------
 local function createMainLayout()
@@ -318,7 +287,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.2++"
+    title.Text = "Spear Fishing V3.2"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -818,75 +787,41 @@ local function ensureAlbumData()
     return AlbumData
 end
 
--- List Sea/World/Climate/Event
 local function buildAlbumSeaList()
-    local seen = {}
     local list = {}
 
-    local function addName(name)
-        if type(name) ~= "string" then return end
-        if name == "" then return end
+    if ResClimate and ResClimate.__index then
+        for _, name in pairs(ResClimate.__index) do
+            if type(name) == "string" then
+                table.insert(list, name)
+            end
+        end
+    end
+
+    if ResEvent and ResEvent.__index then
+        for _, name in pairs(ResEvent.__index) do
+            if type(name) == "string" then
+                table.insert(list, name)
+            end
+        end
+    end
+
+    -- Hilangkan duplikat
+    local seen = {}
+    local unique = {}
+    for _, name in ipairs(list) do
         if not seen[name] then
             seen[name] = true
-            table.insert(list, name)
+            table.insert(unique, name)
         end
     end
 
-    -- Ambil dari ResClimate
-    if type(ResClimate) == "table" then
-        if type(ResClimate.__index) == "table" then
-            for _, name in pairs(ResClimate.__index) do
-                addName(name)
-            end
-        end
-        for k, v in pairs(ResClimate) do
-            if k ~= "__index" then
-                if type(k) == "string" and not tonumber(k) then
-                    addName(k)
-                end
-                addName(v)
-            end
-        end
-    end
+    table.sort(unique)
 
-    -- Ambil dari ResEvent
-    if type(ResEvent) == "table" then
-        if type(ResEvent.__index) == "table" then
-            for _, name in pairs(ResEvent.__index) do
-                addName(name)
-            end
-        end
-        for k, v in pairs(ResEvent) do
-            if k ~= "__index" then
-                if type(k) == "string" and not tonumber(k) then
-                    addName(k)
-                end
-                addName(v)
-            end
-        end
-    end
+    -- Tambah "ALL" di depan
+    table.insert(unique, 1, "ALL")
 
-    -- Ambil Sea/World langsung dari ResFishPool (Weather/Event/World/Map/Area/Sea/Region)
-    if type(ResFishPool) == "table" then
-        local keys = { "Weather", "Event", "SeaWorld", "World", "Map", "Area", "Sea", "Region" }
-        for _, pool in pairs(ResFishPool) do
-            if type(pool) == "table" then
-                for _, key in ipairs(keys) do
-                    local val = pool[key]
-                    if type(val) == "string" then
-                        addName(val)
-                    end
-                end
-            end
-        end
-    end
-
-    table.sort(list, function(a, b)
-        return tostring(a) < tostring(b)
-    end)
-
-    table.insert(list, 1, "ALL")
-    albumSeaList = list
+    albumSeaList = unique
 end
 
 local function buildAlbumFishMapping()
@@ -897,8 +832,6 @@ local function buildAlbumFishMapping()
         return
     end
 
-    local seaKeys = { "Weather", "Event", "SeaWorld", "World", "Map", "Area", "Sea", "Region" }
-
     for _, pool in pairs(ResFishPool) do
         if type(pool) == "table" then
             local fishId = pool.FishID
@@ -908,11 +841,11 @@ local function buildAlbumFishMapping()
                     seas = {}
                     albumFishSeas[fishId] = seas
                 end
-                for _, key in ipairs(seaKeys) do
-                    local val = pool[key]
-                    if type(val) == "string" then
-                        seas[val] = true
-                    end
+                if pool.Weather and type(pool.Weather) == "string" then
+                    seas[pool.Weather] = true
+                end
+                if pool.Event and type(pool.Event) == "string" then
+                    seas[pool.Event] = true
                 end
             end
         end
@@ -984,32 +917,44 @@ local function computeAlbumTasksForFish(fishId)
         count = count + 1
     end
 
-    -- 1) GetThing (album pertama kali)
-    local gotThing = getAlbumRecordValue(record, { "GetThing", "GotThing", "GetAlbum", "GotAlbum" })
-    if not albumValueIsTrue(gotThing) then
+    -- 1) First GetThing
+    if not record:GetAttribute("GetThing") then
         addParam("GetThing")
     end
 
     -- 2) Size Min / Max
-    local gotMax = getAlbumRecordValue(record, { "GetMaxThing", "GotMaxThing" })
-    if not albumValueIsTrue(gotMax) then
-        addParam("GetMaxThing")
+    local minWeight, maxWeight
+    if FishUtil then
+        local ok, mn, mx = pcall(function()
+            return FishUtil:getMinMaxWeight(fishId)
+        end)
+        if ok then
+            minWeight, maxWeight = mn, mx
+        end
     end
 
-    local gotMin = getAlbumRecordValue(record, { "GetMinThing", "GotMinThing" })
-    if not albumValueIsTrue(gotMin) then
-        addParam("GetMinThing")
+    -- Max
+    if not record:GetAttribute("GetMaxThing") then
+        local myMax = record:GetAttribute("MaxWeight")
+        if not maxWeight or not myMax or maxWeight == myMax then
+            addParam("GetMaxThing")
+        end
+    end
+
+    -- Min
+    if not record:GetAttribute("GetMinThing") then
+        local myMin = record:GetAttribute("MinWeight")
+        if not minWeight or not myMin or minWeight == myMin then
+            addParam("GetMinThing")
+        end
     end
 
     -- 3) Mutation Album: Marsh/Rain/Big/Iceborne/Snow/Iris
     for _, mutName in ipairs(ALBUM_MUTATION_NAMES) do
-        local hasMut = getAlbumRecordValue(record, { mutName, "Has" .. mutName })
-        if albumValueIsTrue(hasMut) then
-            local paramKey = "Get" .. mutName .. "Thing"
-            local done = getAlbumRecordValue(record, { paramKey, "Got" .. mutName .. "Thing" })
-            if not albumValueIsTrue(done) then
-                addParam(paramKey)
-            end
+        local hasMut = record:GetAttribute(mutName)
+        local param = "Get" .. mutName .. "Thing"
+        if hasMut and not record:GetAttribute(param) then
+            addParam(param)
         end
     end
 
@@ -1062,55 +1007,31 @@ local function updateAlbumFishRow(fishId)
 
     local record = AlbumData and AlbumData:FindFirstChild(fishId) or nil
 
-    -- Catch Count
-    local count = 0
-    if record then
-        local v = getAlbumRecordValue(record, { "Count", "CatchCount", "Catch", "TotalCatch" })
-        if v ~= nil then
-            if typeof(v) == "number" then
-                count = v
-            else
-                local num = tonumber(v)
-                if num then
-                    count = num
-                end
-            end
-        end
-    end
+    local count = record and record:GetAttribute("Count") or 0
     if countLabel then
         countLabel.Text = "Catch: " .. tostring(count)
     end
 
-    -- Min / Max size
     local minText, maxText = "Min: -", "Max: -"
+    if record and FishUtil then
+        local minVal = record:GetAttribute("MinWeight")
+        local maxVal = record:GetAttribute("MaxWeight")
 
-    if record then
-        local minVal = getAlbumRecordValue(record, { "MinWeight", "Min", "MinW", "WeightMin", "MiniWeight" })
-        local maxVal = getAlbumRecordValue(record, { "MaxWeight", "Max", "MaxW", "WeightMax" })
-
-        local function formatWeight(val)
-            if val == nil then return nil end
-            if FishUtil then
-                local ok, desc = pcall(function()
-                    return FishUtil:getDescWeight(fishId, val)
-                end)
-                if ok and desc then
-                    return desc
-                end
+        local ok1, descMin = pcall(function()
+            if minVal then
+                return FishUtil:getDescWeight(fishId, minVal)
             end
-            if typeof(val) == "number" then
-                return string.format("%.2f Kg", val)
+        end)
+        local ok2, descMax = pcall(function()
+            if maxVal then
+                return FishUtil:getDescWeight(fishId, maxVal)
             end
-            return tostring(val)
-        end
+        end)
 
-        local descMin = formatWeight(minVal)
-        local descMax = formatWeight(maxVal)
-
-        if descMin then
+        if ok1 and descMin then
             minText = "Min: " .. descMin
         end
-        if descMax then
+        if ok2 and descMax then
             maxText = "Max: " .. descMax
         end
     end
@@ -1122,13 +1043,11 @@ local function updateAlbumFishRow(fishId)
         maxLabel.Text = maxText
     end
 
-    -- Mutations list
     if mutLabel then
         local mutNames = {}
         if record then
             for _, mutName in ipairs(ALBUM_MUTATION_NAMES) do
-                local v = getAlbumRecordValue(record, { mutName, "Has" .. mutName })
-                if albumValueIsTrue(v) then
+                if record:GetAttribute(mutName) then
                     table.insert(mutNames, mutName)
                 end
             end
@@ -1140,7 +1059,6 @@ local function updateAlbumFishRow(fishId)
         end
     end
 
-    -- Pending tasks
     local pendingCount = 0
     if AlbumData and record then
         local _, p = computeAlbumTasksForFish(fishId)
@@ -2587,7 +2505,7 @@ local function buildAlbumCollectCard(parent)
     albumStatusLabel.Size = UDim2.new(1, 0, 0, 22)
     albumStatusLabel.Text = "Album: data belum siap (menunggu PlayerData)."
 
-    -- Tabs Sea / Climate / Event / World
+    -- Tabs Sea / Climate / Event
     local seaScroll = Instance.new("ScrollingFrame")
     seaScroll.Name = "SeaTabs"
     seaScroll.Parent = content
@@ -2679,7 +2597,7 @@ local function buildAlbumCollectCard(parent)
         applySeaFilter()
     end
 
-    -- Build Sea Tabs (termasuk Sea World seperti Nather Island)
+    -- Build Sea Tabs
     for _, seaName in ipairs(albumSeaList) do
         local btn = Instance.new("TextButton")
         btn.Name = "Tab_" .. seaName
@@ -2691,7 +2609,7 @@ local function buildAlbumCollectCard(parent)
         btn.TextSize = 11
         btn.TextColor3 = Color3.fromRGB(220, 220, 220)
         btn.TextXAlignment = Enum.TextXAlignment.Center
-        btn.Text = (seaName == "ALL") and "ALL Sea" or seaName
+        btn.Text = (seaName == "ALL") and "ALL Sea" or getFishDisplayName(seaName)
         btn.Size = UDim2.new(0, 90, 1, 0)
 
         local corner = Instance.new("UICorner")
@@ -2862,7 +2780,7 @@ local function buildAlbumCollectCard(parent)
         end)
         table.insert(connections, connCollect)
 
-        -- Initial fill (Name sudah ada, Catch/Min/Max/Mut akan terisi setelah AlbumData siap)
+        -- Initial fill (walaupun AlbumData belum siap, Name/Icon tetap ada)
         updateAlbumFishRow(fishId)
     end
 
@@ -2933,81 +2851,35 @@ local function initAlbumDataWatcher()
             albumStatusLabel.Text = "Album: data siap. Filter Sea & Collect Album."
         end
 
-        local function hookValue(record, valueObj)
-            if not valueObj or not valueObj.Changed then
-                return
-            end
-            local fishId = record.Name
-            local conn = valueObj.Changed:Connect(function()
-                if not alive then return end
+        local function hookChild(child)
+            if not child or not child.AttributeChanged then return end
+            local conn = child.AttributeChanged:Connect(function()
+                local fishId = child.Name
                 updateAlbumFishRow(fishId)
                 updateAlbumStatus()
             end)
             table.insert(connections, conn)
         end
 
-        local function hookRecord(record)
-            if not record then return end
-            local fishId = record.Name
-
-            if record.AttributeChanged then
-                local cAttr = record.AttributeChanged:Connect(function()
-                    if not alive then return end
-                    updateAlbumFishRow(fishId)
-                    updateAlbumStatus()
-                end)
-                table.insert(connections, cAttr)
-            end
-
-            if record.ChildAdded then
-                local cAdd = record.ChildAdded:Connect(function(v)
-                    if not alive then return end
-                    if v then
-                        hookValue(record, v)
-                    end
-                    updateAlbumFishRow(fishId)
-                    updateAlbumStatus()
-                end)
-                table.insert(connections, cAdd)
-            end
-
-            if record.ChildRemoved then
-                local cRem = record.ChildRemoved:Connect(function()
-                    if not alive then return end
-                    updateAlbumFishRow(fishId)
-                    updateAlbumStatus()
-                end)
-                table.insert(connections, cRem)
-            end
-
-            for _, v in ipairs(record:GetChildren()) do
-                hookValue(record, v)
-            end
-
-            updateAlbumFishRow(fishId)
-        end
-
         for _, child in ipairs(AlbumData:GetChildren()) do
-            hookRecord(child)
+            hookChild(child)
+            updateAlbumFishRow(child.Name)
         end
         updateAlbumStatus()
 
-        local connAddRecord = AlbumData.ChildAdded:Connect(function(child)
-            if not alive then return end
-            hookRecord(child)
+        local connAdd = AlbumData.ChildAdded:Connect(function(child)
+            hookChild(child)
             updateAlbumFishRow(child.Name)
             updateAlbumStatus()
         end)
-        table.insert(connections, connAddRecord)
+        table.insert(connections, connAdd)
 
-        local connRemoveRecord = AlbumData.ChildRemoved:Connect(function(child)
-            if not alive then return end
-            if child then
-                updateAlbumFishRow(child.Name)
-            end
+        local connRemove = AlbumData.ChildRemoved:Connect(function(child)
+            if not child then return end
+            updateAlbumFishRow(child.Name)
             updateAlbumStatus()
         end)
-        table.insert(connections, connRemoveRecord)
+        table.insert(connections, connRemove)
     end)
 end
 
