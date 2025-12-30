@@ -1,7 +1,8 @@
 --==========================================================
---  1AxaTab_SpectateESP.lua
+--  1AxaTab_SpectateESP.lua (WindUI Integrated)
 --  Spectate + ESP + TP FORCE + SPECT PRO + SPECT DRONE + ESP ANTENA
---  Env: TAB_FRAME, TAB_ID, Players, LocalPlayer, RunService, Camera
+--  Env: TAB_FRAME, TAB_ID, Players, LocalPlayer, RunService, Camera,
+--       AXA_WINDOW (opsional), AxaSetCleanup (opsional)
 --==========================================================
 local frame      = TAB_FRAME
 local player     = LocalPlayer
@@ -31,7 +32,9 @@ local antennaFolder = Instance.new("Folder")
 antennaFolder.Name = "AxaSpect_AntennaFolder"
 antennaFolder.Parent = workspace
 
--- ========== SMALL HELPERS ==========
+--==========================================================
+--  SMALL HELPERS (UI + CONNECT)
+--==========================================================
 local function makeCorner(gui, px)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, px or 8)
@@ -42,11 +45,14 @@ end
 local function makeButton(parent, name, text, size, pos, bg, tc, ts, font)
     local b = Instance.new("TextButton")
     b.Name, b.Size, b.Position = name, size, pos or UDim2.new()
-    b.BackgroundColor3 = bg or Color3.fromRGB(230,230,245)
-    b.BorderSizePixel, b.Font = 0, font or Enum.Font.GothamBold
-    b.TextSize, b.TextColor3, b.Text = ts or 13, tc or Color3.fromRGB(40,40,60), text or ""
-    b.AutoButtonColor = true
-    b.Parent = parent
+    b.BackgroundColor3 = bg or Color3.fromRGB(40,40,60)
+    b.BorderSizePixel  = 0
+    b.Font             = font or Enum.Font.GothamBold
+    b.TextSize         = ts or 13
+    b.TextColor3       = tc or Color3.fromRGB(235,235,255)
+    b.Text             = text or ""
+    b.AutoButtonColor  = true
+    b.Parent           = parent
     makeCorner(b, 8)
     return b
 end
@@ -57,11 +63,12 @@ local function makeLabel(parent, name, text, size, pos, p)
     l.BackgroundTransparency = 1
     l.Font       = p and p.Font or Enum.Font.Gotham
     l.TextSize   = p and p.TextSize or 12
-    l.TextColor3 = p and p.TextColor3 or Color3.fromRGB(40,40,60)
+    l.TextColor3 = p and p.TextColor3 or Color3.fromRGB(230,230,245)
     l.TextXAlignment = p and p.XAlign or Enum.TextXAlignment.Left
     l.TextYAlignment = p and p.YAlign or Enum.TextYAlignment.Center
     l.TextWrapped    = p and p.Wrapped or false
-    l.Text, l.Parent = text or "", parent
+    l.Text           = text or ""
+    l.Parent         = parent
     return l
 end
 
@@ -96,7 +103,9 @@ local function setDroneFOV()
     end
 end
 
---========== ANTENA MERAH (BEAM DARI BADAN KAMU KE PLAYER) ==========
+--==========================================================
+--  ANTENA MERAH (BEAM DARI BADAN KAMU KE PLAYER)
+--==========================================================
 local function clearAntennaLink(plr, link)
     if not link then return end
 
@@ -228,31 +237,41 @@ connect(player.CharacterAdded, function(newChar)
     end
 end)
 
--- ========== HEADER ==========
+--==========================================================
+--  HEADER
+--==========================================================
 makeLabel(frame,"Header","🎥 Spectate + ESP V1",
     UDim2.new(1,-10,0,22),UDim2.new(0,5,0,6),
-    {Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.fromRGB(40,40,60),XAlign=Enum.TextXAlignment.Left}
+    {Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.fromRGB(235,235,255),XAlign=Enum.TextXAlignment.Left}
 )
 makeLabel(frame,"Sub",
     "Pilih player, nyalakan ESP (meter), SPECT POV, SPECT FREE, SPECT PRO, SPECT DRONE, atau teleport (TP / TP FORCE).",
     UDim2.new(1,-10,0,32),UDim2.new(0,5,0,26),
-    {Font=Enum.Font.Gotham,TextSize=12,TextColor3=Color3.fromRGB(90,90,120),
+    {Font=Enum.Font.Gotham,TextSize=12,TextColor3=Color3.fromRGB(170,170,200),
      XAlign=Enum.TextXAlignment.Left,YAlign=Enum.TextYAlignment.Top,Wrapped=true}
 )
 
--- ========== SEARCH BOX ==========
+--==========================================================
+--  SEARCH BOX
+--==========================================================
 local searchBox = Instance.new("TextBox")
 searchBox.Name, searchBox.PlaceholderText = "SearchBox","Search player..."
 searchBox.Size  = UDim2.new(1,-12,0,24)
 searchBox.Position = UDim2.new(0,6,0,60)
-searchBox.BackgroundColor3 = Color3.fromRGB(230,230,245)
-searchBox.TextColor3, searchBox.Font, searchBox.TextSize = Color3.fromRGB(40,40,60), Enum.Font.Gotham, 13
-searchBox.TextXAlignment, searchBox.Text = Enum.TextXAlignment.Left, ""
-searchBox.ClearTextOnFocus, searchBox.BorderSizePixel = false, 0
-searchBox.Parent = frame
+searchBox.BackgroundColor3 = Color3.fromRGB(30,30,44)
+searchBox.TextColor3       = Color3.fromRGB(235,235,255)
+searchBox.Font             = Enum.Font.Gotham
+searchBox.TextSize         = 13
+searchBox.TextXAlignment   = Enum.TextXAlignment.Left
+searchBox.Text             = ""
+searchBox.ClearTextOnFocus = false
+searchBox.BorderSizePixel  = 0
+searchBox.Parent           = frame
 makeCorner(searchBox, 8)
 
--- ========== PLAYER LIST ==========
+--==========================================================
+--  PLAYER LIST
+--==========================================================
 local list = Instance.new("ScrollingFrame")
 list.Name = "PlayerList"
 list.Position = UDim2.new(0,6,0,88)
@@ -270,7 +289,9 @@ connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
     list.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+6)
 end)
 
--- ========== TOP BAR ==========
+--==========================================================
+--  TOP BAR (STATUS + ESP ALL + ESP ANTENA + NAV)
+--==========================================================
 local topBar = Instance.new("Frame")
 topBar.Name  = "TopBar"
 topBar.Size  = UDim2.new(1,-12,0,28)
@@ -281,36 +302,40 @@ topBar.Parent = frame
 local statusLabel = makeLabel(
     topBar,"StatusLabel","Status: Idle",
     UDim2.new(1,-360,1,0),UDim2.new(0,0,0,0),
-    {Font=Enum.Font.Gotham,TextSize=13,TextColor3=Color3.fromRGB(70,70,100),XAlign=Enum.TextXAlignment.Left}
+    {Font=Enum.Font.Gotham,TextSize=13,TextColor3=Color3.fromRGB(180,180,210),XAlign=Enum.TextXAlignment.Left}
 )
 
--- ganti tombol STOP menjadi tombol ESP ANTENA (di kiri ESP ALL)
+-- tombol ESP ANTENA (di kiri ESP ALL)
 local espAntennaBtn = makeButton(
     topBar,"ESPAntennaButton","ESP ANTENA: OFF",
     UDim2.new(0,120,1,0),UDim2.new(1,-304,0,0),
-    Color3.fromRGB(80,80,120),Color3.fromRGB(255,255,255)
+    Color3.fromRGB(120,40,40),Color3.fromRGB(255,255,255)
 )
 
 local espAllBtn = makeButton(
     topBar,"ESPAllButton","ESP ALL: OFF",
     UDim2.new(0,100,1,0),UDim2.new(1,-174,0,0),
-    Color3.fromRGB(80,80,120),Color3.fromRGB(255,255,255)
+    Color3.fromRGB(40,70,140),Color3.fromRGB(235,235,255)
 )
 
 local scrollLeftBtn = makeButton(
     topBar,"SpectPrevBtn","<",
     UDim2.new(0,24,0,24),UDim2.new(1,-64,0.5,-12),
-    Color3.fromRGB(220,220,235),Color3.fromRGB(60,60,90),14
+    Color3.fromRGB(35,35,55),Color3.fromRGB(220,220,255),14
 )
 
 local scrollRightBtn = makeButton(
     topBar,"SpectNextBtn",">",
     UDim2.new(0,24,0,24),UDim2.new(1,-34,0.5,-12),
-    Color3.fromRGB(220,220,235),Color3.fromRGB(60,60,90),14
+    Color3.fromRGB(35,35,55),Color3.fromRGB(220,220,255),14
 )
 
--- ========== SPECTATE STATE ==========
-local function setSpectateStatus(t) statusLabel.Text = "Status: "..t end
+--==========================================================
+--  SPECTATE STATE
+--==========================================================
+local function setSpectateStatus(t)
+    statusLabel.Text = "Status: "..t
+end
 
 local function disconnectRespawn()
     if respawnConn then respawnConn:Disconnect() end
@@ -327,19 +352,54 @@ local function hardResetCameraToLocal()
     setDefaultFOV()
 end
 
--- ========== MINI NAV UI ==========
+--==========================================================
+--  MINI NAV UI (KANAN BAWAH LAYAR)
+--==========================================================
+local function getMiniNavRoot()
+    local core = rawget(_G,"AxaHubCore")
+    if core then
+        if core.HostGui and core.HostGui.Parent then
+            return core.HostGui
+        end
+        if core.WindowGui and core.WindowGui.Parent then
+            return core.WindowGui
+        end
+    end
+    return nil
+end
+
 local function destroyMiniNav()
     if miniNav and miniNav.Parent then miniNav:Destroy() end
     miniNav = nil
 end
 
 local function minimizeCoreToDock()
-    local core = rawget(_G,"AxaHubCore"); if not core then return end
-    local blur = game:GetService("Lighting"):FindFirstChild("AxaHubGlassBlur")
-    if blur then blur.Enabled, blur.Size = false, 0 end
-    local back = core.ScreenGui and core.ScreenGui:FindFirstChild("CheckerBackdrop")
-    if back then back.Visible = false end
-    if core.MainFrame then core.MainFrame.Visible = false end
+    local core = rawget(_G,"AxaHubCore")
+
+    -- 1) coba pakai API Window (WindUI)
+    local win = core and core.Window or _G.AXA_WINDOW or AXA_WINDOW
+    if win then
+        local ok = pcall(function()
+            if typeof(win.Minimize) == "function" then
+                win:Minimize()
+            elseif win.Minimize then
+                win.Minimize(win)
+            end
+        end)
+        if ok then return end
+    end
+
+    -- 2) fallback: sembunyikan WindowGui kalau ada
+    local gui = core and core.WindowGui
+    if gui and gui.Parent then
+        pcall(function()
+            if gui:IsA("ScreenGui") then
+                gui.Enabled = false
+            elseif gui:IsA("GuiObject") then
+                gui.Visible = false
+            end
+        end)
+    end
 end
 
 local function updateMiniNavInfo()
@@ -356,19 +416,24 @@ local function updateMiniNavInfo()
 end
 
 local function ensureMiniNav()
-    local core = rawget(_G,"AxaHubCore")
-    if not core or not core.ScreenGui then return end
-    local existed = core.ScreenGui:FindFirstChild("AxaMiniSpectNav")
-    if existed then miniNav = existed; updateMiniNavInfo(); return end
+    local root = getMiniNavRoot()
+    if not root then return end
+
+    local existed = root:FindFirstChild("AxaMiniSpectNav")
+    if existed and existed:IsA("Frame") then
+        miniNav = existed
+        updateMiniNavInfo()
+        return
+    end
 
     miniNav = Instance.new("Frame")
     miniNav.Name = "AxaMiniSpectNav"
     miniNav.AnchorPoint = Vector2.new(1,1)
     miniNav.Position = UDim2.new(1,-12,1,-12)
     miniNav.Size = UDim2.new(0,210,0,52)
-    miniNav.BackgroundColor3 = Color3.fromRGB(18,18,24)
+    miniNav.BackgroundColor3 = Color3.fromRGB(15,15,22)
     miniNav.BorderSizePixel = 0
-    miniNav.Parent = core.ScreenGui
+    miniNav.Parent = root
     makeCorner(miniNav,10)
 
     local st = Instance.new("UIStroke")
@@ -408,13 +473,7 @@ local function ensureMiniNav()
     connect(prevBtn.MouseButton1Click, function() _G.__AxaSpect_Step(-1) end)
     connect(nextBtn.MouseButton1Click, function() _G.__AxaSpect_Step(1) end)
 
-    local main = core.MainFrame
-    if main then
-        connect(main:GetPropertyChangedSignal("Visible"), function()
-            if main.Visible then destroyMiniNav() end
-        end)
-    end
-
+    -- opsional: kalau root ScreenGui, kita tidak perlu hook Visible; cleanup di TabCleanup
     updateMiniNavInfo()
 end
 
@@ -429,14 +488,18 @@ local function stopSpectate()
     destroyMiniNav()
 end
 
--- ========== GLOBAL HOOKS ==========
+--==========================================================
+--  GLOBAL HOOKS
+--==========================================================
 _G.AxaHub = _G.AxaHub or {}
-_G.AxaHub.StopSpectate = stopSpectate
-_G.AxaHub_StopSpectate = stopSpectate
-_G.AxaSpectate_Stop    = stopSpectate
-_G.Axa_StopSpectate    = stopSpectate
+_G.AxaHub.StopSpectate   = stopSpectate
+_G.AxaHub_StopSpectate   = stopSpectate
+_G.AxaSpectate_Stop      = stopSpectate
+_G.Axa_StopSpectate      = stopSpectate
 
--- ========== FILTER & ROW ==========
+--==========================================================
+--  FILTER & ROW
+--==========================================================
 local function matchesSearch(plr)
     local q = string.lower(searchBox.Text or "")
     if q == "" then return true end
@@ -452,28 +515,21 @@ local function applySearchFilter()
     end
 end
 
--- forward declaration supaya bisa dipakai sebelum definisi
-function setESPOnTarget(plr, enabled) end
-function startCustomSpectate(plr) end
-function startFreeSpectate(plr) end
-function startProSpectate(plr) end
-function startDroneSpectate(plr) end
-function teleportToPlayer(plr) end
-function teleportToPlayerForce(plr) end
-
 local function buildRow(plr)
     local row = Instance.new("Frame")
     row.Name = plr.Name
     row.Size = UDim2.new(1,0,0,40)
-    row.BackgroundColor3, row.BackgroundTransparency = Color3.fromRGB(230,230,244), 0.1
-    row.BorderSizePixel, row.Parent = 0, list
+    row.BackgroundColor3 = Color3.fromRGB(35,35,52)
+    row.BackgroundTransparency = 0.1
+    row.BorderSizePixel = 0
+    row.Parent = list
     makeCorner(row,8)
 
     local rs = Instance.new("UIStroke")
-    rs.Thickness, rs.Color = 1, Color3.fromRGB(200,200,220)
+    rs.Thickness, rs.Color = 1, Color3.fromRGB(70,70,100)
     rs.Parent = row
     if plr == player then
-        row.BackgroundColor3 = Color3.fromRGB(210,230,255)
+        row.BackgroundColor3 = Color3.fromRGB(50,70,120)
         rs.Color = Color3.fromRGB(120,160,235)
     end
 
@@ -498,7 +554,7 @@ local function buildRow(plr)
         content,"Name",
         string.format("%s (@%s)",plr.DisplayName or plr.Name,plr.Name),
         UDim2.new(0,170,1,0),UDim2.new(0,6,0,0),
-        {Font=Enum.Font.GothamBold,TextSize=13,TextColor3=Color3.fromRGB(50,50,75),XAlign=Enum.TextXAlignment.Left}
+        {Font=Enum.Font.GothamBold,TextSize=13,TextColor3=Color3.fromRGB(230,230,255),XAlign=Enum.TextXAlignment.Left}
     )
 
     local baseX, btnW, btnH, spacing = 190, 60, 24, 4
@@ -507,7 +563,7 @@ local function buildRow(plr)
     local espBtn = makeButton(
         content,"ESPBtn","ESP",
         UDim2.new(0,btnW,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(220,220,230),Color3.fromRGB(60,60,90),12
+        Color3.fromRGB(50,50,70),Color3.fromRGB(220,220,255),12
     )
     curX = curX + btnW + spacing
 
@@ -515,7 +571,7 @@ local function buildRow(plr)
     local spectateBtn = makeButton(
         content,"SpectateBtn","SPECT POV",
         UDim2.new(0,spectateWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(200,230,255),Color3.fromRGB(40,60,110),12
+        Color3.fromRGB(45,80,130),Color3.fromRGB(235,235,255),12
     )
     curX = curX + spectateWidth + spacing
 
@@ -523,7 +579,7 @@ local function buildRow(plr)
     local spectFreeBtn = makeButton(
         content,"SpectFreeBtn","SPECT FREE",
         UDim2.new(0,spectFreeWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(210,220,255),Color3.fromRGB(40,60,120),12
+        Color3.fromRGB(55,90,150),Color3.fromRGB(235,235,255),12
     )
     curX = curX + spectFreeWidth + spacing
 
@@ -531,7 +587,7 @@ local function buildRow(plr)
     local spectProBtn = makeButton(
         content,"SpectProBtn","SPECT PRO",
         UDim2.new(0,spectProWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(180,220,255),Color3.fromRGB(20,50,120),12
+        Color3.fromRGB(70,110,180),Color3.fromRGB(240,240,255),12
     )
     curX = curX + spectProWidth + spacing
 
@@ -539,14 +595,14 @@ local function buildRow(plr)
     local spectDroneBtn = makeButton(
         content,"SpectDroneBtn","SPECT DRONE",
         UDim2.new(0,spectDroneWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(170,235,255),Color3.fromRGB(15,40,120),12
+        Color3.fromRGB(50,130,190),Color3.fromRGB(240,240,255),12
     )
     curX = curX + spectDroneWidth + spacing
 
     local tpBtn = makeButton(
         content,"TPBtn","TP",
         UDim2.new(0,btnW,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(210,240,220),Color3.fromRGB(40,90,60),12
+        Color3.fromRGB(40,90,60),Color3.fromRGB(230,255,230),12
     )
     curX = curX + btnW + spacing
 
@@ -554,7 +610,7 @@ local function buildRow(plr)
     local tpForceBtn = makeButton(
         content,"TPForceBtn","TP FORCE",
         UDim2.new(0,tpForceWidth,0,btnH),UDim2.new(0,curX,0.5,-btnH/2),
-        Color3.fromRGB(190,255,210),Color3.fromRGB(20,80,40),12
+        Color3.fromRGB(35,120,70),Color3.fromRGB(230,255,230),12
     )
     curX = curX + tpForceWidth + spacing
 
@@ -565,9 +621,9 @@ local function buildRow(plr)
         local s = not activeESP[plr]
         setESPOnTarget(plr,s)
         if s then
-            espBtn.Text, espBtn.BackgroundColor3 = "ESP ON", Color3.fromRGB(130,190,255)
+            espBtn.Text, espBtn.BackgroundColor3 = "ESP ON", Color3.fromRGB(80,130,210)
         else
-            espBtn.Text, espBtn.BackgroundColor3 = "ESP", Color3.fromRGB(220,220,230)
+            espBtn.Text, espBtn.BackgroundColor3 = "ESP", Color3.fromRGB(50,50,70)
         end
     end)
     connect(spectateBtn.MouseButton1Click,function()
@@ -603,7 +659,9 @@ local function rebuildList()
     applySearchFilter()
 end
 
--- ========== SPECTATE LIST & INDEX ==========
+--==========================================================
+--  SPECTATE LIST & INDEX
+--==========================================================
 local function getSpectateList()
     local arr = {}
     for _,plr in ipairs(players:GetPlayers()) do
@@ -634,7 +692,9 @@ local function locateIndexInList(plr)
     updateMiniNavInfo()
 end
 
--- ========== SPECTATE MODES ==========
+--==========================================================
+--  SPECTATE MODES
+--==========================================================
 function startCustomSpectate(plr)
     disconnectRespawn()
     setDefaultFOV()
@@ -690,7 +750,9 @@ function startDroneSpectate(plr)
     locateIndexInList(plr)
 end
 
--- ========== ESP ==========
+--==========================================================
+--  ESP
+--==========================================================
 function setESPOnTarget(plr, enabled)
     if not plr then return end
 
@@ -745,7 +807,9 @@ function setESPOnTarget(plr, enabled)
     end
 end
 
--- ========== TELEPORT (AKURAT 0 STUD, HRP ↔ HRP) ==========
+--==========================================================
+--  TELEPORT (AKURAT 0 STUD, HRP ↔ HRP)
+--==========================================================
 function teleportToPlayer(target)
     if not target then return end
     local targetChar = target.Character
@@ -786,7 +850,9 @@ local function getCharPosition(char)
     return nil, nil
 end
 
--- ========== TELEPORT FORCE 0 STUD (pakai posisi robust) ==========
+--==========================================================
+--  TELEPORT FORCE 0 STUD (PAKAI POSISI ROBUST)
+--==========================================================
 function teleportToPlayerForce(target)
     if not target then return end
     local targetChar = target.Character
@@ -804,7 +870,9 @@ function teleportToPlayerForce(target)
     hrp.CFrame = CFrame.new(targetPos)
 end
 
--- ========== SPECTATE SEQUENCE (< & >) ==========
+--==========================================================
+--  SPECTATE SEQUENCE (< & >)
+--==========================================================
 local function spectateStep(dir)
     local lp = getSpectateList()
     local n = #lp
@@ -851,7 +919,9 @@ end
 
 _G.__AxaSpect_Step = spectateStep
 
--- ========== WIRING ==========
+--==========================================================
+--  WIRING EVENT
+--==========================================================
 connect(searchBox:GetPropertyChangedSignal("Text"), applySearchFilter)
 
 connect(players.PlayerAdded,function(plr)
@@ -879,7 +949,7 @@ end)
 connect(espAntennaBtn.MouseButton1Click,function()
     espAntennaOn = not espAntennaOn
     espAntennaBtn.Text = espAntennaOn and "ESP ANTENA: ON" or "ESP ANTENA: OFF"
-    espAntennaBtn.BackgroundColor3 = espAntennaOn and Color3.fromRGB(190,80,80) or Color3.fromRGB(80,80,120)
+    espAntennaBtn.BackgroundColor3 = espAntennaOn and Color3.fromRGB(190,80,80) or Color3.fromRGB(120,40,40)
 
     if espAntennaOn then
         local char = player.Character
@@ -888,7 +958,7 @@ connect(espAntennaBtn.MouseButton1Click,function()
             -- kalau badan kamu belum siap, balikin OFF biar nggak error
             espAntennaOn = false
             espAntennaBtn.Text = "ESP ANTENA: OFF"
-            espAntennaBtn.BackgroundColor3 = Color3.fromRGB(80,80,120)
+            espAntennaBtn.BackgroundColor3 = Color3.fromRGB(120,40,40)
             return
         end
 
@@ -908,7 +978,7 @@ end)
 connect(espAllBtn.MouseButton1Click,function()
     espAllOn = not espAllOn
     espAllBtn.Text = espAllOn and "ESP ALL: ON" or "ESP ALL: OFF"
-    espAllBtn.BackgroundColor3 = espAllOn and Color3.fromRGB(110,150,255) or Color3.fromRGB(80,80,120)
+    espAllBtn.BackgroundColor3 = espAllOn and Color3.fromRGB(80,120,220) or Color3.fromRGB(40,70,140)
     for plr in pairs(rows) do
         if plr ~= player then setESPOnTarget(plr,espAllOn) end
     end
@@ -921,7 +991,9 @@ connect(scrollRightBtn.MouseButton1Click,function()
     minimizeCoreToDock(); ensureMiniNav(); spectateStep(1)
 end)
 
--- ========== CAMERA & DISTANCE UPDATE ==========
+--==========================================================
+--  CAMERA & DISTANCE UPDATE
+--==========================================================
 connect(runService.RenderStepped,function()
     if not currentSpectateTarget or spectateMode == "none" then
         if statusLabel.Text ~= "Status: Idle" then setSpectateStatus("Idle") end
@@ -1037,13 +1109,18 @@ connect(runService.RenderStepped,function()
     end
 end)
 
--- ========== INIT ==========
+--==========================================================
+--  INIT
+--==========================================================
 rebuildList()
 setSpectateStatus("Idle")
 
--- ========== TAB CLEANUP ==========
+--==========================================================
+--  TAB CLEANUP (REGISTER KE CORE)
+--==========================================================
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
-_G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = function()
+
+local function doCleanup()
     stopSpectate()
     for plr in pairs(activeESP) do
         setESPOnTarget(plr,false)
@@ -1064,4 +1141,11 @@ _G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = function()
         pcall(function() c:Disconnect() end)
     end
     table.clear(conns)
+end
+
+-- kalau environment menyediakan AxaSetCleanup (WindUI core baru)
+if type(AxaSetCleanup) == "function" then
+    AxaSetCleanup(doCleanup)
+else
+    _G.AxaHub.TabCleanup[TAB_ID or "spectateespp"] = doCleanup
 end
