@@ -92,10 +92,9 @@ local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
 local FishUtil       = safeRequire(UtilityFolder, "FishUtil")
 
 -- Spawn Boss Discord config
-local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
-local SPAWN_WEBHOOK_URL        = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
-local SPAWN_WEBHOOK_USERNAME   = "Spawn Boss Notifier"
-local SPAWN_WEBHOOK_AVATAR     = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
+local SPAWN_WEBHOOK_URL      = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
+local SPAWN_WEBHOOK_USERNAME = "Spawn Boss Notifier"
+local SPAWN_WEBHOOK_AVATAR   = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
 
 -- WorldBoss folder (timer boss global)
 local WorldBossFolder = workspace:FindFirstChild("WorldBoss")
@@ -108,7 +107,7 @@ if not WorldBossFolder then
     end
 end
 
-local worldBossStates = {} -- spot -> {initialSent, nearSent, spawnSent, lastRemain, lastBossName}
+local worldBossStates = {} -- spot -> {initialSent, nearSent, lastRemain, lastBossName}
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -122,98 +121,18 @@ local function notify(title, text, dur)
 end
 
 ------------------- SPAWN BOSS NOTIFIER (DISCORD) -------------------
-
--- kandidat attribute yang mungkin berisi ID / nama boss
-local bossAttrKeys = {
-    "BossName",
-    "BossId",
-    "BossID",
-    "Boss",
-    "FishId",
-    "FishID",
-    "Fish",
-}
-
 local function getOrCreateBossState(spot)
     local state = worldBossStates[spot]
     if not state then
         state = {
             initialSent  = false,
             nearSent     = false,
-            spawnSent    = false,
             lastRemain   = 0,
             lastBossName = nil,
         }
         worldBossStates[spot] = state
     end
     return state
-end
-
--- Ambil nama boss se-real mungkin dari state / child / attribute
-local function getBossNameFromSpot(spot)
-    if not spot then
-        return "Unknown Boss"
-    end
-
-    local state = worldBossStates[spot]
-    if state and state.lastBossName and state.lastBossName ~= "" then
-        return state.lastBossName
-    end
-
-    -- Cek child model yang berisi Part boss
-    for _, child in ipairs(spot:GetChildren()) do
-        if child:IsA("Model") then
-            local part = child:FindFirstChildOfClass("Part")
-            if part then
-                if FishUtil then
-                    local ok, isFish = pcall(function()
-                        return FishUtil:isFish(part)
-                    end)
-                    if ok and not isFish then
-                        continue
-                    end
-                end
-                local fishId   = part.Name
-                local bossName = fishId
-                if ItemUtil then
-                    local ok2, niceName = pcall(function()
-                        return ItemUtil:getName(fishId)
-                    end)
-                    if ok2 and niceName then
-                        bossName = niceName
-                    end
-                end
-                if state then
-                    state.lastBossName = bossName
-                end
-                return bossName
-            end
-        end
-    end
-
-    -- Fallback: attribute pada spot (kalau game punya)
-    for _, key in ipairs(bossAttrKeys) do
-        local attr = spot:GetAttribute(key)
-        if type(attr) == "string" and attr ~= "" then
-            if ItemUtil then
-                local ok3, niceName = pcall(function()
-                    return ItemUtil:getName(attr)
-                end)
-                if ok3 and niceName then
-                    if state then
-                        state.lastBossName = niceName
-                    end
-                    return niceName
-                end
-            end
-            if state then
-                state.lastBossName = attr
-            end
-            return attr
-        end
-    end
-
-    return "Unknown Boss"
 end
 
 local function buildBossRemainText(seconds)
@@ -232,6 +151,7 @@ local function buildBossRemainText(seconds)
     return "Guranteed Devine Boss In " .. tostring(math.floor(sec)) .. "s"
 end
 
+-- PERBAIKAN FORMAT EMBED DISCORD DI SINI
 local function sendSpawnBossDiscord(spot, remainSec)
     if not spawnBossNotif then
         return
@@ -240,31 +160,70 @@ local function sendSpawnBossDiscord(spot, remainSec)
         return
     end
 
-    local state      = getOrCreateBossState(spot)
-    local bossName   = getBossNameFromSpot(spot)
-    local regionAttr = LocalPlayer:GetAttribute("Region") or "Unknown"
-    local remainText = buildBossRemainText(remainSec)
+    local state       = getOrCreateBossState(spot)
+    local bossName    = state.lastBossName or "Unknown Boss"
+    local regionAttr  = LocalPlayer:GetAttribute("Region") or "Unknown"
+    local remainText  = buildBossRemainText(remainSec)
+    local playerText  = string.format("%s (%s)", LocalPlayer.Name, tostring(LocalPlayer.UserId or "?"))
+    local secNum      = tonumber(remainSec) or 0
 
-    -- Format akhir:
-    -- Spawn Boss, Remaining Time: Guranteed Devine Boss In 12:00 menit, Name Boss: <boss>
-    local description = string.format(
-        "Spawn Boss, Remaining Time: %s, Name Boss: %s, Region: %s",
-        remainText,
-        bossName,
-        tostring(regionAttr)
-    )
+    local stageText
+    if secNum <= 0 then
+        stageText = "Selesai"
+    elseif secNum <= 180 then
+        stageText = "Hampir spawn"
+    else
+        stageText = "Timer mulai"
+    end
+
+    local footerText = string.format("Spear Fishing PRO++ • Today at %s", os.date("%H:%M"))
+
+    local embed = {
+        title  = "Spawn Boss",
+        color  = 65280, -- hijau
+        fields = {
+            {
+                name  = "Remaining Time",
+                value = "Remaining Time: " .. remainText,
+                inline = false
+            },
+            {
+                name  = "Name Boss",
+                value = "Name Boss: " .. bossName,
+                inline = false
+            },
+            {
+                name  = "Region",
+                value = tostring(regionAttr),
+                inline = false
+            },
+            {
+                name  = "Stage",
+                value = stageText,
+                inline = false
+            },
+            {
+                name  = "Player",
+                value = playerText,
+                inline = false
+            },
+        },
+        footer = {
+            text = footerText
+        },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z")
+    }
 
     local payload = {
-        content    = DEFAULT_OWNER_DISCORD,
         username   = SPAWN_WEBHOOK_USERNAME,
         avatar_url = SPAWN_WEBHOOK_AVATAR,
-        embeds     = {
-            {
-                description = description,
-                color       = 16711680, -- merah
-            }
-        }
+        embeds     = { embed },
     }
+
+    -- optional mention jika DEFAULT_OWNER_DISCORD ada
+    if typeof(DEFAULT_OWNER_DISCORD) == "string" and DEFAULT_OWNER_DISCORD ~= "" then
+        payload.content = DEFAULT_OWNER_DISCORD
+    end
 
     local ok, body = pcall(function()
         return HttpService:JSONEncode(payload)
@@ -286,12 +245,12 @@ local function sendSpawnBossDiscord(spot, remainSec)
     if reqFunc then
         pcall(function()
             reqFunc({
-                Url = SPAWN_WEBHOOK_URL,
-                Method = "POST",
+                Url     = SPAWN_WEBHOOK_URL,
+                Method  = "POST",
                 Headers = {
                     ["Content-Type"] = "application/json"
                 },
-                Body = body
+                Body    = body
             })
         end)
     else
@@ -300,6 +259,7 @@ local function sendSpawnBossDiscord(spot, remainSec)
         end)
     end
 end
+-- SELESAI PERBAIKAN EMBED
 
 local function attachWorldBossSpot(spot)
     if not spot or worldBossStates[spot] then
@@ -309,11 +269,8 @@ local function attachWorldBossSpot(spot)
     local state = getOrCreateBossState(spot)
 
     local function resetCycle()
-        state.initialSent  = false
-        state.nearSent     = false
-        state.spawnSent    = false
-        state.lastRemain   = 0
-        state.lastBossName = nil
+        state.initialSent = false
+        state.nearSent    = false
     end
 
     local function onRemainChanged()
@@ -326,7 +283,7 @@ local function attachWorldBossSpot(spot)
         state.lastRemain = remain
 
         if remain <= 0 then
-            -- timer selesai, cycle berikutnya akan di-reset ketika HasBoss false lagi
+            resetCycle()
             return
         end
 
@@ -347,7 +304,7 @@ local function attachWorldBossSpot(spot)
 
     local function onHasBossChanged()
         local hasBoss = spot:GetAttribute("HasBoss")
-        -- Saat boss selesai / reset (HasBoss kembali false), siklus notif di-reset
+        -- Saat boss selesai / reset, siklus notif di-reset
         if not hasBoss then
             resetCycle()
         end
@@ -384,13 +341,6 @@ local function attachWorldBossSpot(spot)
             end
         end
         state.lastBossName = bossName
-
-        -- Notif tambahan ketika boss benar-benar muncul (setelah 0:00 / spawn)
-        if spawnBossNotif and not state.spawnSent then
-            state.spawnSent = true
-            -- kirim dengan waktu 0 supaya teks "Guranteed Devine Boss In 00:00 menit"
-            sendSpawnBossDiscord(spot, 0)
-        end
     end
 
     local c1 = spot:GetAttributeChangedSignal("RemainTime"):Connect(onRemainChanged)
@@ -573,7 +523,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4"
+    title.Text = "Spear Fishing V3.43+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -2386,10 +2336,10 @@ local controlsConn = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSiz
 end)
 table.insert(connections, controlsConn)
 
-local autoFarmButton,   updateAutoFarmUI            = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
-local autoEquipButton,  updateAutoEquipUI           = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
-local autoFarmV2Button, updateAutoFarmV2UI          = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
-local spawnBossNotifButton, updateSpawnBossNotifUI  = createToggleButton(controlsScroll, "Spawn Boss", spawnBossNotif)
+local autoFarmButton,   updateAutoFarmUI        = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
+local autoEquipButton,  updateAutoEquipUI       = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
+local autoFarmV2Button, updateAutoFarmV2UI      = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
+local spawnBossNotifButton, updateSpawnBossNotifUI = createToggleButton(controlsScroll, "Spawn Boss", spawnBossNotif)
 
 -- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
