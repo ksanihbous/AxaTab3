@@ -95,6 +95,7 @@ local FishUtil       = safeRequire(UtilityFolder, "FishUtil")
 local SPAWN_WEBHOOK_URL      = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
 local SPAWN_WEBHOOK_USERNAME = "Spawn Boss Notifier"
 local SPAWN_WEBHOOK_AVATAR   = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
+local DEFAULT_OWNER_DISCORD = "<@1403052152691101857>"
 
 -- WorldBoss folder (timer boss global)
 local WorldBossFolder = workspace:FindFirstChild("WorldBoss")
@@ -519,7 +520,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.44"
+    title.Text = "Spear Fishing V3.3+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
