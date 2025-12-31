@@ -291,7 +291,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 & v2 + AutoEquip + Auto Skill 1 ~ 5 + Spawn Boss Notifier."
+    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
