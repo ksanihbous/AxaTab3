@@ -256,7 +256,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.2++"
+    title.Text = "Spear Fishing V3.2+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -458,8 +458,8 @@ end
 local lastTapClock = 0
 
 -- Interval tap V2 bisa diubah lewat UI (default lebih cepat: 0.20s)
-local tapInterval      = 0.20
-local MIN_TAP_INTERVAL = 0.05
+local tapInterval      = 0.03
+local MIN_TAP_INTERVAL = 0.01
 local MAX_TAP_INTERVAL = 1.5
 
 local function getTapPositionForMode(mode)
@@ -664,13 +664,13 @@ end
 -- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
 local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
+local SKILL_SEQUENCE_GAP = 2   -- jeda Skill1 -> Skill2 (eksekusi nyata)
 
 -- Waktu terakhir eksekusi skill (untuk UI countdown)
 local skill1LastFireTime = 0
 local skill2LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Skill04)
+-- LOGIC AUTO SKILL 1 (Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -678,7 +678,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill04" -- DEMAGE POWER II
+            ["ID"] = "Skill02" -- COLD SNAP
         }
     }
 
@@ -691,7 +691,7 @@ local function fireSkill1()
             pcall(updateSkillCooldownUI)
         end
     else
-        warn("[SpearFishing] Auto Skill04 gagal:", err)
+        warn("[SpearFishing] Auto Skill02 gagal:", err)
     end
 end
 
