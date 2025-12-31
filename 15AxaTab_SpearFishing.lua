@@ -279,7 +279,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.3+"
+    title.Text = "Spear Fishing V3.3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1991,7 +1991,20 @@ local function updateWorldBossRegion(region)
     end
 
     -- Stage: sisa 2-3 menit
-    if remain > 0 and remain <= NEAR_REMAIN_THRESHOLD and state.sentStart and not state.sentNear then
+    --if remain > 0 and remain <= NEAR_REMAIN_THRESHOLD and state.sentStart and not state.sentNear then
+        --state.sentNear = true
+        --task.spawn(function()
+            --sendSpawnBossStage(region, "near", remain)
+        --end)
+    --end
+
+    -- Stage: sisa 5-6 menit
+    if remain > 0
+        and remain <= NEAR_REMAIN_THRESHOLD  -- <= 360 detik (maks 6 menit)
+        and remain >= 300                    -- >= 300 detik (min 5 menit)
+        and state.sentStart
+        and not state.sentNear
+    then
         state.sentNear = true
         task.spawn(function()
             sendSpawnBossStage(region, "near", remain)
