@@ -36,14 +36,23 @@ local autoFarm        = false      -- AutoFarm Fish v1: default OFF
 local autoEquip       = false      -- AutoEquip Harpoon: default OFF
 local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
 local autoFarmV2Mode  = "Left"     -- "Left" / "Center"
+
+-- interval click AutoFarm V2 yang bisa diatur lewat UI (detik)
+local autoFarmV2TapInterval = 0.03 -- default cepat
+local TAP_INTERVAL_MIN      = 0.01 -- batas bawah
+local TAP_INTERVAL_MAX      = 1.00 -- batas atas
+
 local autoDailyReward = true       -- Auto Daily Reward: default ON
 
 -- Auto Skill (DEFAULT ON)
-local autoSkill1      = true       -- Auto Skill 1: default ON
-local autoSkill2      = true       -- Auto Skill 2: default ON
+local autoSkill1      = true       -- Auto Skill 1: default ON (Damage Power II)
+local autoSkill2      = true       -- Auto Skill 2: default ON (Damage Power III)
+local autoSkill3      = true       -- Auto Skill 3: default ON (Skill01 - Thunder)
+local autoSkill4      = true       -- Auto Skill 4: default ON (Skill07 - Laceration Creation)
+local autoSkill5      = true       -- Auto Skill 5: default ON (Skill09 - Chain Lightning)
 
--- Spawn Boss Notifier (Discord) default ON
-local spawnBossNotif  = true       -- Notifikasi Spawn Boss ke Discord
+-- Spawn Boss Notifier (default ON)
+local spawnBossNotify = true
 
 local character       = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack        = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
@@ -89,34 +98,6 @@ local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket") -- Luck/Frequ
 local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")
 local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")
 local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
-local FishUtil       = safeRequire(UtilityFolder, "FishUtil")
-
--- Spawn Boss Discord config
-local SPAWN_WEBHOOK_URL      = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
-local SPAWN_WEBHOOK_USERNAME = "Spawn Boss Notifier"
-local SPAWN_WEBHOOK_AVATAR   = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
-local DEFAULT_OWNER_DISCORD  = "<@1403052152691101857>"
-
--- ID boss yang diketahui
-local KNOWN_BOSS_IDS = {
-    Boss01 = true,
-    Boss02 = true,
-    Boss03 = true,
-}
-
--- WorldBoss folder (timer boss global)
-local WorldBossFolder = workspace:FindFirstChild("WorldBoss")
-if not WorldBossFolder then
-    local ok, result = pcall(function()
-        return workspace:WaitForChild("WorldBoss", 10)
-    end)
-    if ok then
-        WorldBossFolder = result
-    end
-end
-
--- spot -> {initialSent, nearSent, spawnSent, lastRemain, lastBossName}
-local worldBossStates = {}
 
 ------------------- HELPER: NOTIFY -------------------
 local function notify(title, text, dur)
@@ -129,343 +110,250 @@ local function notify(title, text, dur)
     end)
 end
 
-------------------- SPAWN BOSS NOTIFIER (DISCORD) -------------------
-local function getOrCreateBossState(spot)
-    local state = worldBossStates[spot]
-    if not state then
-        state = {
-            initialSent  = false,
-            nearSent     = false,
-            spawnSent    = false,
-            lastRemain   = 0,
-            lastBossName = nil,
-        }
-        worldBossStates[spot] = state
+------------------- SPAWN BOSS NOTIFIER (WORLD BOSS + DISCORD) -------------------
+local SPAWN_BOSS_WEBHOOK_URL       = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
+local SPAWN_BOSS_WEBHOOK_USERNAME  = "Spawn Boss Notifier"
+local SPAWN_BOSS_BOT_AVATAR_URL    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
+local DEFAULT_OWNER_DISCORD        = "<@1403052152691101857>"
+local DEFAULT_BOSS_NAMES_TEXT      = "Humpback Whale / Whale Shark / Crimson Rift Dragon"
+
+local bossRegionStates = {} -- [region] = { lastRemain, initialSent, finalSent }
+
+local function findHttpRequestFunction()
+    local ok, g = pcall(getgenv)
+    if ok and type(g) == "table" then
+        if type(g.http_request) == "function" then
+            return g.http_request
+        end
+        if type(g.request) == "function" then
+            return g.request
+        end
     end
-    return state
+
+    if syn and type(syn.request) == "function" then
+        return syn.request
+    end
+    if type(http_request) == "function" then
+        return http_request
+    end
+    if type(request) == "function" then
+        return request
+    end
+    if fluxus and type(fluxus.request) == "function" then
+        return fluxus.request
+    end
+
+    return nil
 end
 
-local function buildBossRemainText(seconds)
-    local sec = tonumber(seconds) or 0
-    if sec < 0 then
-        sec = 0
-    end
+local function secondsToMMSS_Local(sec)
+    sec = tonumber(sec) or 0
+    if sec < 0 then sec = 0 end
 
     if MathUtil then
-        local ok, mmss = pcall(function()
-            return MathUtil:secondsToMMSS(sec)
-        end)
-        if ok and mmss then
-            return "Guranteed Devine Boss In " .. mmss .. " menit"
-        end
-    end
-
-    return "Guranteed Devine Boss In " .. tostring(math.floor(sec)) .. "s"
-end
-
-local function tryResolveBossNameFromId(id)
-    if not id then
-        return nil
-    end
-
-    local bossName = tostring(id)
-
-    if ItemUtil then
-        local ok, niceName = pcall(function()
-            return ItemUtil:getName(id)
-        end)
-        if ok and niceName and niceName ~= "" then
-            bossName = niceName
-        end
-    end
-
-    return bossName
-end
-
--- Ambil nama boss mengikuti logic di map (FishUtil + ItemUtil)
-local function resolveBossName(spot, state)
-    state = state or getOrCreateBossState(spot)
-
-    if state.lastBossName and state.lastBossName ~= "" then
-        return state.lastBossName
-    end
-
-    if spot then
-        -- 1. Coba dari child Model yang berisi Part ikan boss
-        local children = spot:GetChildren()
-        for i = 1, #children do
-            local child = children[i]
-            if child:IsA("Model") then
-                local part = child:FindFirstChildOfClass("Part")
-                if part then
-                    local isFish = true
-                    if FishUtil then
-                        local ok, res = pcall(function()
-                            return FishUtil:isFish(part)
-                        end)
-                        if ok then
-                            isFish = res
-                        end
-                    end
-
-                    if isFish then
-                        local fishId   = part.Name
-                        local bossName = tryResolveBossNameFromId(fishId)
-                        state.lastBossName = bossName
-                        return bossName
-                    end
+        local ok, res = pcall(function()
+            if type(MathUtil) == "table" then
+                if type(MathUtil.secondsToMMSS) == "function" then
+                    return MathUtil.secondsToMMSS(sec)
+                end
+                if type(MathUtil.secondsToMMSS) == "table" then
+                    -- ignore
                 end
             end
-        end
-
-        -- 2. Coba dari attribute BossID / BossId / Boss kalau cocok Boss01/Boss02/Boss03
-        local bossIdAttr = spot:GetAttribute("BossID")
-            or spot:GetAttribute("BossId")
-            or spot:GetAttribute("Boss")
-
-        if bossIdAttr and KNOWN_BOSS_IDS[bossIdAttr] then
-            local bossName = tryResolveBossNameFromId(bossIdAttr)
-            state.lastBossName = bossName
-            return bossName
+            if type(MathUtil) == "table" and type(MathUtil.secondsToMMSS) ~= "function" then
+                return MathUtil:secondsToMMSS(sec)
+            end
+        end)
+        if ok and type(res) == "string" and #res > 0 then
+            return res
         end
     end
 
-    if state.lastBossName and state.lastBossName ~= "" then
-        return state.lastBossName
-    end
-
-    return "Unknown Boss"
+    local minutes = math.floor(sec / 60)
+    local seconds = math.floor(sec % 60)
+    return string.format("%02d:%02d", minutes, seconds)
 end
 
-local function sendSpawnBossDiscord(spot, remainSec, forceStage)
-    if not spawnBossNotif then
-        return
-    end
-    if not SPAWN_WEBHOOK_URL or SPAWN_WEBHOOK_URL == "" then
+local function sendSpawnBossWebhook(regionName, phaseLabel, remainSec)
+    if not SPAWN_BOSS_WEBHOOK_URL or SPAWN_BOSS_WEBHOOK_URL == "" then
         return
     end
 
-    local state      = getOrCreateBossState(spot)
-    local bossName   = resolveBossName(spot, state)
-    local regionAttr = LocalPlayer:GetAttribute("Region") or "Unknown"
-    local remainText = buildBossRemainText(remainSec)
-    local playerText = string.format("%s (%s)", LocalPlayer.Name, tostring(LocalPlayer.UserId or "?"))
-    local secNum     = tonumber(remainSec) or 0
-    local hasBoss    = spot and spot:GetAttribute("HasBoss")
-
-    local stageText
-    if forceStage == "BossSpawn" or hasBoss then
-        stageText = "Boss Spawn"
-    else
-        if secNum <= 0 then
-            stageText = "Selesai"
-        elseif secNum <= 180 then
-            stageText = "Hampir spawn"
-        else
-            stageText = "Timer mulai"
-        end
+    local requestFunc = findHttpRequestFunction()
+    if not requestFunc then
+        warn("[SpearFishing] SpawnBoss: tidak menemukan fungsi HTTP request (syn.request / http_request / request).")
+        return
     end
 
-    local footerText = "Spear Fishing PRO++"
+    local mmss = secondsToMMSS_Local(remainSec)
+    local remainingText = string.format("Guranteed Devine Boss In %s menit", mmss or "00:00")
+    local nowUtcIso = os.date("!%Y-%m-%dT%H:%M:%SZ")
 
-    local embed = {
-        title  = "Spawn Boss",
-        color  = 65280, -- hijau
-        fields = {
-            {
-                name   = "Remaining Time",
-                value  = "Remaining Time: " .. remainText,
-                inline = false
-            },
-            {
-                name   = "Name Boss",
-                value  = "Name Boss: " .. bossName,
-                inline = false
-            },
-            {
-                name   = "Region",
-                value  = tostring(regionAttr),
-                inline = false
-            },
-            {
-                name   = "Stage",
-                value  = stageText,
-                inline = false
-            },
-            {
-                name   = "Player",
-                value  = playerText,
-                inline = false
-            },
-        },
-        footer = {
-            text = footerText
-        },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z")
-    }
+    local embedTitle = "Spawn Boss"
+    if phaseLabel and phaseLabel ~= "" then
+        embedTitle = embedTitle .. " • " .. phaseLabel
+    end
+
+    local description = string.format(
+        "Remaining Time: %s\nRegion: %s\nName Boss: %s",
+        remainingText,
+        regionName or "-",
+        DEFAULT_BOSS_NAMES_TEXT
+    )
 
     local payload = {
-        username   = SPAWN_WEBHOOK_USERNAME,
-        avatar_url = SPAWN_WEBHOOK_AVATAR,
-        content    = DEFAULT_OWNER_DISCORD, -- mention owner
-        embeds     = { embed },
+        content   = DEFAULT_OWNER_DISCORD,
+        username  = SPAWN_BOSS_WEBHOOK_USERNAME,
+        avatar_url = SPAWN_BOSS_BOT_AVATAR_URL,
+        embeds = {{
+            title       = embedTitle,
+            description = description,
+            color       = 0xFF5555,
+            footer      = {
+                text = "Spear Fishing PRO++ • Spawn Boss Notifier"
+            },
+            timestamp   = nowUtcIso
+        }}
     }
 
-    local ok, body = pcall(function()
-        return HttpService:JSONEncode(payload)
+    local jsonBody = HttpService:JSONEncode(payload)
+
+    local ok, res = pcall(function()
+        return requestFunc({
+            Url     = SPAWN_BOSS_WEBHOOK_URL,
+            Method  = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body    = jsonBody
+        })
     end)
+
     if not ok then
-        warn("[SpawnBossNotifier] JSONEncode gagal:", body)
-        return
-    end
-
-    local reqFunc = nil
-    if typeof(http_request) == "function" then
-        reqFunc = http_request
-    elseif typeof(request) == "function" then
-        reqFunc = request
-    elseif syn and typeof(syn.request) == "function" then
-        reqFunc = syn.request
-    end
-
-    if reqFunc then
-        pcall(function()
-            reqFunc({
-                Url     = SPAWN_WEBHOOK_URL,
-                Method  = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body    = body
-            })
-        end)
-    else
-        pcall(function()
-            HttpService:PostAsync(SPAWN_WEBHOOK_URL, body)
-        end)
+        warn("[SpearFishing] SpawnBoss webhook error:", res)
     end
 end
 
-local function attachWorldBossSpot(spot)
-    if not spot or worldBossStates[spot] then
+local function getBossRegionState(region)
+    local st = bossRegionStates[region]
+    if not st then
+        st = {
+            lastRemain  = 0,
+            initialSent = false,
+            finalSent   = false,
+        }
+        bossRegionStates[region] = st
+    end
+    return st
+end
+
+local function updateBossRegion(region)
+    if not alive then return end
+    if not spawnBossNotify then return end
+    if not region or not region:IsDescendantOf(workspace) then return end
+
+    local hasBoss = region:GetAttribute("HasBoss")
+    local remain  = region:GetAttribute("RemainTime")
+    if type(remain) ~= "number" then
+        remain = 0
+    end
+
+    local state = getBossRegionState(region)
+
+    -- Jika boss sudah muncul, reset state untuk siklus berikutnya
+    if hasBoss then
+        state.initialSent = false
+        state.finalSent   = false
+        state.lastRemain  = remain
         return
     end
 
-    local state = getOrCreateBossState(spot)
-
-    local function resetCycle()
-        state.initialSent  = false
-        state.nearSent     = false
-        state.spawnSent    = false
-        state.lastRemain   = 0
-        state.lastBossName = nil
+    if remain <= 0 then
+        state.lastRemain = 0
+        return
     end
 
-    local function onRemainChanged()
-        if not spot.Parent then
-            worldBossStates[spot] = nil
-            return
-        end
+    local regionName = region.Name or "WorldBossRegion"
 
-        local remain = spot:GetAttribute("RemainTime") or 0
-        state.lastRemain = remain
-
-        if remain <= 0 then
-            return
-        end
-
-        if not spawnBossNotif then
-            return
-        end
-
-        -- Notif pertama saat timer mulai (remain > 0)
-        if not state.initialSent then
-            state.initialSent = true
-            sendSpawnBossDiscord(spot, remain)
-        end
-
-        -- Notif kedua saat sisa <= 3 menit (2–3 menit sebelum spawn)
-        if not state.nearSent and remain <= 180 then
-            state.nearSent = true
-            sendSpawnBossDiscord(spot, remain)
-        end
+    -- Initial message: saat countdown baru terlihat
+    if not state.initialSent then
+        sendSpawnBossWebhook(regionName, "Countdown Start", remain)
+        state.initialSent = true
     end
 
-    local function onHasBossChanged()
-        local hasBoss = spot:GetAttribute("HasBoss")
-
-        -- Saat boss selesai / reset, siklus notif di-reset
-        if not hasBoss then
-            resetCycle()
-            return
-        end
-
-        -- Saat boss benar-benar spawn, kirim embed khusus Boss Spawn
-        if spawnBossNotif and not state.spawnSent then
-            resolveBossName(spot, state)
-            local remain = spot:GetAttribute("RemainTime") or state.lastRemain or 0
-            state.spawnSent = true
-            sendSpawnBossDiscord(spot, remain, "BossSpawn")
-        end
+    -- Final message: saat sisa waktu ≤ 180 detik (± 3 menit)
+    local FINAL_THRESHOLD = 180
+    if not state.finalSent and remain <= FINAL_THRESHOLD then
+        sendSpawnBossWebhook(regionName, "Last 3 Minutes", remain)
+        state.finalSent = true
     end
 
-    local function onChildAdded(child)
-        if not child or not child:IsA("Model") then
-            return
-        end
-        local part = child:FindFirstChildOfClass("Part")
-        if not part then
-            return
-        end
+    state.lastRemain = remain
+end
 
-        -- Validasi fish (kalau FishUtil tersedia)
-        local isFish = true
-        if FishUtil then
-            local ok, res = pcall(function()
-                return FishUtil:isFish(part)
-            end)
-            if ok then
-                isFish = res
-            end
-        end
-        if not isFish then
-            return
-        end
+local function registerBossRegion(region)
+    if not region then return end
 
-        -- Ambil nama boss dari ItemUtil / Id
-        local fishId   = part.Name
-        local bossName = tryResolveBossNameFromId(fishId)
-        state.lastBossName = bossName
+    -- Update awal jika countdown sudah jalan
+    task.spawn(function()
+        updateBossRegion(region)
+    end)
 
-        -- Kalau fish model baru muncul dan HasBoss sudah true, pastikan embed BossSpawn terkirim
-        if spawnBossNotif and spot:GetAttribute("HasBoss") and not state.spawnSent then
-            local remain = spot:GetAttribute("RemainTime") or state.lastRemain or 0
-            state.spawnSent = true
-            sendSpawnBossDiscord(spot, remain, "BossSpawn")
-        end
-    end
-
-    local c1 = spot:GetAttributeChangedSignal("RemainTime"):Connect(onRemainChanged)
-    local c2 = spot:GetAttributeChangedSignal("HasBoss"):Connect(onHasBossChanged)
-    local c3 = spot.ChildAdded:Connect(onChildAdded)
+    local c1 = region:GetAttributeChangedSignal("HasBoss"):Connect(function()
+        updateBossRegion(region)
+    end)
+    local c2 = region:GetAttributeChangedSignal("RemainTime"):Connect(function()
+        updateBossRegion(region)
+    end)
+    local c3 = region:GetAttributeChangedSignal("NextSpawnTime"):Connect(function()
+        updateBossRegion(region)
+    end)
+    local c4 = region.ChildAdded:Connect(function()
+        updateBossRegion(region)
+    end)
 
     table.insert(connections, c1)
     table.insert(connections, c2)
     table.insert(connections, c3)
-
-    -- Cek state awal
-    onRemainChanged()
-    onHasBossChanged()
+    table.insert(connections, c4)
 end
 
-if WorldBossFolder then
-    for _, spot in ipairs(WorldBossFolder:GetChildren()) do
-        attachWorldBossSpot(spot)
+local function initWorldBossWatcher()
+    local folder = workspace:FindFirstChild("WorldBoss")
+    if not folder then
+        -- jika folder WorldBoss muncul belakangan
+        local cw
+        cw = workspace.ChildAdded:Connect(function(child)
+            if child.Name == "WorldBoss" then
+                if cw and cw.Disconnect then
+                    pcall(function() cw:Disconnect() end)
+                end
+                initWorldBossWatcher()
+            end
+        end)
+        table.insert(connections, cw)
+        return
     end
-    local cAdd = WorldBossFolder.ChildAdded:Connect(function(child)
-        attachWorldBossSpot(child)
+
+    for _, region in ipairs(folder:GetChildren()) do
+        registerBossRegion(region)
+    end
+
+    local cAdd = folder.ChildAdded:Connect(function(region)
+        registerBossRegion(region)
     end)
     table.insert(connections, cAdd)
+
+    -- Optional: jika Region player berubah, refresh semua region
+    local ok = pcall(function()
+        return LocalPlayer:GetAttribute("Region")
+    end)
+    if ok then
+        local cRegion = LocalPlayer:GetAttributeChangedSignal("Region"):Connect(function()
+            for _, region in ipairs(folder:GetChildren()) do
+                updateBossRegion(region)
+            end
+        end)
+        table.insert(connections, cRegion)
+    end
 end
 
 ------------------- ID LIST -------------------
@@ -626,7 +514,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4++"
+    title.Text = "Spear Fishing V3.33+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -638,7 +526,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 + AutoEquip Harpoon / Auto Skill 1 & 2"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 ~ 5 + Spawn Boss Notifier"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -825,13 +713,6 @@ local function doFireHarpoon()
 end
 
 ------------------- AUTO FARM V2 (TAP TRACKPAD LEFT/CENTER) -------------------
-local lastTapClock = 0
-
--- Interval tap V2 bisa diubah lewat UI (default: 0.02s)
-local tapInterval      = 0.02
-local MIN_TAP_INTERVAL = 0.01
-local MAX_TAP_INTERVAL = 1.5
-
 local function getTapPositionForMode(mode)
     local camera = workspace.CurrentCamera
     if not camera then return nil end
@@ -872,14 +753,9 @@ local function tapScreenPosition(pos)
     end
 end
 
+-- sekarang doAutoTapV2 hanya satu tap; interval diatur oleh loop (autoFarmV2TapInterval)
 local function doAutoTapV2()
     if not alive or not autoFarmV2 then return end
-
-    local now = os.clock()
-    if now - lastTapClock < tapInterval then
-        return
-    end
-    lastTapClock = now
 
     local pos = getTapPositionForMode(autoFarmV2Mode)
     if not pos then return end
@@ -1030,17 +906,20 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 & 2 (SEQUENCE, COOLDOWN HANYA DI UI) -------------------
+------------------- AUTO SKILL 1 ~ 5 (SEQUENCE + SPAM, COOLDOWN HANYA DI UI 1 & 2) -------------------
 -- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
 local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
+local SKILL_SEQUENCE_GAP = 3   -- jeda antar cast di sequence (eksekusi nyata, ringan)
 
--- Waktu terakhir eksekusi skill (untuk UI countdown)
+-- Waktu terakhir eksekusi skill (untuk UI countdown 1 & 2, 3~5 disiapkan bila ingin dipakai)
 local skill1LastFireTime = 0
 local skill2LastFireTime = 0
+local skill3LastFireTime = 0
+local skill4LastFireTime = 0
+local skill5LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Skill02)
+-- LOGIC AUTO SKILL 1 (Damage Power II - Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -1048,7 +927,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill02" -- COLD SNAP
+            ["ID"] = "Skill02" -- Damage Power II (contoh)
         }
     }
 
@@ -1065,7 +944,7 @@ local function fireSkill1()
     end
 end
 
--- LOGIC AUTO SKILL 2 (Skill08)
+-- LOGIC AUTO SKILL 2 (Damage Power III - Skill08)
 local function fireSkill2()
     if not alive or not autoSkill2 then return end
     if not FishRE then return end
@@ -1073,7 +952,7 @@ local function fireSkill2()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill08" -- DEMAGE POWER III
+            ["ID"] = "Skill08" -- Damage Power III
         }
     }
 
@@ -1087,6 +966,81 @@ local function fireSkill2()
         end
     else
         warn("[SpearFishing] Auto Skill08 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 3 (Skill01 - Thunder)
+local function fireSkill3()
+    if not alive or not autoSkill3 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill01" -- Thunder
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill3LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill01 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 4 (Skill07 - Laceration Creation)
+local function fireSkill4()
+    if not alive or not autoSkill4 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill07" -- Laceration Creation
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill4LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill07 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 5 (Skill09 - Chain Lightning)
+local function fireSkill5()
+    if not alive or not autoSkill5 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill09" -- Chain Lightning
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill5LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
 end
 
@@ -1624,8 +1578,8 @@ local function buildBasketShopCard(parent)
                     PurchaseUtil:getPurchase(id)
                 end)
                 if not ok then
-                    warn("[SpearFishing] PurchaseUtil:getPurchase Basket gagal:", err)
-                    notify("Spear Fishing", "Gagal membuka purchase Robux Basket.", 4)
+                    warn("[SpearFishing] PurchaseUtil:getPurchase gagal:", err)
+                    notify("Spear Fishing", "Gagal membuka purchase Robux.", 4)
                 end
             else
                 local args = {
@@ -2404,7 +2358,7 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 + AutoEquip + Sell All + Auto Skill 1 & 2",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill 1 ~ 5 + Spawn Boss Notifier.",
     1,
     260 -- tinggi cukup, isi di-scroll
 )
@@ -2439,10 +2393,10 @@ local controlsConn = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSiz
 end)
 table.insert(connections, controlsConn)
 
-local autoFarmButton,   updateAutoFarmUI        = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
-local autoEquipButton,  updateAutoEquipUI       = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
-local autoFarmV2Button, updateAutoFarmV2UI      = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
-local spawnBossNotifButton, updateSpawnBossNotifUI = createToggleButton(controlsScroll, "Spawn Boss", spawnBossNotif)
+local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
+local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
+local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
+local spawnBossButton,  updateSpawnBossUI  = createToggleButton(controlsScroll, "Spawn Boss Notifier", spawnBossNotify)
 
 -- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
@@ -2466,71 +2420,78 @@ local function updateV2ModeButton()
 end
 updateV2ModeButton()
 
--- Input box untuk mengatur interval tap AutoFarm V2
+-- Input box untuk mengatur kecepatan tap AutoFarm V2 (Center/Left)
 local tapSpeedFrame = Instance.new("Frame")
 tapSpeedFrame.Name = "TapSpeedFrame"
 tapSpeedFrame.Parent = controlsScroll
 tapSpeedFrame.BackgroundTransparency = 1
 tapSpeedFrame.BorderSizePixel = 0
-tapSpeedFrame.Size = UDim2.new(1, 0, 0, 30)
+tapSpeedFrame.Size = UDim2.new(1, 0, 0, 28)
 
-local tapLabel = Instance.new("TextLabel")
-tapLabel.Name = "TapLabel"
-tapLabel.Parent = tapSpeedFrame
-tapLabel.BackgroundTransparency = 1
-tapLabel.Font = Enum.Font.Gotham
-tapLabel.TextSize = 11
-tapLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
-tapLabel.TextXAlignment = Enum.TextXAlignment.Left
-tapLabel.Position = UDim2.new(0, 0, 0, 0)
-tapLabel.Size = UDim2.new(0.6, 0, 1, 0)
-tapLabel.Text = "AutoFarm V2 Interval (detik)"
+local tapSpeedLabel = Instance.new("TextLabel")
+tapSpeedLabel.Name = "TapSpeedLabel"
+tapSpeedLabel.Parent = tapSpeedFrame
+tapSpeedLabel.BackgroundTransparency = 1
+tapSpeedLabel.Font = Enum.Font.Gotham
+tapSpeedLabel.TextSize = 11
+tapSpeedLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
+tapSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+tapSpeedLabel.Text = "AutoFarm V2 Tap Interval (detik):"
+tapSpeedLabel.Position = UDim2.new(0, 0, 0, 0)
+tapSpeedLabel.Size = UDim2.new(0.6, 0, 1, 0)
 
-local tapInput = Instance.new("TextBox")
-tapInput.Name = "TapInput"
-tapInput.Parent = tapSpeedFrame
-tapInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-tapInput.BorderSizePixel = 0
-tapInput.Font = Enum.Font.GothamSemibold
-tapInput.TextSize = 11
-tapInput.TextColor3 = Color3.fromRGB(235, 235, 235)
-tapInput.TextXAlignment = Enum.TextXAlignment.Center
-tapInput.ClearTextOnFocus = false
-tapInput.Size = UDim2.new(0.4, -4, 1, 0)
-tapInput.Position = UDim2.new(0.6, 4, 0, 0)
-tapInput.Text = string.format("%.2f", tapInterval)
+local tapSpeedBox = Instance.new("TextBox")
+tapSpeedBox.Name = "TapSpeedBox"
+tapSpeedBox.Parent = tapSpeedFrame
+tapSpeedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+tapSpeedBox.BorderSizePixel = 0
+tapSpeedBox.Font = Enum.Font.GothamSemibold
+tapSpeedBox.TextSize = 11
+tapSpeedBox.TextColor3 = Color3.fromRGB(230, 230, 230)
+tapSpeedBox.ClearTextOnFocus = false
+tapSpeedBox.TextXAlignment = Enum.TextXAlignment.Center
+tapSpeedBox.Position = UDim2.new(0.62, 0, 0, 0)
+tapSpeedBox.Size = UDim2.new(0.38, 0, 1, 0)
+tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
 
-local tapCorner = Instance.new("UICorner")
-tapCorner.CornerRadius = UDim.new(0, 6)
-tapCorner.Parent = tapInput
+local tapSpeedCorner = Instance.new("UICorner")
+tapSpeedCorner.CornerRadius = UDim.new(0, 6)
+tapSpeedCorner.Parent = tapSpeedBox
 
-local function applyTapIntervalFromText(text)
-    if not text or text == "" then
-        tapInput.Text = string.format("%.2f", tapInterval)
+local function applyTapSpeedFromBox()
+    local raw = tapSpeedBox.Text or ""
+    raw = raw:gsub(",", ".")
+    local num = tonumber(raw)
+    if not num then
+        tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
         return
     end
-    local value = tonumber(text)
-    if not value then
-        tapInput.Text = string.format("%.2f", tapInterval)
-        return
+    if num < TAP_INTERVAL_MIN then
+        num = TAP_INTERVAL_MIN
+    elseif num > TAP_INTERVAL_MAX then
+        num = TAP_INTERVAL_MAX
     end
-    value = math.clamp(value, MIN_TAP_INTERVAL, MAX_TAP_INTERVAL)
-    tapInterval = value
-    tapInput.Text = string.format("%.2f", tapInterval)
+    autoFarmV2TapInterval = num
+    tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
 end
 
-local tapConn = tapInput.FocusLost:Connect(function()
-    applyTapIntervalFromText(tapInput.Text)
-end)
-table.insert(connections, tapConn)
+do
+    local connTapBox = tapSpeedBox.FocusLost:Connect(function()
+        applyTapSpeedFromBox()
+    end)
+    table.insert(connections, connTapBox)
+end
 
--- Toggle Auto Skill 1 & 2 (terpisah)
+-- Toggle Auto Skill 1 ~ 5 (terpisah)
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
+local autoSkill3Button, updateAutoSkill3UI = createToggleButton(controlsScroll, "Auto Skill 3", autoSkill3)
+local autoSkill4Button, updateAutoSkill4UI = createToggleButton(controlsScroll, "Auto Skill 4", autoSkill4)
+local autoSkill5Button, updateAutoSkill5UI = createToggleButton(controlsScroll, "Auto Skill 5", autoSkill5)
 
--- Info cooldown skill (base text, hanya info + akan dipakai untuk countdown UI)
+-- Info cooldown skill (base text, hanya info + akan dipakai untuk countdown UI 1 & 2)
 local skill1BaseInfoText = string.format(
-    "Skill 1 (Skill04) Cooldown server (perkiraan): %d detik (UI info).",
+    "Skill 1 (Skill02) Cooldown server (perkiraan): %d detik (UI info).",
     SKILL1_COOLDOWN
 )
 
@@ -2625,19 +2586,23 @@ statusLabel.TextSize = 11
 statusLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
-statusLabel.Size = UDim2.new(1, 0, 0, 40)
+statusLabel.Size = UDim2.new(1, 0, 0, 60)
 statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s), Skill1 %s, Skill2 %s, SpawnBoss %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBoss %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
+        autoFarmV2TapInterval,
+        spawnBossNotify and "ON" or "OFF",
         autoSkill1 and "ON" or "OFF",
         autoSkill2 and "ON" or "OFF",
-        spawnBossNotif and "ON" or "OFF"
+        autoSkill3 and "ON" or "OFF",
+        autoSkill4 and "ON" or "OFF",
+        autoSkill5 and "ON" or "OFF"
     )
 end
 
@@ -2666,13 +2631,23 @@ do
     end)
     table.insert(connections, connV2)
 
-    local connSpawn = spawnBossNotifButton.MouseButton1Click:Connect(function()
-        spawnBossNotif = not spawnBossNotif
-        updateSpawnBossNotifUI(spawnBossNotif)
+    local connSpawnBoss = spawnBossButton.MouseButton1Click:Connect(function()
+        spawnBossNotify = not spawnBossNotify
+        updateSpawnBossUI(spawnBossNotify)
         updateStatusLabel()
-        notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotif and "ON" or "OFF"), 2)
+        notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotify and "ON" or "OFF"), 2)
+
+        -- jika dihidupkan saat countdown sudah berjalan, cek lagi semua region
+        if spawnBossNotify then
+            local folder = workspace:FindFirstChild("WorldBoss")
+            if folder then
+                for _, region in ipairs(folder:GetChildren()) do
+                    updateBossRegion(region)
+                end
+            end
+        end
     end)
-    table.insert(connections, connSpawn)
+    table.insert(connections, connSpawnBoss)
 
     local connMode = v2ModeButton.MouseButton1Click:Connect(function()
         autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
@@ -2694,6 +2669,27 @@ do
         updateStatusLabel()
     end)
     table.insert(connections, connSkill2)
+
+    local connSkill3 = autoSkill3Button.MouseButton1Click:Connect(function()
+        autoSkill3 = not autoSkill3
+        updateAutoSkill3UI(autoSkill3)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill3)
+
+    local connSkill4 = autoSkill4Button.MouseButton1Click:Connect(function()
+        autoSkill4 = not autoSkill4
+        updateAutoSkill4UI(autoSkill4)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill4)
+
+    local connSkill5 = autoSkill5Button.MouseButton1Click:Connect(function()
+        autoSkill5 = not autoSkill5
+        updateAutoSkill5UI(autoSkill5)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill5)
 
     local conn3 = sellButton.MouseButton1Click:Connect(function()
         sellAllFish()
@@ -2730,6 +2726,7 @@ buildBaitShopCard(bodyScroll)
 -- setelah semua card terbentuk, inisialisasi ToolsData & DailyData watcher
 initToolsDataWatcher()
 initDailyDataWatcher()
+initWorldBossWatcher()
 
 ------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
 do
@@ -2799,13 +2796,22 @@ task.spawn(function()
     end
 end)
 
--- Loop AutoFarm v2 (tap trackpad Left/Center)
+-- Loop AutoFarm v2 (tap trackpad Left/Center) - interval mengikuti autoFarmV2TapInterval
 task.spawn(function()
     while alive do
         if autoFarmV2 then
             pcall(doAutoTapV2)
+            -- jaga interval tetap di dalam batas aman
+            local interval = autoFarmV2TapInterval
+            if interval < TAP_INTERVAL_MIN then
+                interval = TAP_INTERVAL_MIN
+            elseif interval > TAP_INTERVAL_MAX then
+                interval = TAP_INTERVAL_MAX
+            end
+            task.wait(interval)
+        else
+            task.wait(0.2)
         end
-        task.wait(0.1)
     end
 end)
 
@@ -2822,9 +2828,7 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill sequence:
---  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> wait 3s -> ulang
---  - Jika hanya salah satu ON: skill itu di-try setiap ~1s
+-- Loop Auto Skill 1 & 2 (buff sequence)
 task.spawn(function()
     while alive do
         if autoSkill1 or autoSkill2 then
@@ -2864,6 +2868,38 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Skill 3/4/5 (attack, ringan, terpisah)
+task.spawn(function()
+    while alive do
+        if autoSkill3 or autoSkill4 or autoSkill5 then
+            if autoSkill3 then
+                pcall(fireSkill3)
+            end
+            task.wait(0.2)
+            if not alive then break end
+
+            if autoSkill4 then
+                pcall(fireSkill4)
+            end
+            task.wait(0.2)
+            if not alive then break end
+
+            if autoSkill5 then
+                pcall(fireSkill5)
+            end
+
+            -- Jeda kecil biar tidak terlalu spam ke server
+            local t = 0
+            while t < 1 and alive and (autoSkill3 or autoSkill4 or autoSkill5) do
+                task.wait(0.2)
+                t = t + 0.2
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
 -- Loop UI Cooldown Skill (murni visual, sangat ringan)
 task.spawn(function()
     while alive do
@@ -2883,7 +2919,11 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoDailyReward = false
     autoSkill1      = false
     autoSkill2      = false
-    spawnBossNotif  = false
+    autoSkill3      = false
+    autoSkill4      = false
+    autoSkill5      = false
+    spawnBossNotify = false
+    bossRegionStates = {}
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
