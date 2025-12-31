@@ -35,12 +35,21 @@ local alive           = true
 local autoFarm        = false      -- AutoFarm Fish v1: default OFF
 local autoEquip       = false      -- AutoEquip Harpoon: default OFF
 local autoFarmV2      = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode  = "Left"   -- "Left" / "Center"
+local autoFarmV2Mode  = "Left"     -- "Left" / "Center"
+
+-- NEW: interval click AutoFarm V2 yang bisa diatur lewat UI (detik)
+local autoFarmV2TapInterval = 0.03 -- default lebih cepat dari sebelumnya (0.35)
+local TAP_INTERVAL_MIN      = 0.01 -- batas bawah biar tidak super spam
+local TAP_INTERVAL_MAX      = 1.00 -- batas atas (boleh lebih lambat kalau mau)
+
 local autoDailyReward = true       -- Auto Daily Reward: default ON
 
 -- Auto Skill (DEFAULT ON)
-local autoSkill1      = true       -- Auto Skill 1: default ON
-local autoSkill2      = true       -- Auto Skill 2: default ON
+local autoSkill1      = true       -- Auto Skill 1: default ON (Damage Power II)
+local autoSkill2      = true       -- Auto Skill 2: default ON (Damage Power III)
+local autoSkill3      = true       -- Auto Skill 3: default ON (Skill01 - Thunder)
+local autoSkill4      = true       -- Auto Skill 4: default ON (Skill07 - Laceration Creation)
+local autoSkill5      = true       -- Auto Skill 5: default ON (Skill09 - Chain Lightning)
 
 local character       = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack        = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
@@ -256,7 +265,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.2+"
+    title.Text = "Spear Fishing V3.2++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -268,7 +277,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 & 2"
+    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 ~ 5"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -456,11 +465,7 @@ end
 
 ------------------- AUTO FARM V2 (TAP TRACKPAD LEFT/CENTER) -------------------
 local lastTapClock = 0
-
--- Interval tap V2 bisa diubah lewat UI (default lebih cepat: 0.20s) OKE
-local tapInterval      = 0.02
-local MIN_TAP_INTERVAL = 0.01
-local MAX_TAP_INTERVAL = 1.5
+-- (TAP_INTERVAL sekarang pakai autoFarmV2TapInterval yang bisa diubah dari UI)
 
 local function getTapPositionForMode(mode)
     local camera = workspace.CurrentCamera
@@ -506,7 +511,7 @@ local function doAutoTapV2()
     if not alive or not autoFarmV2 then return end
 
     local now = os.clock()
-    if now - lastTapClock < tapInterval then
+    if now - lastTapClock < autoFarmV2TapInterval then
         return
     end
     lastTapClock = now
@@ -660,17 +665,20 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 & 2 (SEQUENCE, COOLDOWN HANYA DI UI) -------------------
+------------------- AUTO SKILL 1 ~ 5 (SEQUENCE + SPAM, COOLDOWN HANYA DI UI 1 & 2) -------------------
 -- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
 local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
+local SKILL_SEQUENCE_GAP = 3   -- jeda antar cast di sequence (eksekusi nyata, ringan)
 
--- Waktu terakhir eksekusi skill (untuk UI countdown)
+-- Waktu terakhir eksekusi skill (untuk UI countdown 1 & 2, 3~5 disiapkan bila ingin dipakai)
 local skill1LastFireTime = 0
 local skill2LastFireTime = 0
+local skill3LastFireTime = 0
+local skill4LastFireTime = 0
+local skill5LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Skill02)
+-- LOGIC AUTO SKILL 1 (Damage Power II - Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -695,7 +703,7 @@ local function fireSkill1()
     end
 end
 
--- LOGIC AUTO SKILL 2 (Skill08)
+-- LOGIC AUTO SKILL 2 (Damage Power III - Skill08)
 local function fireSkill2()
     if not alive or not autoSkill2 then return end
     if not FishRE then return end
@@ -717,6 +725,81 @@ local function fireSkill2()
         end
     else
         warn("[SpearFishing] Auto Skill08 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 3 (Skill01 - Thunder)
+local function fireSkill3()
+    if not alive or not autoSkill3 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill01" -- Thunder
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill3LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill01 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 4 (Skill07 - Laceration Creation)
+local function fireSkill4()
+    if not alive or not autoSkill4 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill07" -- Laceration Creation
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill4LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill07 gagal:", err)
+    end
+end
+
+-- LOGIC AUTO SKILL 5 (Skill09 - Chain Lightning)
+local function fireSkill5()
+    if not alive or not autoSkill5 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill09" -- Chain Lightning
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill5LastFireTime = os.clock()
+        if updateSkillCooldownUI then
+            pcall(updateSkillCooldownUI)
+        end
+    else
+        warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
 end
 
@@ -1254,8 +1337,8 @@ local function buildBasketShopCard(parent)
                     PurchaseUtil:getPurchase(id)
                 end)
                 if not ok then
-                    warn("[SpearFishing] PurchaseUtil:getPurchase Basket gagal:", err)
-                    notify("Spear Fishing", "Gagal membuka purchase Robux Basket.", 4)
+                    warn("[SpearFishing] PurchaseUtil:getPurchase gagal:", err)
+                    notify("Spear Fishing", "Gagal membuka purchase Robux.", 4)
                 end
             else
                 local args = {
@@ -2034,7 +2117,7 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill 1 & 2.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Sell All + Auto Skill 1 ~ 5.",
     1,
     260 -- tinggi cukup, isi di-scroll
 )
@@ -2095,69 +2178,76 @@ local function updateV2ModeButton()
 end
 updateV2ModeButton()
 
--- Input box untuk mengatur interval tap AutoFarm V2
+-- NEW: Input box untuk mengatur kecepatan tap AutoFarm V2 (Center/Left)
 local tapSpeedFrame = Instance.new("Frame")
 tapSpeedFrame.Name = "TapSpeedFrame"
 tapSpeedFrame.Parent = controlsScroll
 tapSpeedFrame.BackgroundTransparency = 1
 tapSpeedFrame.BorderSizePixel = 0
-tapSpeedFrame.Size = UDim2.new(1, 0, 0, 30)
+tapSpeedFrame.Size = UDim2.new(1, 0, 0, 28)
 
-local tapLabel = Instance.new("TextLabel")
-tapLabel.Name = "TapLabel"
-tapLabel.Parent = tapSpeedFrame
-tapLabel.BackgroundTransparency = 1
-tapLabel.Font = Enum.Font.Gotham
-tapLabel.TextSize = 11
-tapLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
-tapLabel.TextXAlignment = Enum.TextXAlignment.Left
-tapLabel.Position = UDim2.new(0, 0, 0, 0)
-tapLabel.Size = UDim2.new(0.6, 0, 1, 0)
-tapLabel.Text = "AutoFarm V2 Interval (detik)"
+local tapSpeedLabel = Instance.new("TextLabel")
+tapSpeedLabel.Name = "TapSpeedLabel"
+tapSpeedLabel.Parent = tapSpeedFrame
+tapSpeedLabel.BackgroundTransparency = 1
+tapSpeedLabel.Font = Enum.Font.Gotham
+tapSpeedLabel.TextSize = 11
+tapSpeedLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
+tapSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+tapSpeedLabel.Text = "AutoFarm V2 Tap Interval (detik):"
+tapSpeedLabel.Position = UDim2.new(0, 0, 0, 0)
+tapSpeedLabel.Size = UDim2.new(0.6, 0, 1, 0)
 
-local tapInput = Instance.new("TextBox")
-tapInput.Name = "TapInput"
-tapInput.Parent = tapSpeedFrame
-tapInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-tapInput.BorderSizePixel = 0
-tapInput.Font = Enum.Font.GothamSemibold
-tapInput.TextSize = 11
-tapInput.TextColor3 = Color3.fromRGB(235, 235, 235)
-tapInput.TextXAlignment = Enum.TextXAlignment.Center
-tapInput.ClearTextOnFocus = false
-tapInput.Size = UDim2.new(0.4, -4, 1, 0)
-tapInput.Position = UDim2.new(0.6, 4, 0, 0)
-tapInput.Text = string.format("%.2f", tapInterval)
+local tapSpeedBox = Instance.new("TextBox")
+tapSpeedBox.Name = "TapSpeedBox"
+tapSpeedBox.Parent = tapSpeedFrame
+tapSpeedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+tapSpeedBox.BorderSizePixel = 0
+tapSpeedBox.Font = Enum.Font.GothamSemibold
+tapSpeedBox.TextSize = 11
+tapSpeedBox.TextColor3 = Color3.fromRGB(230, 230, 230)
+tapSpeedBox.ClearTextOnFocus = false
+tapSpeedBox.TextXAlignment = Enum.TextXAlignment.Center
+tapSpeedBox.Position = UDim2.new(0.62, 0, 0, 0)
+tapSpeedBox.Size = UDim2.new(0.38, 0, 1, 0)
+tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
 
-local tapCorner = Instance.new("UICorner")
-tapCorner.CornerRadius = UDim.new(0, 6)
-tapCorner.Parent = tapInput
+local tapSpeedCorner = Instance.new("UICorner")
+tapSpeedCorner.CornerRadius = UDim.new(0, 6)
+tapSpeedCorner.Parent = tapSpeedBox
 
-local function applyTapIntervalFromText(text)
-    if not text or text == "" then
-        tapInput.Text = string.format("%.2f", tapInterval)
+local function applyTapSpeedFromBox()
+    local raw = tapSpeedBox.Text or ""
+    raw = raw:gsub(",", ".")
+    local num = tonumber(raw)
+    if not num then
+        tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
         return
     end
-    local value = tonumber(text)
-    if not value then
-        tapInput.Text = string.format("%.2f", tapInterval)
-        return
+    if num < TAP_INTERVAL_MIN then
+        num = TAP_INTERVAL_MIN
+    elseif num > TAP_INTERVAL_MAX then
+        num = TAP_INTERVAL_MAX
     end
-    value = math.clamp(value, MIN_TAP_INTERVAL, MAX_TAP_INTERVAL)
-    tapInterval = value
-    tapInput.Text = string.format("%.2f", tapInterval)
+    autoFarmV2TapInterval = num
+    tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
 end
 
-local tapConn = tapInput.FocusLost:Connect(function()
-    applyTapIntervalFromText(tapInput.Text)
-end)
-table.insert(connections, tapConn)
+do
+    local connTapBox = tapSpeedBox.FocusLost:Connect(function()
+        applyTapSpeedFromBox()
+    end)
+    table.insert(connections, connTapBox)
+end
 
--- Toggle Auto Skill 1 & 2 (terpisah)
+-- Toggle Auto Skill 1 ~ 5 (terpisah)
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
+local autoSkill3Button, updateAutoSkill3UI = createToggleButton(controlsScroll, "Auto Skill 3", autoSkill3)
+local autoSkill4Button, updateAutoSkill4UI = createToggleButton(controlsScroll, "Auto Skill 4", autoSkill4)
+local autoSkill5Button, updateAutoSkill5UI = createToggleButton(controlsScroll, "Auto Skill 5", autoSkill5)
 
--- Info cooldown skill (base text, hanya info + akan dipakai untuk countdown UI)
+-- Info cooldown skill (base text, hanya info + akan dipakai untuk countdown UI 1 & 2)
 local skill1BaseInfoText = string.format(
     "Skill 1 (Skill04) Cooldown server (perkiraan): %d detik (UI info).",
     SKILL1_COOLDOWN
@@ -2254,18 +2344,22 @@ statusLabel.TextSize = 11
 statusLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
-statusLabel.Size = UDim2.new(1, 0, 0, 40)
+statusLabel.Size = UDim2.new(1, 0, 0, 60)
 statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s), Skill1 %s, Skill2 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
+        autoFarmV2TapInterval,
         autoSkill1 and "ON" or "OFF",
-        autoSkill2 and "ON" or "OFF"
+        autoSkill2 and "ON" or "OFF",
+        autoSkill3 and "ON" or "OFF",
+        autoSkill4 and "ON" or "OFF",
+        autoSkill5 and "ON" or "OFF"
     )
 end
 
@@ -2314,6 +2408,27 @@ do
         updateStatusLabel()
     end)
     table.insert(connections, connSkill2)
+
+    local connSkill3 = autoSkill3Button.MouseButton1Click:Connect(function()
+        autoSkill3 = not autoSkill3
+        updateAutoSkill3UI(autoSkill3)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill3)
+
+    local connSkill4 = autoSkill4Button.MouseButton1Click:Connect(function()
+        autoSkill4 = not autoSkill4
+        updateAutoSkill4UI(autoSkill4)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill4)
+
+    local connSkill5 = autoSkill5Button.MouseButton1Click:Connect(function()
+        autoSkill5 = not autoSkill5
+        updateAutoSkill5UI(autoSkill5)
+        updateStatusLabel()
+    end)
+    table.insert(connections, connSkill5)
 
     local conn3 = sellButton.MouseButton1Click:Connect(function()
         sellAllFish()
@@ -2442,9 +2557,7 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill sequence:
---  - Jika Skill1 dan Skill2 ON: Skill1 -> wait 3s -> Skill2 -> wait 3s -> ulang
---  - Jika hanya salah satu ON: skill itu di-try setiap ~1s
+-- Loop Auto Skill 1 & 2 (buff sequence)
 task.spawn(function()
     while alive do
         if autoSkill1 or autoSkill2 then
@@ -2484,6 +2597,38 @@ task.spawn(function()
     end
 end)
 
+-- Loop Auto Skill 3/4/5 (attack, ringan, terpisah)
+task.spawn(function()
+    while alive do
+        if autoSkill3 or autoSkill4 or autoSkill5 then
+            if autoSkill3 then
+                pcall(fireSkill3)
+            end
+            task.wait(0.2)
+            if not alive then break end
+
+            if autoSkill4 then
+                pcall(fireSkill4)
+            end
+            task.wait(0.2)
+            if not alive then break end
+
+            if autoSkill5 then
+                pcall(fireSkill5)
+            end
+
+            -- Jeda kecil biar tidak terlalu spam ke server
+            local t = 0
+            while t < 1 and alive and (autoSkill3 or autoSkill4 or autoSkill5) do
+                task.wait(0.2)
+                t = t + 0.2
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
 -- Loop UI Cooldown Skill (murni visual, sangat ringan)
 task.spawn(function()
     while alive do
@@ -2503,6 +2648,9 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoDailyReward = false
     autoSkill1      = false
     autoSkill2      = false
+    autoSkill3      = false
+    autoSkill4      = false
+    autoSkill5      = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
