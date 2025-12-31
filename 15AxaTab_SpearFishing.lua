@@ -1693,7 +1693,7 @@ local BOSS_ID_NAME_MAP = {
     Boss03 = "Crimson Rift Dragon",
 }
 
-local NEAR_REMAIN_THRESHOLD = 240  -- detik (4–5 menit)
+local NEAR_REMAIN_THRESHOLD = 300  -- detik (4–5 menit)
 
 local bossRegionState        = {}  -- [region Instance] -> {sentStart, sentNear, sentSpawn}
 local spawnBossRequestFunc   = nil
@@ -2001,7 +2001,7 @@ local function updateWorldBossRegion(region)
     -- Stage: sisa 5-6 menit
     if remain > 0
         and remain <= NEAR_REMAIN_THRESHOLD  -- <= 360 detik (maks 6 menit)
-        and remain >= 300                    -- >= 300 detik (min 5 menit)
+        and remain >= 240                    -- >= 300 detik (min 5 menit)
         and state.sentStart
         and not state.sentNear
     then
