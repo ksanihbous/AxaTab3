@@ -215,16 +215,11 @@ local function sendSpawnBossDiscord(spot, remainSec)
     }
 
     local payload = {
-        content    = DEFAULT_OWNER_DISCORD,
         username   = SPAWN_WEBHOOK_USERNAME,
         avatar_url = SPAWN_WEBHOOK_AVATAR,
+        content    = DEFAULT_OWNER_DISCORD,
         embeds     = { embed },
     }
-
-    -- optional mention jika DEFAULT_OWNER_DISCORD ada
-    if typeof(DEFAULT_OWNER_DISCORD) == "string" and DEFAULT_OWNER_DISCORD ~= "" then
-        payload.content = DEFAULT_OWNER_DISCORD
-    end
 
     local ok, body = pcall(function()
         return HttpService:JSONEncode(payload)
@@ -524,7 +519,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.3+"
+    title.Text = "Spear Fishing V3.3+++++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
