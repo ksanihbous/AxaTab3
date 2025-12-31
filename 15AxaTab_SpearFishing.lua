@@ -457,7 +457,7 @@ end
 ------------------- AUTO FARM V2 (TAP TRACKPAD LEFT/CENTER) -------------------
 local lastTapClock = 0
 
--- Interval tap V2 bisa diubah lewat UI (default lebih cepat: 0.20s)
+-- Interval tap V2 bisa diubah lewat UI (default lebih cepat: 0.20s) OKE
 local tapInterval      = 0.02
 local MIN_TAP_INTERVAL = 0.01
 local MAX_TAP_INTERVAL = 1.5
