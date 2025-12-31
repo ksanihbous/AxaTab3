@@ -672,7 +672,7 @@ local skill3LastFireTime = 0
 local skill4LastFireTime = 0
 local skill5LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Damage Power II - Skill04)
+-- LOGIC AUTO SKILL 1 (Damage Power II - Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -680,7 +680,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill04" -- DEMAGE POWER II
+            ["ID"] = "Skill02" -- COLD SNAP
         }
     }
 
@@ -693,7 +693,7 @@ local function fireSkill1()
             pcall(updateSkillCooldownUI)
         end
     else
-        warn("[SpearFishing] Auto Skill04 gagal:", err)
+        warn("[SpearFishing] Auto Skill02 gagal:", err)
     end
 end
 
