@@ -1724,6 +1724,7 @@ local function sendSpawnBossWebhookEmbed(embed)
     local payload = {
         username   = SPAWN_BOSS_BOT_USERNAME,
         avatar_url = SPAWN_BOSS_BOT_AVATAR,
+        content    = DEFAULT_OWNER_DISCORD,
         embeds     = { embed }, -- hanya EMBED, tanpa content biasa
     }
 
