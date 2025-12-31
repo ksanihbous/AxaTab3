@@ -184,12 +184,12 @@ local function sendSpawnBossDiscord(spot, remainSec)
         fields = {
             {
                 name  = "Remaining Time",
-                value = "Remaining Time: " .. remainText,
+                value = " " .. remainText,
                 inline = false
             },
             {
                 name  = "Name Boss",
-                value = "Name Boss: " .. bossName,
+                value = " " .. bossName,
                 inline = false
             },
             {
@@ -215,6 +215,7 @@ local function sendSpawnBossDiscord(spot, remainSec)
     }
 
     local payload = {
+        content    = DEFAULT_OWNER_DISCORD,
         username   = SPAWN_WEBHOOK_USERNAME,
         avatar_url = SPAWN_WEBHOOK_AVATAR,
         embeds     = { embed },
@@ -523,7 +524,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.43+"
+    title.Text = "Spear Fishing V3.3+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
