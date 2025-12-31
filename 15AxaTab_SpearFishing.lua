@@ -291,7 +291,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear v1 + v2 (Trackpad) + AutoEquip Harpoon / Auto Skill 1 ~ 5 + Spawn Boss Notifier."
+    subtitle.Text = "AutoFarm Spear v1 & v2 + AutoEquip + Auto Skill 1 ~ 5 + Spawn Boss Notifier."
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -684,7 +684,7 @@ local skill3LastFireTime = 0
 local skill4LastFireTime = 0
 local skill5LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Damage Power II - Skill02)
+-- LOGIC AUTO SKILL 1 (Cold Snap II - Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -1693,7 +1693,7 @@ local BOSS_ID_NAME_MAP = {
     Boss03 = "Crimson Rift Dragon",
 }
 
-local NEAR_REMAIN_THRESHOLD = 180  -- detik (2–3 menit)
+local NEAR_REMAIN_THRESHOLD = 240  -- detik (4–5 menit)
 
 local bossRegionState        = {}  -- [region Instance] -> {sentStart, sentNear, sentSpawn}
 local spawnBossRequestFunc   = nil
@@ -1866,7 +1866,7 @@ local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
         stageText = "Timer mulai"
         colorInt  = 0x00BFFF
     elseif stageKey == "near" then
-        stageText = "Sisa waktu 2-3 menit"
+        stageText = "Sisa waktu 4-5 menit"
         colorInt  = 0xFFA500
     elseif stageKey == "spawn" then
         stageText = "Boss Spawned"
