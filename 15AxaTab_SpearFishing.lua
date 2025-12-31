@@ -458,7 +458,7 @@ end
 local lastTapClock = 0
 
 -- Interval tap V2 bisa diubah lewat UI (default lebih cepat: 0.20s)
-local tapInterval      = 0.03
+local tapInterval      = 0.02
 local MIN_TAP_INTERVAL = 0.01
 local MAX_TAP_INTERVAL = 1.5
 
@@ -664,7 +664,7 @@ end
 -- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
 local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 2   -- jeda Skill1 -> Skill2 (eksekusi nyata)
+local SKILL_SEQUENCE_GAP = 3   -- jeda Skill1 -> Skill2 (eksekusi nyata)
 
 -- Waktu terakhir eksekusi skill (untuk UI countdown)
 local skill1LastFireTime = 0
