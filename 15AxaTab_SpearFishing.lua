@@ -176,7 +176,7 @@ local function sendSpawnBossDiscord(spot, remainSec)
         stageText = "Timer mulai"
     end
 
-    local footerText = string.format("Spear Fishing PRO++ • Today at %s", os.date("%H:%M"))
+    local footerText = string.format("Spear Fishing PRO+")
 
     local embed = {
         title  = "Spawn Boss",
