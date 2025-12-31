@@ -474,7 +474,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.3+"
+    title.Text = "Spear Fishing V3.3+++++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
