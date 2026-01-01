@@ -1674,7 +1674,7 @@ local SPAWN_BOSS_BOT_AVATAR    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20B
 local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
 
 -- WEBHOOK HP BOSS NOTIFIER (DIGANTI SESUAI PERMINTAAN)
-local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456150372686237849/NTDxNaXWeJ1ytvzTo9vnmG5Qvbl6gsvZor4MMb9rWUwKT4fFkRQ9NbNiPsy7-TWogTmR"
+local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456139721053966370/Z1Zhp9hh2fDGUB5DRAkb02LkO93-LZp5kjA3Dc_CZdlP6SKm0vvfFrO1VEMLXM7TaR7G"
 local HP_BOSS_BOT_USERNAME     = "HP Boss Notifier"
 
 -- Mapping boss ID (part / config) ke nama boss friendly
