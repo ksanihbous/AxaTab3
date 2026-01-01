@@ -1,6 +1,6 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill + Spawn Boss Notifier + HP Boss Notifier)"
+--  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill + Spawn Boss Notifier + HP Boss Notifier + Spawn Illahi Notifier)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -31,6 +31,8 @@ local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardE
 ------------------- GLOBAL STATE / AXAHUB -------------------
 _G.AxaHub            = _G.AxaHub or {}
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
+-- Spawn Illahi Notifier state (default ON kecuali pernah diset false di _G)
+_G.AxaHub.SpawnIllahiNotifier = (_G.AxaHub.SpawnIllahiNotifier ~= false)
 
 local alive              = true
 local autoFarm           = false      -- AutoFarm Fish v1: default OFF
@@ -40,10 +42,10 @@ local autoFarmV2Mode     = "Left"     -- "Left" / "Center"
 local spawnBossNotifier  = true       -- Spawn Boss Notifier: default ON
 local hpBossNotifier     = true       -- HPBar Boss Notifier: default ON
 
--- interval click AutoFarm V2 yang bisa diatur lewat UI (detik)
+-- interval click AutoFarm V2 (detik)
 local autoFarmV2TapInterval = 0.03    -- default cepat
-local TAP_INTERVAL_MIN      = 0.01    -- batas bawah
-local TAP_INTERVAL_MAX      = 1.00    -- batas atas
+local TAP_INTERVAL_MIN      = 0.01
+local TAP_INTERVAL_MAX      = 1.00
 
 local autoDailyReward = true          -- Auto Daily Reward: default ON
 
@@ -94,7 +96,7 @@ local ItemUtil       = safeRequire(UtilityFolder, "ItemUtil")
 local ToolUtil       = safeRequire(UtilityFolder, "ToolUtil")
 local FormatUtil     = safeRequire(UtilityFolder, "Format")
 local PurchaseUtil   = safeRequire(UtilityFolder, "PurchaseUtil")
-local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket") -- Luck/Frequency
+local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket")
 local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")
 local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")
 local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
@@ -206,12 +208,10 @@ local function ensureHarpoonEquipped()
 end
 
 local function isToolOwnedGeneric(id)
-    -- via PlayerData Tools (jika sudah siap)
     if ToolsData and ToolsData:FindFirstChild(id) then
         return true
     end
 
-    -- Fallback: cek di Character / Backpack
     local function hasIn(container)
         if not container then return false end
         for _, tool in ipairs(container:GetChildren()) do
@@ -238,20 +238,17 @@ local function isBasketOwned(id)
 end
 
 ------------------- UI HELPERS (TAHOE STYLE LIGHT) -------------------
-local harpoonCardsById = {}  -- id -> {frame, buyButton, assetType}
-local basketCardsById  = {}  -- id -> {frame, buyButton, assetType}
-local baitCardsById    = {}  -- id -> {frame, buyButton, stockLabel, noStockLabel}
+local harpoonCardsById = {}
+local basketCardsById  = {}
+local baitCardsById    = {}
 
--- Daily reward UI state
-local dailyCardsByIndex = {} -- index -> {frame, claimButton, claimedLabel, dayLabel, nameLabel, countLabel}
+local dailyCardsByIndex = {}
 local dailyStatusLabel  = nil
 local updateAutoDailyUI = nil
 
--- Skill cooldown UI updater (akan diisi setelah label dibuat)
 local updateSkillCooldownUI = nil
 
 local function createMainLayout()
-    -- Header
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Parent = frame
@@ -280,7 +277,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4+"
+    title.Text = "Spear Fishing V3.4"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -292,9 +289,8 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier + HP Boss Notifier"
+    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier + HP Boss Notifier + Spawn Illahi Notifier"
 
-    -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
     bodyScroll.Parent = frame
@@ -420,7 +416,7 @@ end
 
 ------------------- AUTO FARM V1 (FIRE HARPOON) -------------------
 local lastShotClock = 0
-local FIRE_INTERVAL = 0.35  -- detik antar tembakan
+local FIRE_INTERVAL = 0.35
 
 local function doFireHarpoon()
     if not alive or not autoFarm then return end
@@ -433,7 +429,6 @@ local function doFireHarpoon()
     end
     lastShotClock = now
 
-    -- Pastikan harpoon ter-equip
     local harpoon = getEquippedHarpoonTool()
     if (not harpoon) and autoEquip then
         ensureHarpoonEquipped()
@@ -448,7 +443,6 @@ local function doFireHarpoon()
         return
     end
 
-    -- Aim mengikuti pusat layar (GunAim)
     local viewport = camera.ViewportSize
     local centerX, centerY = viewport.X / 2, viewport.Y / 2
 
@@ -482,12 +476,11 @@ local function getTapPositionForMode(mode)
     local camera = workspace.CurrentCamera
     if not camera then return nil end
     local v = camera.ViewportSize
-    local y = v.Y * 0.8 -- dekat bawah layar (area trackpad)
+    local y = v.Y * 0.8
     local x
     if mode == "Left" then
         x = v.X * 0.3
     else
-        -- default Center
         x = v.X * 0.5
     end
     return Vector2.new(x, y)
@@ -496,7 +489,6 @@ end
 local function tapScreenPosition(pos)
     if not pos or not VirtualInputManager then return end
 
-    -- Jangan ganggu kalau sedang mengetik
     if UserInputService:GetFocusedTextBox() then
         return
     end
@@ -504,13 +496,11 @@ local function tapScreenPosition(pos)
     local x, y = pos.X, pos.Y
 
     if isTouch then
-        -- Mobile / HP (touch)
         pcall(function()
             VirtualInputManager:SendTouchEvent(x, y, 0, true, workspace.CurrentCamera, 0)
             VirtualInputManager:SendTouchEvent(x, y, 0, false, workspace.CurrentCamera, 0)
         end)
     else
-        -- PC / Laptop / Mac (mouse/trackpad)
         pcall(function()
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
@@ -518,7 +508,6 @@ local function tapScreenPosition(pos)
     end
 end
 
--- sekarang doAutoTapV2 hanya satu tap; interval diatur oleh loop (autoFarmV2TapInterval)
 local function doAutoTapV2()
     if not alive or not autoFarmV2 then return end
 
@@ -535,7 +524,6 @@ local function ensureSpearFishData()
     end
     spearInitTried = true
 
-    -- Coba lewat shared.WaitPlayerData
     local waitFn
     local okFn, fn = pcall(function()
         return shared and shared.WaitPlayerData
@@ -564,7 +552,6 @@ local function ensureSpearFishData()
         end
     end
 
-    -- Fallback: cari folder di LocalPlayer
     if not SpearFishData then
         local keys2 = {
             "SpearFish",
@@ -596,19 +583,16 @@ local function collectAllSpearFishUIDs()
     for _, child in ipairs(data:GetChildren()) do
         local uidValue
 
-        -- Prioritas Attribute "UID"
         local attrUID = child:GetAttribute("UID")
         if attrUID ~= nil then
             uidValue = attrUID
         else
-            -- Kalau ada ValueObject bernama "UID"
             local uidObj = child:FindFirstChild("UID")
             if uidObj and uidObj.Value then
                 uidValue = uidObj.Value
             end
         end
 
-        -- Fallback: pakai Name kalau numeric panjang
         if uidValue == nil then
             if #child.Name >= 12 and tonumber(child.Name) then
                 uidValue = child.Name
@@ -671,19 +655,17 @@ local function sellAllFish()
     end
 end
 
-------------------- AUTO SKILL 1 ~ 5 (SEQUENCE + SPAM, COOLDOWN HANYA DI UI 1 & 2) -------------------
-local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
-local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
-local SKILL_SEQUENCE_GAP = 3   -- jeda antar cast di sequence (eksekusi nyata, ringan)
+------------------- AUTO SKILL 1 ~ 5 -------------------
+local SKILL1_COOLDOWN    = 15
+local SKILL2_COOLDOWN    = 20
+local SKILL_SEQUENCE_GAP = 3
 
--- Waktu terakhir eksekusi skill (untuk UI countdown 1 & 2, 3~5 disiapkan bila ingin dipakai)
 local skill1LastFireTime = 0
 local skill2LastFireTime = 0
 local skill3LastFireTime = 0
 local skill4LastFireTime = 0
 local skill5LastFireTime = 0
 
--- LOGIC AUTO SKILL 1 (Cold Snap II - Skill02)
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
     if not FishRE then return end
@@ -691,7 +673,7 @@ local function fireSkill1()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill02" -- COLD SNAP
+            ["ID"] = "Skill02"
         }
     }
 
@@ -708,7 +690,6 @@ local function fireSkill1()
     end
 end
 
--- LOGIC AUTO SKILL 2 (Damage Power III - Skill08)
 local function fireSkill2()
     if not alive or not autoSkill2 then return end
     if not FishRE then return end
@@ -716,7 +697,7 @@ local function fireSkill2()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill08" -- DEMAGE POWER III
+            ["ID"] = "Skill08"
         }
     }
 
@@ -733,7 +714,6 @@ local function fireSkill2()
     end
 end
 
--- LOGIC AUTO SKILL 3 (Skill01 - Thunder)
 local function fireSkill3()
     if not alive or not autoSkill3 then return end
     if not FishRE then return end
@@ -741,7 +721,7 @@ local function fireSkill3()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill01" -- Thunder
+            ["ID"] = "Skill01"
         }
     }
 
@@ -758,7 +738,6 @@ local function fireSkill3()
     end
 end
 
--- LOGIC AUTO SKILL 4 (Skill07 - Laceration Creation)
 local function fireSkill4()
     if not alive or not autoSkill4 then return end
     if not FishRE then return end
@@ -766,7 +745,7 @@ local function fireSkill4()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill07" -- Laceration Creation
+            ["ID"] = "Skill07"
         }
     }
 
@@ -783,7 +762,6 @@ local function fireSkill4()
     end
 end
 
--- LOGIC AUTO SKILL 5 (Skill09 - Chain Lightning)
 local function fireSkill5()
     if not alive or not autoSkill5 then return end
     if not FishRE then return end
@@ -791,7 +769,7 @@ local function fireSkill5()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill09" -- Chain Lightning
+            ["ID"] = "Skill09"
         }
     }
 
@@ -1673,21 +1651,19 @@ local SPAWN_BOSS_BOT_USERNAME  = "Spawn Boss Notifier"
 local SPAWN_BOSS_BOT_AVATAR    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
 local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
 
--- WEBHOOK HP BOSS NOTIFIER (DIGANTI SESUAI PERMINTAAN)
-local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456139721053966370/Z1Zhp9hh2fDGUB5DRAkb02LkO93-LZp5kjA3Dc_CZdlP6SKm0vvfFrO1VEMLXM7TaR7G"
+local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456150372686237849/NTDxNaXWeJ1ytvzTo9vnmG5Qvbl6gsvZor4MMb9rWUwKT4fFkRQ9NbNiPsy7-TWogTmR"
 local HP_BOSS_BOT_USERNAME     = "HP Boss Notifier"
 
--- Mapping boss ID (part / config) ke nama boss friendly
 local BOSS_ID_NAME_MAP = {
     Boss01 = "Humpback Whale",
     Boss02 = "Whale Shark",
     Boss03 = "Crimson Rift Dragon",
 }
 
-local NEAR_REMAIN_THRESHOLD = 240  -- detik (3–4 menit)
+local NEAR_REMAIN_THRESHOLD = 240
 
-local bossRegionState        = {}  -- [region Instance] -> {sentStart, sentNear, sentSpawn}
-local hpRegionState          = {}  -- [region Instance] -> {bossPart, conn..., lastHp, lastSendTime}
+local bossRegionState        = {}
+local hpRegionState          = {}
 local spawnBossRequestFunc   = nil
 
 local function getSpawnBossRequestFunc()
@@ -2120,9 +2096,9 @@ local function updateWorldBossRegion(region)
     end
 end
 
-------------------- HP BOSS NOTIFIER (HP BAR PROGRESS) -------------------
-local HP_SEND_MIN_INTERVAL = 1.5      -- minimal jeda antar webhook
-local HP_MIN_DELTA_RATIO   = 0.005    -- minimal perubahan 0.5% HP baru kirim
+------------------- HP BOSS NOTIFIER -------------------
+local HP_SEND_MIN_INTERVAL = 1.5
+local HP_MIN_DELTA_RATIO   = 0.005
 
 local function getBossPartInRegion(region)
     if not region then
@@ -2428,6 +2404,221 @@ local function initWorldBossNotifier()
             if child:IsA("BasePart") or child:IsA("Model") then
                 registerWorldBossRegion(child)
             end
+        end))
+    end)
+end
+
+------------------- SPAWN ILLAHI NOTIFIER (NETHER ISLAND) -------------------
+local function initIllahiSpawnNotifier()
+    task.spawn(function()
+        task.wait(3)
+        if not alive then
+            return
+        end
+
+        local WEBHOOK_URL = "https://discord.com/api/webhooks/1456157133325209764/ymVmoJR0gV21o_IpvCn6sj2jR31TqZPnWMem7jEmxZLt_Pn__7j1cdsqna1u1mBq7yWz"
+        local BOT_USERNAME = "Spawn Illahi Notifier"
+
+        local ILLAHI_FISH_MAP = {
+            Fish400 = { name = "Nether Barracuda",  sea = "Sea7" },
+            Fish401 = { name = "Nether Anglerfish", sea = "Sea7" },
+            Fish402 = { name = "Nether Manta Ray", sea = "Sea6" },
+            Fish403 = { name = "Nether SwordFish", sea = "Sea6" },
+            Fish404 = { name = "Diamond Flying Fish", sea = "Sea6" },
+            Fish405 = { name = "Diamond Flying Fish", sea = "Sea6" },
+        }
+
+        local ILLAHI_SEA_SET = {
+            Sea6 = true,
+            Sea7 = true,
+        }
+
+        local function sendIllahiWebhookEmbed(embed)
+            if not WEBHOOK_URL or WEBHOOK_URL == "" then
+                return
+            end
+
+            local payload = {
+                username   = BOT_USERNAME,
+                avatar_url = SPAWN_BOSS_BOT_AVATAR,
+                content    = DEFAULT_OWNER_DISCORD,
+                embeds     = { embed },
+            }
+
+            local encoded
+            local okEncode, resEncode = pcall(function()
+                return HttpService:JSONEncode(payload)
+            end)
+            if okEncode then
+                encoded = resEncode
+            else
+                warn("[SpearFishing] Illahi JSONEncode failed:", resEncode)
+                return
+            end
+
+            local reqFunc = getSpawnBossRequestFunc()
+            if reqFunc then
+                local okReq, resReq = pcall(reqFunc, {
+                    Url     = WEBHOOK_URL,
+                    Method  = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json",
+                    },
+                    Body    = encoded,
+                })
+                if not okReq then
+                    warn("[SpearFishing] Illahi webhook request failed:", resReq)
+                end
+            else
+                local okPost, errPost = pcall(function()
+                    HttpService:PostAsync(WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
+                end)
+                if not okPost then
+                    warn("[SpearFishing] Illahi HttpService PostAsync failed:", errPost)
+                end
+            end
+        end
+
+        local function buildIllahiSpawnEmbed(region, fishId, fishName)
+            local regionName = getRegionNameForBoss(region)
+            local islandName = "Nether Island"
+
+            local displayName = LocalPlayer.DisplayName or LocalPlayer.Name or "Player"
+            local username    = LocalPlayer.Name or "Player"
+            local userId      = LocalPlayer.UserId or 0
+            local playerValue = string.format("%s (@%s) [%s]", tostring(displayName), tostring(username), tostring(userId))
+
+            local serverId = game.JobId
+            if not serverId or serverId == "" then
+                serverId = "N/A"
+            end
+
+            local fishLabel = fishName or "Unknown"
+            if fishId and fishId ~= "" then
+                fishLabel = fishLabel .. " (" .. tostring(fishId) .. ")"
+            end
+
+            local embed = {
+                title       = "Spawn Illahi",
+                description = DEFAULT_OWNER_DISCORD,
+                color       = 0x9400D3,
+                fields      = {
+                    {
+                        name   = "Illahi Fish",
+                        value  = fishLabel,
+                        inline = true,
+                    },
+                    {
+                        name   = "Sea",
+                        value  = regionName,
+                        inline = true,
+                    },
+                    {
+                        name   = "Island",
+                        value  = islandName,
+                        inline = true,
+                    },
+                    {
+                        name   = "Name Map",
+                        value  = GAME_NAME,
+                        inline = false,
+                    },
+                    {
+                        name   = "Player",
+                        value  = playerValue,
+                        inline = false,
+                    },
+                    {
+                        name   = "Server ID",
+                        value  = serverId,
+                        inline = false,
+                    },
+                },
+                footer = {
+                    text = "Spear Fishing PRO+ | Spawn Illahi Notifier",
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+            }
+
+            return embed
+        end
+
+        local function handleIllahiFish(region, fishPart)
+            if not alive then
+                return
+            end
+            if not _G.AxaHub or _G.AxaHub.SpawnIllahiNotifier == false then
+                return
+            end
+            if not fishPart or not fishPart.Name then
+                return
+            end
+
+            local def = ILLAHI_FISH_MAP[fishPart.Name]
+            if not def then
+                return
+            end
+
+            local fishName = def.name or fishPart.Name
+            local embed = buildIllahiSpawnEmbed(region, fishPart.Name, fishName)
+            sendIllahiWebhookEmbed(embed)
+        end
+
+        local function registerIllahiRegion(region)
+            if not region or not region.Name then
+                return
+            end
+            if not ILLAHI_SEA_SET[region.Name] then
+                return
+            end
+            if not (region:IsA("BasePart") or region:IsA("Model")) then
+                return
+            end
+
+            local function checkChild(child)
+                if not child or not child.Name then
+                    return
+                end
+                if not child:IsA("BasePart") then
+                    return
+                end
+                if ILLAHI_FISH_MAP[child.Name] then
+                    handleIllahiFish(region, child)
+                end
+            end
+
+            for _, child in ipairs(region:GetChildren()) do
+                checkChild(child)
+            end
+
+            table.insert(connections, region.ChildAdded:Connect(function(child)
+                if not alive then return end
+                checkChild(child)
+            end))
+        end
+
+        local worldSea = workspace:FindFirstChild("WorldSea")
+        if not worldSea then
+            local okWait, inst = pcall(function()
+                return workspace:WaitForChild("WorldSea", 10)
+            end)
+            if okWait and inst then
+                worldSea = inst
+            end
+        end
+
+        if not worldSea then
+            warn("[SpearFishing] WorldSea folder tidak ditemukan, Spawn Illahi Notifier idle.")
+            return
+        end
+
+        for _, child in ipairs(worldSea:GetChildren()) do
+            registerIllahiRegion(child)
+        end
+
+        table.insert(connections, worldSea.ChildAdded:Connect(function(child)
+            if not alive then return end
+            registerIllahiRegion(child)
         end))
     end)
 end
@@ -2805,7 +2996,7 @@ local function buildDailyRewardCard(parent)
     return card
 end
 
-------------------- TOOLSDATA INIT (UNTUK OWNERSHIP REFRESH) -------------------
+------------------- TOOLSDATA INIT -------------------
 local function initToolsDataWatcher()
     task.spawn(function()
         if ToolsData then return end
@@ -2858,7 +3049,7 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + HP Boss Notifier + Sell All + Auto Skill 1 ~ 5.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + HP Boss Notifier + Spawn Illahi Notifier + Sell All + Auto Skill 1 ~ 5.",
     1,
     260
 )
@@ -2977,6 +3168,9 @@ end))
 local spawnBossToggleButton, updateSpawnBossNotifierUI =
     createToggleButton(controlsScroll, "Spawn Boss Notifier", spawnBossNotifier)
 
+local spawnIllahiToggleButton, updateSpawnIllahiNotifierUI =
+    createToggleButton(controlsScroll, "Spawn Illahi Notifier", _G.AxaHub.SpawnIllahiNotifier)
+
 local hpBossToggleButton, updateHpBossNotifierUI =
     createToggleButton(controlsScroll, "HPBar Boss Notifier", hpBossNotifier)
 
@@ -3085,13 +3279,14 @@ statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
         autoFarmV2TapInterval,
         spawnBossNotifier and "ON" or "OFF",
+        (_G.AxaHub and _G.AxaHub.SpawnIllahiNotifier) and "ON" or "OFF",
         hpBossNotifier and "ON" or "OFF",
         autoSkill1 and "ON" or "OFF",
         autoSkill2 and "ON" or "OFF",
@@ -3133,6 +3328,13 @@ table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(functi
     updateSpawnBossNotifierUI(spawnBossNotifier)
     updateStatusLabel()
     notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, spawnIllahiToggleButton.MouseButton1Click:Connect(function()
+    _G.AxaHub.SpawnIllahiNotifier = not _G.AxaHub.SpawnIllahiNotifier
+    updateSpawnIllahiNotifierUI(_G.AxaHub.SpawnIllahiNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "Spawn Illahi Notifier: " .. (_G.AxaHub.SpawnIllahiNotifier and "ON" or "OFF"), 2)
 end))
 
 table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
@@ -3202,6 +3404,7 @@ buildBaitShopCard(bodyScroll)
 initToolsDataWatcher()
 initDailyDataWatcher()
 initWorldBossNotifier()
+initIllahiSpawnNotifier()
 
 ------------------- BACKPACK / CHARACTER EVENT -------------------
 table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
@@ -3384,6 +3587,7 @@ _G.AxaHub.TabCleanup[tabId] = function()
     hpBossNotifier     = false
     bossRegionState    = {}
     hpRegionState      = {}
+    _G.AxaHub.SpawnIllahiNotifier = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
