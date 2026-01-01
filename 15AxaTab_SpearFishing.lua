@@ -280,7 +280,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4+++"
+    title.Text = "Spear Fishing V3.4+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -672,7 +672,6 @@ local function sellAllFish()
 end
 
 ------------------- AUTO SKILL 1 ~ 5 (SEQUENCE + SPAM, COOLDOWN HANYA DI UI 1 & 2) -------------------
--- Cooldown di bawah ini HANYA untuk informasi UI, bukan limiter eksekusi.
 local SKILL1_COOLDOWN    = 15  -- detik (informasi UI)
 local SKILL2_COOLDOWN    = 20  -- detik (informasi UI)
 local SKILL_SEQUENCE_GAP = 3   -- jeda antar cast di sequence (eksekusi nyata, ringan)
@@ -922,8 +921,8 @@ local function buildHarpoonShopCard(parent)
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
-        3,       -- setelah Spear Controls (1) & Auto Daily Reward (2)
-        280      -- diperbesar agar tombol terlihat penuh
+        3,
+        280
     )
 
     local scroll = Instance.new("ScrollingFrame")
@@ -961,7 +960,7 @@ local function buildHarpoonShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 150, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1083,7 +1082,6 @@ local function buildHarpoonShopCard(parent)
         table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
     end
 
-    -- pertama kali
     refreshHarpoonOwnership()
 
     return card
@@ -1139,7 +1137,6 @@ local function getBasketDisplayData(id)
         end
     end
 
-    -- Ambil Luck & Frequency dari ResFishBasket jika tersedia
     if ResFishBasket then
         local okCfg, cfg = pcall(function()
             return ResFishBasket[id] or (ResFishBasket.__index and ResFishBasket.__index[id])
@@ -1152,7 +1149,6 @@ local function getBasketDisplayData(id)
                         return v
                     end
                 end
-                -- fallback: cari angka pertama
                 for _, v in pairs(tbl) do
                     if type(v) == "number" then
                         return v
@@ -1208,8 +1204,8 @@ local function buildBasketShopCard(parent)
         parent,
         "Basket Shop",
         "Toko Basket (Icon + Luck + Frequency + Price).",
-        4,       -- setelah Harpoon Shop
-        280      -- diperbesar
+        4,
+        280
     )
 
     local scroll = Instance.new("ScrollingFrame")
@@ -1247,7 +1243,7 @@ local function buildBasketShopCard(parent)
         item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         item.BackgroundTransparency = 0.1
         item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210) -- diperbesar
+        item.Size = UDim2.new(0, 150, 0, 210)
         item.LayoutOrder = index
 
         local corner = Instance.new("UICorner")
@@ -1394,16 +1390,14 @@ local function refreshBaitStock()
 end
 
 local function buildBaitShopCard(parent)
-    -- subtitle sengaja kosong, kita buat label sendiri agar muat Time Reset
     local card, _, _ = createCard(
         parent,
         "Bait Shop",
         "",
-        5,       -- setelah Basket Shop
-        280      -- diperbesar
+        5,
+        280
     )
 
-    -- Info + Reset time baris bawah title
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "Info"
     infoLabel.Parent = card
@@ -1647,10 +1641,8 @@ local function buildBaitShopCard(parent)
         table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
     end
 
-    -- stock awal
     refreshBaitStock()
 
-    -- update reset time & stok
     if FishBaitShop then
         table.insert(connections, FishBaitShop.Changed:Connect(function(value)
             if not alive then return end
@@ -1681,7 +1673,8 @@ local SPAWN_BOSS_BOT_USERNAME  = "Spawn Boss Notifier"
 local SPAWN_BOSS_BOT_AVATAR    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
 local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
 
-local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456139721053966370/Z1Zhp9hh2fDGUB5DRAkb02LkO93-LZp5kjA3Dc_CZdlP6SKm0vvfFrO1VEMLXM7TaR7G"
+-- WEBHOOK HP BOSS NOTIFIER (DIGANTI SESUAI PERMINTAAN)
+local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456150372686237849/NTDxNaXWeJ1ytvzTo9vnmG5Qvbl6gsvZor4MMb9rWUwKT4fFkRQ9NbNiPsy7-TWogTmR"
 local HP_BOSS_BOT_USERNAME     = "HP Boss Notifier"
 
 -- Mapping boss ID (part / config) ke nama boss friendly
@@ -1694,7 +1687,7 @@ local BOSS_ID_NAME_MAP = {
 local NEAR_REMAIN_THRESHOLD = 240  -- detik (3–4 menit)
 
 local bossRegionState        = {}  -- [region Instance] -> {sentStart, sentNear, sentSpawn}
-local hpRegionState          = {}  -- [region Instance] -> {bossPart, conn, lastHp, lastSendTime}
+local hpRegionState          = {}  -- [region Instance] -> {bossPart, conn..., lastHp, lastSendTime}
 local spawnBossRequestFunc   = nil
 
 local function getSpawnBossRequestFunc()
@@ -1724,7 +1717,7 @@ local function sendSpawnBossWebhookEmbed(embed)
         username   = SPAWN_BOSS_BOT_USERNAME,
         avatar_url = SPAWN_BOSS_BOT_AVATAR,
         content    = DEFAULT_OWNER_DISCORD,
-        embeds     = { embed }, -- hanya EMBED, tanpa content biasa
+        embeds     = { embed },
     }
 
     local encoded
@@ -1752,7 +1745,6 @@ local function sendSpawnBossWebhookEmbed(embed)
             warn("[SpearFishing] SpawnBoss webhook request failed:", resReq)
         end
     else
-        -- Fallback HttpService
         local okPost, errPost = pcall(function()
             HttpService:PostAsync(SPAWN_BOSS_WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
         end)
@@ -1826,7 +1818,6 @@ local function getBossNameForRegion(region)
         return "Unknown Boss"
     end
 
-    -- Pertama, cek mapping ID -> nama
     for id, display in pairs(BOSS_ID_NAME_MAP) do
         local found = region:FindFirstChild(id, true)
         if found then
@@ -1834,7 +1825,6 @@ local function getBossNameForRegion(region)
         end
     end
 
-    -- Kedua, coba pakai FishUtil:isFish + ItemUtil:getName
     if FishUtil and ItemUtil then
         local okDesc, descendants = pcall(function()
             return region:GetDescendants()
@@ -1934,7 +1924,7 @@ local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
 
     local embed = {
         title       = "Spawn Boss",
-        description = DEFAULT_OWNER_DISCORD, -- mention di dalam EMBED (tidak ada content biasa)
+        description = DEFAULT_OWNER_DISCORD,
         color       = colorInt,
         fields      = {
             {
@@ -2097,14 +2087,12 @@ local function updateWorldBossRegion(region)
     local remainRaw = region:GetAttribute("RemainTime")
     local remain    = tonumber(remainRaw) or 0
 
-    -- reset siklus ketika timer selesai dan boss tidak ada
     if not hasBoss and remain <= 0 then
         state.sentStart = false
         state.sentNear  = false
         state.sentSpawn = false
     end
 
-    -- Stage: timer mulai
     if remain > 0 and not hasBoss and not state.sentStart then
         state.sentStart = true
         task.spawn(function()
@@ -2112,10 +2100,9 @@ local function updateWorldBossRegion(region)
         end)
     end
 
-    -- Stage: sisa 5-6 menit (di script ini 3-4 menit, sesuai NEAR_REMAIN_THRESHOLD = 240, 180~240)
     if remain > 0
-        and remain <= NEAR_REMAIN_THRESHOLD  -- <= 240 detik (maks 4 menit)
-        and remain >= 180                    -- >= 180 detik (min 3 menit)
+        and remain <= NEAR_REMAIN_THRESHOLD
+        and remain >= 180
         and state.sentStart
         and not state.sentNear
     then
@@ -2125,7 +2112,6 @@ local function updateWorldBossRegion(region)
         end)
     end
 
-    -- Stage: boss spawn (0:00 / HasBoss = true)
     if hasBoss and not state.sentSpawn then
         state.sentSpawn = true
         task.spawn(function()
@@ -2136,7 +2122,7 @@ end
 
 ------------------- HP BOSS NOTIFIER (HP BAR PROGRESS) -------------------
 local HP_SEND_MIN_INTERVAL = 1.5      -- minimal jeda antar webhook
-local HP_MIN_DELTA_RATIO   = 0.005    -- minimal perubahan 0.5% HP baru kirim (kecuali mati)
+local HP_MIN_DELTA_RATIO   = 0.005    -- minimal perubahan 0.5% HP baru kirim
 
 local function getBossPartInRegion(region)
     if not region then
@@ -2150,7 +2136,6 @@ local function getBossPartInRegion(region)
         return nil
     end
 
-    -- Prioritas: FishUtil:isFish
     if FishUtil then
         for _, inst in ipairs(descendants) do
             if inst:IsA("BasePart") then
@@ -2163,7 +2148,7 @@ local function getBossPartInRegion(region)
                 end
 
                 if isFish then
-                    local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("HP")
+                    local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("CurHp") or inst:GetAttribute("HP") or inst:GetAttribute("Hp")
                     if hpAttr ~= nil then
                         return inst
                     end
@@ -2172,10 +2157,9 @@ local function getBossPartInRegion(region)
         end
     end
 
-    -- Fallback: cari BasePart dengan atribut HP/CurHP
     for _, inst in ipairs(descendants) do
         if inst:IsA("BasePart") then
-            local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("HP")
+            local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("CurHp") or inst:GetAttribute("HP") or inst:GetAttribute("Hp")
             if hpAttr ~= nil then
                 return inst
             end
@@ -2191,11 +2175,18 @@ local function detachHpWatcher(region)
         return
     end
 
-    if state.conn and state.conn.Disconnect then
-        pcall(function()
-            state.conn:Disconnect()
-        end)
+    local function safeDisc(conn)
+        if conn and conn.Disconnect then
+            pcall(function()
+                conn:Disconnect()
+            end)
+        end
     end
+
+    safeDisc(state.conn)
+    safeDisc(state.connCurHP)
+    safeDisc(state.connHP)
+    safeDisc(state.connHp)
 
     hpRegionState[region] = nil
 end
@@ -2210,9 +2201,17 @@ local function sendHpBossProgress(region, bossPart)
         return
     end
 
-    local totalHp = tonumber(bossPart:GetAttribute("HP") or bossPart:GetAttribute("Hp")) or 0
-    local curHp   = tonumber(bossPart:GetAttribute("CurHP") or bossPart:GetAttribute("CurHp")) or 0
+    local rawCur = bossPart:GetAttribute("CurHP") or bossPart:GetAttribute("CurHp")
+    local rawMax = bossPart:GetAttribute("HP")   or bossPart:GetAttribute("Hp")
 
+    if rawCur == nil and rawMax ~= nil then
+        rawCur = rawMax
+    elseif rawCur ~= nil and rawMax == nil then
+        rawMax = rawCur
+    end
+
+    local curHp   = tonumber(rawCur or 0) or 0
+    local totalHp = tonumber(rawMax or 0) or 0
     if totalHp <= 0 then
         totalHp = curHp
     end
@@ -2223,33 +2222,39 @@ local function sendHpBossProgress(region, bossPart)
     end
 
     local now      = os.clock()
-    local lastHp   = state.lastHp or totalHp
+    local lastHp   = state.lastHp
     local lastSend = state.lastSendTime or 0
 
-    local changed  = (curHp ~= lastHp)
+    local changed
+    if lastHp == nil then
+        changed = true
+    else
+        changed = (curHp ~= lastHp)
+    end
+
     if not changed then
         return
     end
 
     local dropRatio = 0
-    if totalHp > 0 then
+    if totalHp > 0 and lastHp ~= nil and lastHp > 0 then
         dropRatio = math.abs(curHp - lastHp) / totalHp
     end
 
     if not hpBossNotifier then
         state.lastHp = curHp
-        -- tidak kirim webhook ketika toggle OFF
         return
     end
 
     local mustSend = false
 
-    if curHp <= 0 and lastHp > 0 then
+    if lastHp == nil then
+        mustSend = true
+    elseif curHp <= 0 and lastHp > 0 then
         mustSend = true
     elseif (now - lastSend) >= HP_SEND_MIN_INTERVAL and dropRatio >= HP_MIN_DELTA_RATIO then
         mustSend = true
     elseif (now - lastSend) >= 5 then
-        -- fallback: minimal tiap 5 detik tetap update supaya terlihat progres
         mustSend = true
     end
 
@@ -2309,7 +2314,7 @@ local function attachHpWatcher(region)
     end
 
     local state = hpRegionState[region]
-    if state and state.bossPart == bossPart and state.conn then
+    if state and state.bossPart == bossPart and (state.conn or state.connCurHP or state.connHP or state.connHp) then
         return
     end
 
@@ -2317,17 +2322,35 @@ local function attachHpWatcher(region)
 
     state = {
         bossPart     = bossPart,
-        lastHp       = tonumber(bossPart:GetAttribute("CurHP") or bossPart:GetAttribute("CurHp") or bossPart:GetAttribute("HP") or bossPart:GetAttribute("Hp")) or 0,
+        lastHp       = nil,
         lastSendTime = 0,
         conn         = nil,
+        connCurHP    = nil,
+        connHP       = nil,
+        connHp       = nil,
     }
     hpRegionState[region] = state
 
-    state.conn = bossPart:GetAttributeChangedSignal("CurHP"):Connect(function()
+    local function onHpAttributeChanged()
         if not alive then return end
         sendHpBossProgress(region, bossPart)
-    end)
-    table.insert(connections, state.conn)
+    end
+
+    local connCur = bossPart:GetAttributeChangedSignal("CurHP"):Connect(onHpAttributeChanged)
+    state.connCurHP = connCur
+    table.insert(connections, connCur)
+
+    local connCur2 = bossPart:GetAttributeChangedSignal("CurHp"):Connect(onHpAttributeChanged)
+    state.conn = connCur2
+    table.insert(connections, connCur2)
+
+    local connHP = bossPart:GetAttributeChangedSignal("HP"):Connect(onHpAttributeChanged)
+    state.connHP = connHP
+    table.insert(connections, connHP)
+
+    local connHp = bossPart:GetAttributeChangedSignal("Hp"):Connect(onHpAttributeChanged)
+    state.connHp = connHp
+    table.insert(connections, connHp)
 
     task.spawn(function()
         sendHpBossProgress(region, bossPart)
@@ -2339,7 +2362,6 @@ local function registerWorldBossRegion(region)
         return
     end
 
-    -- initial update
     task.spawn(function()
         updateWorldBossRegion(region)
         attachHpWatcher(region)
@@ -2375,7 +2397,6 @@ end
 
 local function initWorldBossNotifier()
     task.spawn(function()
-        -- beri jeda kecil agar WorldBoss sempat dimuat
         task.wait(5)
         if not alive then
             return
@@ -2504,7 +2525,6 @@ local function initDailyDataWatcher()
     task.spawn(function()
         if DailyData then return end
 
-        -- tunggu sampai shared.WaitPlayerData siap
         local waitFn
         while alive and not waitFn do
             local ok, fn = pcall(function()
@@ -2536,7 +2556,6 @@ local function initDailyDataWatcher()
             pcall(refreshDailyUI)
         end
 
-        -- Listener existing child
         for _, child in ipairs(DailyData:GetChildren()) do
             if child.AttributeChanged then
                 table.insert(connections, child.AttributeChanged:Connect(function()
@@ -2545,7 +2564,6 @@ local function initDailyDataWatcher()
             end
         end
 
-        -- Listener child added
         if DailyData.ChildAdded then
             table.insert(connections, DailyData.ChildAdded:Connect(function(child)
                 if not alive then return end
@@ -2567,8 +2585,8 @@ local function buildDailyRewardCard(parent)
         parent,
         "Auto Daily Reward",
         "Auto claim + manual claim Daily Reward (Day 1 ~ 30).",
-        2,     -- setelah Spear Controls
-        320    -- dipanjangkan supaya tulisan CLAIMED tidak kepotong
+        2,
+        320
     )
 
     local content = Instance.new("Frame")
@@ -2579,14 +2597,12 @@ local function buildDailyRewardCard(parent)
     content.Position = UDim2.new(0, 0, 0, 40)
     content.Size = UDim2.new(1, 0, 1, -40)
 
-    -- Toggle Auto Daily Reward (default ON)
     local autoBtn, updateFn = createToggleButton(content, "Auto Daily Reward", autoDailyReward)
     autoBtn.Position = UDim2.new(0, 0, 0, 0)
     autoBtn.Size     = UDim2.new(1, 0, 0, 30)
     updateAutoDailyUI = updateFn
     updateAutoDailyUI(autoDailyReward)
 
-    -- Status label (next klaim day ke berapa)
     local status = Instance.new("TextLabel")
     status.Name = "DailyStatus"
     status.Parent = content
@@ -2601,7 +2617,6 @@ local function buildDailyRewardCard(parent)
     status.Text = "Next klaim tersedia: --."
     dailyStatusLabel = status
 
-    -- Scroll berisi list Day 1..N (maksimal 30)
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "DailyScroll"
     scroll.Parent = content
@@ -2628,7 +2643,6 @@ local function buildDailyRewardCard(parent)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
-    -- Bangun item Day berdasarkan ResDailyReward, maksimal 30
     local totalDays = 0
     if ResDailyReward then
         totalDays = math.min(30, #ResDailyReward)
@@ -2777,7 +2791,6 @@ local function buildDailyRewardCard(parent)
         end))
     end
 
-    -- Toggle handler
     table.insert(connections, autoBtn.MouseButton1Click:Connect(function()
         autoDailyReward = not autoDailyReward
         if updateAutoDailyUI then
@@ -2797,7 +2810,6 @@ local function initToolsDataWatcher()
     task.spawn(function()
         if ToolsData then return end
 
-        -- tunggu sampai shared.WaitPlayerData siap
         local waitFn
         while alive and not waitFn do
             local ok, fn = pcall(function()
@@ -2840,7 +2852,7 @@ local function initToolsDataWatcher()
     end)
 end
 
-------------------- BUILD UI: CONTROL CARD (DIBERI SCROLLINGFRAME) -------------------
+------------------- BUILD UI: CONTROL CARD -------------------
 local header, bodyScroll = createMainLayout()
 
 local controlCard, _, _ = createCard(
@@ -2848,10 +2860,9 @@ local controlCard, _, _ = createCard(
     "Spear Controls",
     "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + HP Boss Notifier + Sell All + Auto Skill 1 ~ 5.",
     1,
-    260 -- tinggi cukup, isi di-scroll
+    260
 )
 
--- ScrollingFrame untuk tombol2 di Spear Controls supaya tidak numbuk
 local controlsScroll = Instance.new("ScrollingFrame")
 controlsScroll.Name = "ControlsScroll"
 controlsScroll.Parent = controlCard
@@ -2884,7 +2895,6 @@ local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, 
 local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
 local autoFarmV2Button, updateAutoFarmV2UI = createToggleButton(controlsScroll, "AutoFarm Fish V2", autoFarmV2)
 
--- Tombol pilih mode V2: Left / Center
 local v2ModeButton = Instance.new("TextButton")
 v2ModeButton.Name = "AutoFarmV2ModeButton"
 v2ModeButton.Parent = controlsScroll
@@ -2906,7 +2916,6 @@ local function updateV2ModeButton()
 end
 updateV2ModeButton()
 
--- Input box untuk mengatur kecepatan tap AutoFarm V2 (Center/Left)
 local tapSpeedFrame = Instance.new("Frame")
 tapSpeedFrame.Name = "TapSpeedFrame"
 tapSpeedFrame.Parent = controlsScroll
@@ -2961,28 +2970,22 @@ local function applyTapSpeedFromBox()
     tapSpeedBox.Text = string.format("%.2f", autoFarmV2TapInterval)
 end
 
-do
-    table.insert(connections, tapSpeedBox.FocusLost:Connect(function()
-        applyTapSpeedFromBox()
-    end))
-end
+table.insert(connections, tapSpeedBox.FocusLost:Connect(function()
+    applyTapSpeedFromBox()
+end))
 
--- Toggle Spawn Boss Notifier
 local spawnBossToggleButton, updateSpawnBossNotifierUI =
     createToggleButton(controlsScroll, "Spawn Boss Notifier", spawnBossNotifier)
 
--- Toggle HPBar Boss Notifier
 local hpBossToggleButton, updateHpBossNotifierUI =
     createToggleButton(controlsScroll, "HPBar Boss Notifier", hpBossNotifier)
 
--- Toggle Auto Skill 1 ~ 5 (terpisah)
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
 local autoSkill3Button, updateAutoSkill3UI = createToggleButton(controlsScroll, "Auto Skill 3", autoSkill3)
 local autoSkill4Button, updateAutoSkill4UI = createToggleButton(controlsScroll, "Auto Skill 4", autoSkill4)
 local autoSkill5Button, updateAutoSkill5UI = createToggleButton(controlsScroll, "Auto Skill 5", autoSkill5)
 
--- Info cooldown skill (base text, hanya info + akan dipakai untuk countdown UI 1 & 2)
 local skill1BaseInfoText = string.format(
     "Skill 1 (Skill04) Cooldown server (perkiraan): %d detik (UI info).",
     SKILL1_COOLDOWN
@@ -3018,7 +3021,6 @@ skillInfo2.TextWrapped = true
 skillInfo2.Size = UDim2.new(1, 0, 0, 30)
 skillInfo2.Text = skill2BaseInfoText
 
--- Fungsi untuk update tulisan cooldown Skill1 & Skill2 (hanya UI)
 updateSkillCooldownUI = function()
     local now = os.clock()
 
@@ -3051,7 +3053,6 @@ updateSkillCooldownUI = function()
     end
 end
 
--- Inisialisasi tampilan cooldown awal
 updateSkillCooldownUI()
 
 local sellButton = Instance.new("TextButton")
@@ -3100,84 +3101,82 @@ local function updateStatusLabel()
     )
 end
 
-do
-    table.insert(connections, autoFarmButton.MouseButton1Click:Connect(function()
-        autoFarm = not autoFarm
-        updateAutoFarmUI(autoFarm)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoEquipButton.MouseButton1Click:Connect(function()
-        autoEquip = not autoEquip
-        updateAutoEquipUI(autoEquip)
-        if autoEquip then
-            ensureHarpoonEquipped()
-        end
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoFarmV2Button.MouseButton1Click:Connect(function()
-        autoFarmV2 = not autoFarmV2
-        updateAutoFarmV2UI(autoFarmV2)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, v2ModeButton.MouseButton1Click:Connect(function()
-        autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
-        updateV2ModeButton()
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
-        spawnBossNotifier = not spawnBossNotifier
-        updateSpawnBossNotifierUI(spawnBossNotifier)
-        updateStatusLabel()
-        notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
-    end))
-
-    table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
-        hpBossNotifier = not hpBossNotifier
-        updateHpBossNotifierUI(hpBossNotifier)
-        updateStatusLabel()
-        notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
-    end))
-
-    table.insert(connections, autoSkill1Button.MouseButton1Click:Connect(function()
-        autoSkill1 = not autoSkill1
-        updateAutoSkill1UI(autoSkill1)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoSkill2Button.MouseButton1Click:Connect(function()
-        autoSkill2 = not autoSkill2
-        updateAutoSkill2UI(autoSkill2)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoSkill3Button.MouseButton1Click:Connect(function()
-        autoSkill3 = not autoSkill3
-        updateAutoSkill3UI(autoSkill3)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoSkill4Button.MouseButton1Click:Connect(function()
-        autoSkill4 = not autoSkill4
-        updateAutoSkill4UI(autoSkill4)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, autoSkill5Button.MouseButton1Click:Connect(function()
-        autoSkill5 = not autoSkill5
-        updateAutoSkill5UI(autoSkill5)
-        updateStatusLabel()
-    end))
-
-    table.insert(connections, sellButton.MouseButton1Click:Connect(function()
-        sellAllFish()
-    end))
-
+table.insert(connections, autoFarmButton.MouseButton1Click:Connect(function()
+    autoFarm = not autoFarm
+    updateAutoFarmUI(autoFarm)
     updateStatusLabel()
-end
+end))
+
+table.insert(connections, autoEquipButton.MouseButton1Click:Connect(function()
+    autoEquip = not autoEquip
+    updateAutoEquipUI(autoEquip)
+    if autoEquip then
+        ensureHarpoonEquipped()
+    end
+    updateStatusLabel()
+end))
+
+table.insert(connections, autoFarmV2Button.MouseButton1Click:Connect(function()
+    autoFarmV2 = not autoFarmV2
+    updateAutoFarmV2UI(autoFarmV2)
+    updateStatusLabel()
+end))
+
+table.insert(connections, v2ModeButton.MouseButton1Click:Connect(function()
+    autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
+    updateV2ModeButton()
+    updateStatusLabel()
+end))
+
+table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
+    spawnBossNotifier = not spawnBossNotifier
+    updateSpawnBossNotifierUI(spawnBossNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
+    hpBossNotifier = not hpBossNotifier
+    updateHpBossNotifierUI(hpBossNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, autoSkill1Button.MouseButton1Click:Connect(function()
+    autoSkill1 = not autoSkill1
+    updateAutoSkill1UI(autoSkill1)
+    updateStatusLabel()
+end))
+
+table.insert(connections, autoSkill2Button.MouseButton1Click:Connect(function()
+    autoSkill2 = not autoSkill2
+    updateAutoSkill2UI(autoSkill2)
+    updateStatusLabel()
+end))
+
+table.insert(connections, autoSkill3Button.MouseButton1Click:Connect(function()
+    autoSkill3 = not autoSkill3
+    updateAutoSkill3UI(autoSkill3)
+    updateStatusLabel()
+end))
+
+table.insert(connections, autoSkill4Button.MouseButton1Click:Connect(function()
+    autoSkill4 = not autoSkill4
+    updateAutoSkill4UI(autoSkill4)
+    updateStatusLabel()
+end))
+
+table.insert(connections, autoSkill5Button.MouseButton1Click:Connect(function()
+    autoSkill5 = not autoSkill5
+    updateAutoSkill5UI(autoSkill5)
+    updateStatusLabel()
+end))
+
+table.insert(connections, sellButton.MouseButton1Click:Connect(function()
+    sellAllFish()
+end))
+
+updateStatusLabel()
 
 ------------------- KEY G HOTKEY (TOGGLE AUTOFARM V2) -------------------
 local function onInputBegan(input, processed)
@@ -3192,9 +3191,7 @@ local function onInputBegan(input, processed)
     notify("Spear Fishing", "AutoFarm V2: " .. (autoFarmV2 and "ON" or "OFF") .. " (Key G)", 2)
 end
 
-do
-    table.insert(connections, UserInputService.InputBegan:Connect(onInputBegan))
-end
+table.insert(connections, UserInputService.InputBegan:Connect(onInputBegan))
 
 ------------------- BUILD UI: DAILY REWARD + SHOP CARDS -------------------
 buildDailyRewardCard(bodyScroll)
@@ -3202,56 +3199,52 @@ buildHarpoonShopCard(bodyScroll)
 buildBasketShopCard(bodyScroll)
 buildBaitShopCard(bodyScroll)
 
--- setelah semua card terbentuk, inisialisasi ToolsData & DailyData watcher + WorldBoss Notifier
 initToolsDataWatcher()
 initDailyDataWatcher()
 initWorldBossNotifier()
 
-------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
-do
-    table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
-        character = newChar
-        task.delay(1, function()
+------------------- BACKPACK / CHARACTER EVENT -------------------
+table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    task.delay(1, function()
+        if alive then
+            ensureHarpoonEquipped()
+            refreshHarpoonOwnership()
+            refreshBasketOwnership()
+            refreshDailyUI()
+        end
+    end)
+end))
+
+table.insert(connections, LocalPlayer.ChildAdded:Connect(function(child)
+    if child:IsA("Backpack") then
+        backpack = child
+        task.delay(0.5, function()
             if alive then
-                ensureHarpoonEquipped()
                 refreshHarpoonOwnership()
                 refreshBasketOwnership()
-                refreshDailyUI()
             end
         end)
-    end))
+    end
+end))
 
-    table.insert(connections, LocalPlayer.ChildAdded:Connect(function(child)
-        if child:IsA("Backpack") then
-            backpack = child
-            task.delay(0.5, function()
-                if alive then
-                    refreshHarpoonOwnership()
-                    refreshBasketOwnership()
-                end
-            end)
+if backpack then
+    table.insert(connections, backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            refreshHarpoonOwnership()
+            refreshBasketOwnership()
         end
     end))
 
-    if backpack then
-        table.insert(connections, backpack.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") then
-                refreshHarpoonOwnership()
-                refreshBasketOwnership()
-            end
-        end))
-
-        table.insert(connections, backpack.ChildRemoved:Connect(function(child)
-            if child:IsA("Tool") then
-                refreshHarpoonOwnership()
-                refreshBasketOwnership()
-            end
-        end))
-    end
+    table.insert(connections, backpack.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") then
+            refreshHarpoonOwnership()
+            refreshBasketOwnership()
+        end
+    end))
 end
 
-------------------- BACKGROUND LOOPS (RINGAN) -------------------
--- Loop AutoEquip (cek 0.3s sekali)
+------------------- BACKGROUND LOOPS -------------------
 task.spawn(function()
     while alive do
         if autoEquip then
@@ -3261,7 +3254,6 @@ task.spawn(function()
     end
 end)
 
--- Loop AutoFarm v1 (tembak harpoon)
 task.spawn(function()
     while alive do
         if autoFarm then
@@ -3271,12 +3263,10 @@ task.spawn(function()
     end
 end)
 
--- Loop AutoFarm v2 (tap trackpad Left/Center) - interval mengikuti autoFarmV2TapInterval
 task.spawn(function()
     while alive do
         if autoFarmV2 then
             pcall(doAutoTapV2)
-            -- jaga interval tetap di dalam batas aman
             local interval = autoFarmV2TapInterval
             if interval < TAP_INTERVAL_MIN then
                 interval = TAP_INTERVAL_MIN
@@ -3290,7 +3280,6 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Daily Reward (cek periodik, sangat ringan)
 task.spawn(function()
     while alive do
         if autoDailyReward then
@@ -3299,16 +3288,14 @@ task.spawn(function()
                 claimDailyReward(idx)
             end
         end
-        task.wait(5) -- cukup jarang agar tidak berat
+        task.wait(5)
     end
 end)
 
--- Loop Auto Skill 1 & 2 (buff sequence)
 task.spawn(function()
     while alive do
         if autoSkill1 or autoSkill2 then
             if autoSkill1 and autoSkill2 then
-                -- Sequence penuh 1 -> 2
                 pcall(fireSkill1)
                 local t = 0
                 while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
@@ -3325,7 +3312,6 @@ task.spawn(function()
                     end
                 end
             else
-                -- Hanya satu skill aktif, spam ringan (1 detik interval)
                 if autoSkill1 then
                     pcall(fireSkill1)
                 elseif autoSkill2 then
@@ -3343,7 +3329,6 @@ task.spawn(function()
     end
 end)
 
--- Loop Auto Skill 3/4/5 (attack, ringan, terpisah)
 task.spawn(function()
     while alive do
         if autoSkill3 or autoSkill4 or autoSkill5 then
@@ -3363,7 +3348,6 @@ task.spawn(function()
                 pcall(fireSkill5)
             end
 
-            -- Jeda kecil biar tidak terlalu spam ke server
             local t = 0
             while t < 1 and alive and (autoSkill3 or autoSkill4 or autoSkill5) do
                 task.wait(0.2)
@@ -3375,7 +3359,6 @@ task.spawn(function()
     end
 end)
 
--- Loop UI Cooldown Skill (murni visual, sangat ringan)
 task.spawn(function()
     while alive do
         if updateSkillCooldownUI then
@@ -3385,7 +3368,7 @@ task.spawn(function()
     end
 end)
 
-------------------- TAB CLEANUP INTEGRASI CORE -------------------
+------------------- TAB CLEANUP -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
     alive              = false
     autoFarm           = false
