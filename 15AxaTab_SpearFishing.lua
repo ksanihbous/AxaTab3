@@ -280,7 +280,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4"
+    title.Text = "Spear Fishing V3.4+++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -319,10 +319,9 @@ local function createMainLayout()
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding = UDim.new(0, 8)
 
-    local conn = layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    table.insert(connections, layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         bodyScroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 16)
-    end)
-    table.insert(connections, conn)
+    end))
 
     return header, bodyScroll
 end
@@ -1081,8 +1080,7 @@ local function buildHarpoonShopCard(parent)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
     end
 
     -- pertama kali
@@ -1366,8 +1364,7 @@ local function buildBasketShopCard(parent)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
     end
 
     refreshBasketOwnership()
@@ -1647,8 +1644,7 @@ local function buildBaitShopCard(parent)
             end
         end
 
-        local conn = buyBtn.MouseButton1Click:Connect(onBuy)
-        table.insert(connections, conn)
+        table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
     end
 
     -- stock awal
@@ -1656,7 +1652,7 @@ local function buildBaitShopCard(parent)
 
     -- update reset time & stok
     if FishBaitShop then
-        local connChanged = FishBaitShop.Changed:Connect(function(value)
+        table.insert(connections, FishBaitShop.Changed:Connect(function(value)
             if not alive then return end
             local txt
             if MathUtil and type(value) == "number" then
@@ -1668,14 +1664,12 @@ local function buildBaitShopCard(parent)
                 txt = tostring(value)
             end
             timeLabel.Text = "Reset in: " .. txt
-        end)
-        table.insert(connections, connChanged)
+        end))
 
-        local connAttr = FishBaitShop.AttributeChanged:Connect(function()
+        table.insert(connections, FishBaitShop.AttributeChanged:Connect(function()
             if not alive then return end
             refreshBaitStock()
-        end)
-        table.insert(connections, connAttr)
+        end))
     end
 
     return card
@@ -2329,12 +2323,11 @@ local function attachHpWatcher(region)
     }
     hpRegionState[region] = state
 
-    local conn = bossPart:GetAttributeChangedSignal("CurHP"):Connect(function()
+    state.conn = bossPart:GetAttributeChangedSignal("CurHP"):Connect(function()
         if not alive then return end
         sendHpBossProgress(region, bossPart)
     end)
-    state.conn = conn
-    table.insert(connections, conn)
+    table.insert(connections, state.conn)
 
     task.spawn(function()
         sendHpBossProgress(region, bossPart)
@@ -2352,7 +2345,7 @@ local function registerWorldBossRegion(region)
         attachHpWatcher(region)
     end)
 
-    local c1 = region:GetAttributeChangedSignal("HasBoss"):Connect(function()
+    table.insert(connections, region:GetAttributeChangedSignal("HasBoss"):Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
         local hasBoss = region:GetAttribute("HasBoss")
@@ -2361,27 +2354,23 @@ local function registerWorldBossRegion(region)
         else
             detachHpWatcher(region)
         end
-    end)
-    table.insert(connections, c1)
+    end))
 
-    local c2 = region:GetAttributeChangedSignal("RemainTime"):Connect(function()
+    table.insert(connections, region:GetAttributeChangedSignal("RemainTime"):Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
-    end)
-    table.insert(connections, c2)
+    end))
 
-    local c3 = region:GetAttributeChangedSignal("NextSpawnTime"):Connect(function()
+    table.insert(connections, region:GetAttributeChangedSignal("NextSpawnTime"):Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
-    end)
-    table.insert(connections, c3)
+    end))
 
-    local c4 = region.ChildAdded:Connect(function()
+    table.insert(connections, region.ChildAdded:Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
         attachHpWatcher(region)
-    end)
-    table.insert(connections, c4)
+    end))
 end
 
 local function initWorldBossNotifier()
@@ -2413,13 +2402,12 @@ local function initWorldBossNotifier()
             end
         end
 
-        local cChild = worldBossFolder.ChildAdded:Connect(function(child)
+        table.insert(connections, worldBossFolder.ChildAdded:Connect(function(child)
             if not alive then return end
             if child:IsA("BasePart") or child:IsA("Model") then
                 registerWorldBossRegion(child)
             end
-        end)
-        table.insert(connections, cChild)
+        end))
     end)
 end
 
@@ -2551,26 +2539,23 @@ local function initDailyDataWatcher()
         -- Listener existing child
         for _, child in ipairs(DailyData:GetChildren()) do
             if child.AttributeChanged then
-                local c = child.AttributeChanged:Connect(function()
+                table.insert(connections, child.AttributeChanged:Connect(function()
                     onDailyChanged()
-                end)
-                table.insert(connections, c)
+                end))
             end
         end
 
         -- Listener child added
         if DailyData.ChildAdded then
-            local cAdd = DailyData.ChildAdded:Connect(function(child)
+            table.insert(connections, DailyData.ChildAdded:Connect(function(child)
                 if not alive then return end
                 onDailyChanged()
                 if child and child.AttributeChanged then
-                    local c = child.AttributeChanged:Connect(function()
+                    table.insert(connections, child.AttributeChanged:Connect(function()
                         onDailyChanged()
-                    end)
-                    table.insert(connections, c)
+                    end))
                 end
-            end)
-            table.insert(connections, cAdd)
+            end))
         end
 
         onDailyChanged()
@@ -2787,22 +2772,20 @@ local function buildDailyRewardCard(parent)
             countLabel   = countLabel,
         }
 
-        local conn = claimBtn.MouseButton1Click:Connect(function()
+        table.insert(connections, claimBtn.MouseButton1Click:Connect(function()
             claimDailyReward(index)
-        end)
-        table.insert(connections, conn)
+        end))
     end
 
     -- Toggle handler
-    local connToggle = autoBtn.MouseButton1Click:Connect(function()
+    table.insert(connections, autoBtn.MouseButton1Click:Connect(function()
         autoDailyReward = not autoDailyReward
         if updateAutoDailyUI then
             updateAutoDailyUI(autoDailyReward)
         end
         updateDailyStatusLabel()
         notify("Spear Fishing", "Auto Daily Reward: " .. (autoDailyReward and "ON" or "OFF"), 2)
-    end)
-    table.insert(connections, connToggle)
+    end))
 
     updateDailyStatusLabel()
 
@@ -2848,13 +2831,10 @@ local function initToolsDataWatcher()
         end
 
         if ToolsData.AttributeChanged then
-            local c1 = ToolsData.AttributeChanged:Connect(onToolsChanged)
-            table.insert(connections, c1)
+            table.insert(connections, ToolsData.AttributeChanged:Connect(onToolsChanged))
         end
-        local c2 = ToolsData.ChildAdded:Connect(onToolsChanged)
-        local c3 = ToolsData.ChildRemoved:Connect(onToolsChanged)
-        table.insert(connections, c2)
-        table.insert(connections, c3)
+        table.insert(connections, ToolsData.ChildAdded:Connect(onToolsChanged))
+        table.insert(connections, ToolsData.ChildRemoved:Connect(onToolsChanged))
 
         onToolsChanged()
     end)
@@ -2896,10 +2876,9 @@ controlsLayout.FillDirection = Enum.FillDirection.Vertical
 controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 controlsLayout.Padding = UDim.new(0, 6)
 
-local controlsConn = controlsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+table.insert(connections, controlsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     controlsScroll.CanvasSize = UDim2.new(0, 0, 0, controlsLayout.AbsoluteContentSize.Y + 8)
-end)
-table.insert(connections, controlsConn)
+end))
 
 local autoFarmButton,   updateAutoFarmUI   = createToggleButton(controlsScroll, "AutoFarm Fish", autoFarm)
 local autoEquipButton,  updateAutoEquipUI  = createToggleButton(controlsScroll, "AutoEquip Harpoon", autoEquip)
@@ -2983,10 +2962,9 @@ local function applyTapSpeedFromBox()
 end
 
 do
-    local connTapBox = tapSpeedBox.FocusLost:Connect(function()
+    table.insert(connections, tapSpeedBox.FocusLost:Connect(function()
         applyTapSpeedFromBox()
-    end)
-    table.insert(connections, connTapBox)
+    end))
 end
 
 -- Toggle Spawn Boss Notifier
@@ -3123,92 +3101,80 @@ local function updateStatusLabel()
 end
 
 do
-    local conn1 = autoFarmButton.MouseButton1Click:Connect(function()
+    table.insert(connections, autoFarmButton.MouseButton1Click:Connect(function()
         autoFarm = not autoFarm
         updateAutoFarmUI(autoFarm)
         updateStatusLabel()
-    end)
-    table.insert(connections, conn1)
+    end))
 
-    local conn2 = autoEquipButton.MouseButton1Click:Connect(function()
+    table.insert(connections, autoEquipButton.MouseButton1Click:Connect(function()
         autoEquip = not autoEquip
         updateAutoEquipUI(autoEquip)
         if autoEquip then
             ensureHarpoonEquipped()
         end
         updateStatusLabel()
-    end)
-    table.insert(connections, conn2)
+    end))
 
-    local connV2 = autoFarmV2Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoFarmV2Button.MouseButton1Click:Connect(function()
         autoFarmV2 = not autoFarmV2
         updateAutoFarmV2UI(autoFarmV2)
         updateStatusLabel()
-    end)
-    table.insert(connections, connV2)
+    end))
 
-    local connMode = v2ModeButton.MouseButton1Click:Connect(function()
+    table.insert(connections, v2ModeButton.MouseButton1Click:Connect(function()
         autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
         updateV2ModeButton()
         updateStatusLabel()
-    end)
-    table.insert(connections, connMode)
+    end))
 
-    local connSpawnBoss = spawnBossToggleButton.MouseButton1Click:Connect(function()
+    table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
         spawnBossNotifier = not spawnBossNotifier
         updateSpawnBossNotifierUI(spawnBossNotifier)
         updateStatusLabel()
         notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
-    end)
-    table.insert(connections, connSpawnBoss)
+    end))
 
-    local connHpBoss = hpBossToggleButton.MouseButton1Click:Connect(function()
+    table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
         hpBossNotifier = not hpBossNotifier
         updateHpBossNotifierUI(hpBossNotifier)
         updateStatusLabel()
         notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
-    end)
-    table.insert(connections, connHpBoss)
+    end))
 
-    local connSkill1 = autoSkill1Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoSkill1Button.MouseButton1Click:Connect(function()
         autoSkill1 = not autoSkill1
         updateAutoSkill1UI(autoSkill1)
         updateStatusLabel()
-    end)
-    table.insert(connections, connSkill1)
+    end))
 
-    local connSkill2 = autoSkill2Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoSkill2Button.MouseButton1Click:Connect(function()
         autoSkill2 = not autoSkill2
         updateAutoSkill2UI(autoSkill2)
         updateStatusLabel()
-    end)
-    table.insert(connections, connSkill2)
+    end))
 
-    local connSkill3 = autoSkill3Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoSkill3Button.MouseButton1Click:Connect(function()
         autoSkill3 = not autoSkill3
         updateAutoSkill3UI(autoSkill3)
         updateStatusLabel()
-    end)
-    table.insert(connections, connSkill3)
+    end))
 
-    local connSkill4 = autoSkill4Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoSkill4Button.MouseButton1Click:Connect(function()
         autoSkill4 = not autoSkill4
         updateAutoSkill4UI(autoSkill4)
         updateStatusLabel()
-    end)
-    table.insert(connections, connSkill4)
+    end))
 
-    local connSkill5 = autoSkill5Button.MouseButton1Click:Connect(function()
+    table.insert(connections, autoSkill5Button.MouseButton1Click:Connect(function()
         autoSkill5 = not autoSkill5
         updateAutoSkill5UI(autoSkill5)
         updateStatusLabel()
-    end)
-    table.insert(connections, connSkill5)
+    end))
 
-    local conn3 = sellButton.MouseButton1Click:Connect(function()
+    table.insert(connections, sellButton.MouseButton1Click:Connect(function()
         sellAllFish()
-    end)
-    table.insert(connections, conn3)
+    end))
 
     updateStatusLabel()
 end
@@ -3227,8 +3193,7 @@ local function onInputBegan(input, processed)
 end
 
 do
-    local connInput = UserInputService.InputBegan:Connect(onInputBegan)
-    table.insert(connections, connInput)
+    table.insert(connections, UserInputService.InputBegan:Connect(onInputBegan))
 end
 
 ------------------- BUILD UI: DAILY REWARD + SHOP CARDS -------------------
@@ -3244,7 +3209,7 @@ initWorldBossNotifier()
 
 ------------------- BACKPACK / CHARACTER EVENT UNTUK OWNED / EQUIP + DAILY -------------------
 do
-    local connCharAdded = LocalPlayer.CharacterAdded:Connect(function(newChar)
+    table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
         character = newChar
         task.delay(1, function()
             if alive then
@@ -3254,10 +3219,9 @@ do
                 refreshDailyUI()
             end
         end)
-    end)
-    table.insert(connections, connCharAdded)
+    end))
 
-    local connBackpackAdded = LocalPlayer.ChildAdded:Connect(function(child)
+    table.insert(connections, LocalPlayer.ChildAdded:Connect(function(child)
         if child:IsA("Backpack") then
             backpack = child
             task.delay(0.5, function()
@@ -3267,25 +3231,22 @@ do
                 end
             end)
         end
-    end)
-    table.insert(connections, connBackpackAdded)
+    end))
 
     if backpack then
-        local connB1 = backpack.ChildAdded:Connect(function(child)
+        table.insert(connections, backpack.ChildAdded:Connect(function(child)
             if child:IsA("Tool") then
                 refreshHarpoonOwnership()
                 refreshBasketOwnership()
             end
-        end)
-        table.insert(connections, connB1)
+        end))
 
-        local connB2 = backpack.ChildRemoved:Connect(function(child)
+        table.insert(connections, backpack.ChildRemoved:Connect(function(child)
             if child:IsA("Tool") then
                 refreshHarpoonOwnership()
                 refreshBasketOwnership()
             end
-        end)
-        table.insert(connections, connB2)
+        end))
     end
 end
 
