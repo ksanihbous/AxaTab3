@@ -2,11 +2,6 @@
 --  15AxaTab_SpearFishing.lua
 --  TAB 15: "Spear Fishing PRO++"
 --  FIX: "Out of local registers ... exceeded limit 200"
---  Cara fix:
---    1) Kurangi jumlah local variable di chunk utama
---    2) Pindahkan mayoritas logic/UI ke dalam function + table state
---    3) Hindari pola: local a,b = func() berulang kali (nambah register)
---  FITUR TETAP SAMA, hanya refactor agar ringan dan tidak mentok limit Luau.
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
