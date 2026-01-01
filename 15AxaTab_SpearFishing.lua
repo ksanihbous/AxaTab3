@@ -1,6 +1,15 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill + Spawn Boss Notifier + HP Boss Notifier + Spawn Illahi Notifier)"
+--  TAB 15: "Spear Fishing PRO++"
+--  Fitur:
+--    - AutoFarm v1 (Fire Harpoon)
+--    - AutoFarm v2 (Tap Trackpad Left/Center)
+--    - AutoEquip Harpoon
+--    - Auto Skill 1 ~ 5
+--    - Sell All Spear Fish
+--    - Spawn Boss Notifier + HP Boss Notifier
+--    - Spawn Illahi Notifier (global + per ikan)
+--    - Spawn Secret Notifier (global + per ikan)
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -31,50 +40,48 @@ local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardE
 ------------------- GLOBAL STATE / AXAHUB -------------------
 _G.AxaHub            = _G.AxaHub or {}
 _G.AxaHub.TabCleanup = _G.AxaHub.TabCleanup or {}
--- Spawn Illahi Notifier state (default ON kecuali pernah diset false di _G)
-_G.AxaHub.SpawnIllahiNotifier = (_G.AxaHub.SpawnIllahiNotifier ~= false)
 
 local alive              = true
-local autoFarm           = false      -- AutoFarm Fish v1: default OFF
-local autoEquip          = false      -- AutoEquip Harpoon: default OFF
-local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
-local autoFarmV2Mode     = "Left"     -- "Left" / "Center"
-local spawnBossNotifier  = true       -- Spawn Boss Notifier: default ON
-local hpBossNotifier     = true       -- HPBar Boss Notifier: default ON
 
--- interval click AutoFarm V2 (detik)
-local autoFarmV2TapInterval = 0.03    -- default cepat
+-- Core farm
+local autoFarm           = false      -- AutoFarm Harpoon v1
+local autoEquip          = false      -- AutoEquip Harpoon
+local autoFarmV2         = false      -- AutoFarm Fish V2 (tap)
+local autoFarmV2Mode     = "Left"     -- "Left" / "Center"
+
+-- Notifier
+local spawnBossNotifier  = true       -- Spawn Boss Notifier (global)
+local hpBossNotifier     = true       -- HP Boss HPBar Notifier (global)
+local spawnIllahiNotifier  = true     -- Illahi Notifier (global)
+local spawnSecretNotifier = true      -- Secret Notifier (global)
+
+-- Auto Skill
+local autoSkill1      = true          -- Skill02
+local autoSkill2      = true          -- Skill08
+local autoSkill3      = true          -- Skill01
+local autoSkill4      = true          -- Skill07
+local autoSkill5      = true          -- Skill09
+
+-- AutoFarm V2 interval (detik)
+local autoFarmV2TapInterval = 0.03
 local TAP_INTERVAL_MIN      = 0.01
 local TAP_INTERVAL_MAX      = 1.00
-
-local autoDailyReward = true          -- Auto Daily Reward: default ON
-
--- Auto Skill (DEFAULT ON)
-local autoSkill1      = true          -- Auto Skill 1: default ON (Damage Power II)
-local autoSkill2      = true          -- Auto Skill 2: default ON (Damage Power III)
-local autoSkill3      = true          -- Auto Skill 3: default ON (Skill01 - Thunder)
-local autoSkill4      = true          -- Auto Skill 4: default ON (Skill07 - Laceration Creation)
-local autoSkill5      = true          -- Auto Skill 5: default ON (Skill09 - Chain Lightning)
 
 local character       = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack        = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
 
 local connections     = {}
-local ToolsData       = nil           -- WaitPlayerData("Tools")
-local DailyData       = nil           -- WaitPlayerData("Daily")
-local SpearFishData   = nil           -- WaitPlayerData(...) / Folder spearfish
+local ToolsData       = nil
+local SpearFishData   = nil
 local spearInitTried  = false
 
 ------------------- REMOTES & GAME INSTANCES -------------------
 local RepRemotes    = ReplicatedStorage:FindFirstChild("Remotes")
-local FireRE        = RepRemotes and RepRemotes:FindFirstChild("FireRE")   -- Fire harpoon
-local ToolRE        = RepRemotes and RepRemotes:FindFirstChild("ToolRE")   -- Buy / Switch harpoon & basket
-local FishRE        = RepRemotes and RepRemotes:FindFirstChild("FishRE")   -- Sell spear-fish + Skill
-local BaitRE        = RepRemotes and RepRemotes:FindFirstChild("BaitRE")   -- Buy bait
-local DailyRE       = RepRemotes and RepRemotes:FindFirstChild("DailyRE")  -- Daily reward claim
+local FireRE        = RepRemotes and RepRemotes:FindFirstChild("FireRE")
+local ToolRE        = RepRemotes and RepRemotes:FindFirstChild("ToolRE")
+local FishRE        = RepRemotes and RepRemotes:FindFirstChild("FishRE")
 
 local GameFolder    = ReplicatedStorage:FindFirstChild("Game")
-local FishBaitShop  = GameFolder and GameFolder:FindFirstChild("FishBaitShop") -- NumberValue + atribut stok bait
 
 ------------------- SAFE REQUIRE UTILITY / CONFIG MODULES -------------------
 local UtilityFolder = ReplicatedStorage:FindFirstChild("Utility")
@@ -92,17 +99,14 @@ local function safeRequire(folder, name)
     return result
 end
 
-local ItemUtil       = safeRequire(UtilityFolder, "ItemUtil")
-local ToolUtil       = safeRequire(UtilityFolder, "ToolUtil")
-local FormatUtil     = safeRequire(UtilityFolder, "Format")
-local PurchaseUtil   = safeRequire(UtilityFolder, "PurchaseUtil")
-local ResFishBasket  = safeRequire(ConfigFolder,  "ResFishBasket")
-local ResFishBait    = safeRequire(ConfigFolder,  "ResFishBait")
-local ResDailyReward = safeRequire(ConfigFolder,  "ResDailyReward")
-local MathUtil       = safeRequire(UtilityFolder, "MathUtil")
-local FishUtil       = safeRequire(UtilityFolder, "FishUtil")
+local ItemUtil     = safeRequire(UtilityFolder, "ItemUtil")
+local ToolUtil     = safeRequire(UtilityFolder, "ToolUtil")
+local FormatUtil   = safeRequire(UtilityFolder, "Format")
+local PurchaseUtil = safeRequire(UtilityFolder, "PurchaseUtil")
+local MathUtil     = safeRequire(UtilityFolder, "MathUtil")
+local FishUtil     = safeRequire(UtilityFolder, "FishUtil")
 
--- Nama game / map (dipakai di embed)
+------------------- GAME NAME -------------------
 local GAME_NAME = "Unknown Map"
 do
     local okInfo, info = pcall(function()
@@ -124,7 +128,7 @@ local function notify(title, text, dur)
     end)
 end
 
-------------------- ID LIST -------------------
+------------------- ID LISTS -------------------
 local HARPOON_IDS = {
     "Harpoon01",
     "Harpoon02",
@@ -142,24 +146,76 @@ local HARPOON_IDS = {
     "Harpoon21",
 }
 
-local BASKET_IDS = {
-    "FishBasket2",
-    "FishBasket3",
-    "FishBasket4",
-    "FishBasket5",
-    "FishBasket7",
-    "FishBasket8",
+-- Illahi fish (Nether Island)
+local ILLAHI_ORDER = {
+    "Fish400",
+    "Fish401",
+    "Fish402",
+    "Fish403",
+    "Fish404",
+    "Fish405",
 }
 
-local BAIT_IDS = {
-    "Bait1",
-    "Bait2",
-    "Bait3",
-    "Bait4",
-    "Bait5",
+local ILLAHI_FISH_DEFS = {
+    Fish400 = { name = "Nether Barracuda",   sea = "Sea7" },
+    Fish401 = { name = "Nether Anglerfish",  sea = "Sea7" },
+    Fish402 = { name = "Nether Manta Ray",   sea = "Sea6" },
+    Fish403 = { name = "Nether SwordFish",   sea = "Sea6" },
+    Fish404 = { name = "Diamond Flying Fish", sea = "Sea6" },
+    Fish405 = { name = "Diamond Flying Fish", sea = "Sea6" },
 }
 
-------------------- TOOL / HARPOON / BASKET DETECTION -------------------
+local ILLAHI_SEA_SET = {
+    Sea6 = true,
+    Sea7 = true,
+}
+
+-- Secret fish (Nether Island)
+local SECRET_ORDER = {
+    "Fish500",
+    "Fish501",
+    "Fish503",
+    "Fish504",
+    "Fish505",
+    "Fish508",
+    "Fish510",
+}
+
+local SECRET_FISH_DEFS = {
+    Fish500 = { name = "Abyssal Demon Shark",   sea = "Sea5" },
+    Fish501 = { name = "Nighfall Demon Shark",  sea = "Sea5" },
+    Fish503 = { name = "Ancient Gopala",        sea = "Sea5" },
+    Fish504 = { name = "Nighfall Gopala",       sea = "Sea5" },
+    Fish505 = { name = "Sharkster",             sea = "Sea5" },
+    Fish508 = { name = "Mayfly Dragon",         sea = "Sea5" },
+    Fish510 = { name = "Nighfall Sharkster",    sea = "Sea5" },
+}
+
+local SECRET_SEA_SET = {
+    Sea5 = true,
+}
+
+-- Per ikan toggle
+local illahiFishEnabled = {
+    Fish400 = true,
+    Fish401 = true,
+    Fish402 = true,
+    Fish403 = true,
+    Fish404 = true,
+    Fish405 = true,
+}
+
+local secretFishEnabled = {
+    Fish500 = false,
+    Fish501 = false,
+    Fish503 = false,
+    Fish504 = false,
+    Fish505 = false,
+    Fish508 = false,
+    Fish510 = false,
+}
+
+------------------- TOOL / HARPOON DETECTION -------------------
 local function isHarpoonTool(tool)
     if not tool or not tool:IsA("Tool") then return false end
     return tool.Name:match("^Harpoon(%d+)$") ~= nil
@@ -233,20 +289,8 @@ local function isHarpoonOwned(id)
     return isToolOwnedGeneric(id)
 end
 
-local function isBasketOwned(id)
-    return isToolOwnedGeneric(id)
-end
-
-------------------- UI HELPERS (TAHOE STYLE LIGHT) -------------------
+------------------- UI HELPERS -------------------
 local harpoonCardsById = {}
-local basketCardsById  = {}
-local baitCardsById    = {}
-
-local dailyCardsByIndex = {}
-local dailyStatusLabel  = nil
-local updateAutoDailyUI = nil
-
-local updateSkillCooldownUI = nil
 
 local function createMainLayout()
     local header = Instance.new("Frame")
@@ -277,7 +321,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.4"
+    title.Text = "Spear Fishing V3.5"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -289,7 +333,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier + HP Boss Notifier + Spawn Illahi Notifier"
+    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Spawn Illahi + Spawn Secret Notifier."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -449,7 +493,6 @@ local function doFireHarpoon()
     local ray = camera:ScreenPointToRay(centerX, centerY, 0)
     local origin = ray.Origin
     local direction = ray.Direction
-
     local destination = origin + direction * 300
 
     local args = {
@@ -517,7 +560,7 @@ local function doAutoTapV2()
     tapScreenPosition(pos)
 end
 
-------------------- SPEAR FISH DATA + UIDS HELPER -------------------
+------------------- SPEAR FISH DATA + SELL ALL -------------------
 local function ensureSpearFishData()
     if SpearFishData or spearInitTried or not alive then
         return SpearFishData
@@ -611,7 +654,6 @@ local function collectAllSpearFishUIDs()
     return list
 end
 
-------------------- SELL ALL FISH (SPEAR FISHING) -------------------
 local lastSellClock  = 0
 local SELL_COOLDOWN = 2
 
@@ -682,9 +724,6 @@ local function fireSkill1()
     end)
     if ok then
         skill1LastFireTime = os.clock()
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
     else
         warn("[SpearFishing] Auto Skill02 gagal:", err)
     end
@@ -706,9 +745,6 @@ local function fireSkill2()
     end)
     if ok then
         skill2LastFireTime = os.clock()
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
     else
         warn("[SpearFishing] Auto Skill08 gagal:", err)
     end
@@ -730,9 +766,6 @@ local function fireSkill3()
     end)
     if ok then
         skill3LastFireTime = os.clock()
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
     else
         warn("[SpearFishing] Auto Skill01 gagal:", err)
     end
@@ -754,9 +787,6 @@ local function fireSkill4()
     end)
     if ok then
         skill4LastFireTime = os.clock()
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
     else
         warn("[SpearFishing] Auto Skill07 gagal:", err)
     end
@@ -778,9 +808,6 @@ local function fireSkill5()
     end)
     if ok then
         skill5LastFireTime = os.clock()
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
     else
         warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
@@ -1061,591 +1088,10 @@ local function buildHarpoonShopCard(parent)
     end
 
     refreshHarpoonOwnership()
-
     return card
 end
 
-------------------- BASKET SHOP: DATA & UI -------------------
-local function getBasketDisplayData(id)
-    local name      = id
-    local icon      = ""
-    local luck      = "-"
-    local frequency = "-"
-    local priceText = "N/A"
-    local assetType = "Currency"
-
-    if ItemUtil then
-        local okName, resName = pcall(function()
-            return ItemUtil:getName(id)
-        end)
-        if okName and resName then
-            name = resName
-        end
-
-        local okIcon, resIcon = pcall(function()
-            return ItemUtil:getIcon(id)
-        end)
-        if okIcon and resIcon then
-            icon = resIcon
-        end
-
-        local okDef, def = pcall(function()
-            return ItemUtil:GetDef(id)
-        end)
-        if okDef and def and def.AssetType then
-            assetType = def.AssetType
-        end
-
-        local okPrice, priceVal = pcall(function()
-            return ItemUtil:getPrice(id)
-        end)
-        if okPrice and priceVal then
-            if FormatUtil then
-                local okFmt, fmtText = pcall(function()
-                    return FormatUtil:DesignNumberShort(priceVal)
-                end)
-                if okFmt and fmtText then
-                    priceText = fmtText
-                else
-                    priceText = tostring(priceVal)
-                end
-            else
-                priceText = tostring(priceVal)
-            end
-        end
-    end
-
-    if ResFishBasket then
-        local okCfg, cfg = pcall(function()
-            return ResFishBasket[id] or (ResFishBasket.__index and ResFishBasket.__index[id])
-        end)
-        if okCfg and type(cfg) == "table" then
-            local function pickNumber(tbl, keys)
-                for _, key in ipairs(keys) do
-                    local v = tbl[key]
-                    if type(v) == "number" then
-                        return v
-                    end
-                end
-                for _, v in pairs(tbl) do
-                    if type(v) == "number" then
-                        return v
-                    end
-                end
-                return nil
-            end
-
-            local luckVal = pickNumber(cfg, {"Luck", "LuckRate", "LuckValue"})
-            if luckVal then
-                luck = tostring(luckVal)
-            end
-
-            local freqVal = pickNumber(cfg, {"Frequency", "Freq", "FrequencySec", "Cooldown", "CoolDown", "Interval", "Time"})
-            if freqVal then
-                frequency = tostring(freqVal) .. "s"
-            end
-        end
-    end
-
-    return {
-        name      = name,
-        icon      = icon,
-        luck      = luck,
-        frequency = frequency,
-        priceText = priceText,
-        assetType = assetType,
-    }
-end
-
-local function refreshBasketOwnership()
-    for id, entry in pairs(basketCardsById) do
-        local btn = entry.buyButton
-        if btn then
-            local owned = isBasketOwned(id)
-            if owned then
-                btn.Text = "Owned"
-                btn.BackgroundColor3 = Color3.fromRGB(40, 90, 140)
-                btn.TextColor3 = Color3.fromRGB(230, 230, 230)
-                btn.AutoButtonColor = false
-            else
-                btn.Text = "Buy"
-                btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                btn.TextColor3 = Color3.fromRGB(235, 235, 235)
-                btn.AutoButtonColor = true
-            end
-        end
-    end
-end
-
-local function buildBasketShopCard(parent)
-    local card, _, _ = createCard(
-        parent,
-        "Basket Shop",
-        "Toko Basket (Icon + Luck + Frequency + Price).",
-        4,
-        280
-    )
-
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = "BasketScroll"
-    scroll.Parent = card
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.Position = UDim2.new(0, 0, 0, 40)
-    scroll.Size = UDim2.new(1, 0, 1, -44)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    scroll.ScrollingDirection = Enum.ScrollingDirection.XY
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
-
-    local padding = Instance.new("UIPadding")
-    padding.Parent = scroll
-    padding.PaddingLeft = UDim.new(0, 4)
-    padding.PaddingRight = UDim.new(0, 4)
-    padding.PaddingTop = UDim.new(0, 4)
-    padding.PaddingBottom = UDim.new(0, 4)
-
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scroll
-    layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 8)
-
-    for index, id in ipairs(BASKET_IDS) do
-        local data = getBasketDisplayData(id)
-
-        local item = Instance.new("Frame")
-        item.Name = id
-        item.Parent = scroll
-        item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        item.BackgroundTransparency = 0.1
-        item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210)
-        item.LayoutOrder = index
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = item
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(70, 70, 70)
-        stroke.Thickness = 1
-        stroke.Parent = item
-
-        local img = Instance.new("ImageLabel")
-        img.Name = "Icon"
-        img.Parent = item
-        img.BackgroundTransparency = 1
-        img.BorderSizePixel = 0
-        img.Position = UDim2.new(0, 6, 0, 6)
-        img.Size = UDim2.new(1, -12, 0, 70)
-        img.Image = data.icon or ""
-        img.ScaleType = Enum.ScaleType.Fit
-
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "Name"
-        nameLabel.Parent = item
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 12
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Position = UDim2.new(0, 6, 0, 80)
-        nameLabel.Size = UDim2.new(1, -12, 0, 16)
-        nameLabel.Text = data.name or id
-
-        local stats = Instance.new("TextLabel")
-        stats.Name = "Stats"
-        stats.Parent = item
-        stats.BackgroundTransparency = 1
-        stats.Font = Enum.Font.Gotham
-        stats.TextSize = 11
-        stats.TextXAlignment = Enum.TextXAlignment.Left
-        stats.TextYAlignment = Enum.TextYAlignment.Top
-        stats.TextColor3 = Color3.fromRGB(190, 190, 190)
-        stats.TextWrapped = true
-        stats.Position = UDim2.new(0, 6, 0, 98)
-        stats.Size = UDim2.new(1, -12, 0, 72)
-        stats.Text = string.format(
-            "Luck: %s\nFrequency: %s\nPrice: %s",
-            tostring(data.luck),
-            tostring(data.frequency),
-            tostring(data.priceText)
-        )
-
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        buyBtn.BorderSizePixel = 0
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamSemibold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        buyBtn.Text = "Buy"
-        buyBtn.Position = UDim2.new(0, 6, 1, -30)
-        buyBtn.Size = UDim2.new(1, -12, 0, 24)
-
-        local cornerBtn = Instance.new("UICorner")
-        cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = buyBtn
-
-        basketCardsById[id] = {
-            frame     = item,
-            buyButton = buyBtn,
-            assetType = data.assetType or "Currency",
-        }
-
-        local function onBuy()
-            if isBasketOwned(id) then
-                notify("Spear Fishing", (data.name or id) .. " sudah dimiliki.", 3)
-                refreshBasketOwnership()
-                return
-            end
-
-            if not ToolRE then
-                notify("Spear Fishing", "Remote ToolRE tidak ditemukan.", 4)
-                return
-            end
-
-            local assetType = (basketCardsById[id] and basketCardsById[id].assetType) or "Currency"
-
-            if assetType == "Robux" and PurchaseUtil then
-                local ok, err = pcall(function()
-                    PurchaseUtil:getPurchase(id)
-                end)
-                if not ok then
-                    warn("[SpearFishing] PurchaseUtil:getPurchase gagal:", err)
-                    notify("Spear Fishing", "Gagal membuka purchase Robux.", 4)
-                end
-            else
-                local args = {
-                    [1] = "Buy",
-                    [2] = { ["ID"] = id }
-                }
-
-                local ok, err = pcall(function()
-                    ToolRE:FireServer(unpack(args))
-                end)
-
-                if ok then
-                    notify("Spear Fishing", "Request beli " .. (data.name or id) .. " dikirim.", 4)
-                else
-                    warn("[SpearFishing] ToolRE:Buy Basket gagal:", err)
-                    notify("Spear Fishing", "Gagal mengirim request beli basket, cek Output.", 4)
-                end
-            end
-        end
-
-        table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
-    end
-
-    refreshBasketOwnership()
-
-    return card
-end
-
-------------------- BAIT SHOP: DATA & UI -------------------
-local function refreshBaitStock()
-    if not FishBaitShop then return end
-    for id, entry in pairs(baitCardsById) do
-        local stockVal = FishBaitShop:GetAttribute(id)
-        if typeof(stockVal) ~= "number" then
-            stockVal = 0
-        end
-        if entry.stockLabel then
-            entry.stockLabel.Text = "Stock: " .. stockVal
-        end
-        local hasStock = stockVal > 0
-        if entry.buyButton then
-            entry.buyButton.Visible = hasStock
-        end
-        if entry.noStockLabel then
-            entry.noStockLabel.Visible = not hasStock
-        end
-    end
-end
-
-local function buildBaitShopCard(parent)
-    local card, _, _ = createCard(
-        parent,
-        "Bait Shop",
-        "",
-        5,
-        280
-    )
-
-    local infoLabel = Instance.new("TextLabel")
-    infoLabel.Name = "Info"
-    infoLabel.Parent = card
-    infoLabel.BackgroundTransparency = 1
-    infoLabel.Font = Enum.Font.Gotham
-    infoLabel.TextSize = 11
-    infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    infoLabel.Text = "Beli Bait (Stock + Attracts Rarity Fish + Price)."
-    infoLabel.Position = UDim2.new(0, 0, 0, 20)
-    infoLabel.Size = UDim2.new(0.6, 0, 0, 18)
-
-    local timeLabel = Instance.new("TextLabel")
-    timeLabel.Name = "ResetLabel"
-    timeLabel.Parent = card
-    timeLabel.BackgroundTransparency = 1
-    timeLabel.Font = Enum.Font.Gotham
-    timeLabel.TextSize = 11
-    timeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    timeLabel.TextXAlignment = Enum.TextXAlignment.Right
-    timeLabel.Text = "Reset in: --:--"
-    timeLabel.Position = UDim2.new(0.4, 0, 0, 20)
-    timeLabel.Size = UDim2.new(0.6, -2, 0, 18)
-
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = "BaitScroll"
-    scroll.Parent = card
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.Position = UDim2.new(0, 0, 0, 44)
-    scroll.Size = UDim2.new(1, 0, 1, -48)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    scroll.ScrollingDirection = Enum.ScrollingDirection.XY
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
-
-    local padding = Instance.new("UIPadding")
-    padding.Parent = scroll
-    padding.PaddingLeft = UDim.new(0, 4)
-    padding.PaddingRight = UDim.new(0, 4)
-    padding.PaddingTop = UDim.new(0, 4)
-    padding.PaddingBottom = UDim.new(0, 4)
-
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scroll
-    layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 8)
-
-    for index, id in ipairs(BAIT_IDS) do
-        local name   = id
-        local icon   = ""
-        local rarityName = "?"
-        local priceText  = "N/A"
-
-        if ItemUtil then
-            local okName, resName = pcall(function()
-                return ItemUtil:getName(id)
-            end)
-            if okName and resName then
-                name = resName
-            end
-
-            local okIcon, resIcon = pcall(function()
-                return ItemUtil:getIcon(id)
-            end)
-            if okIcon and resIcon then
-                icon = resIcon
-            end
-
-            local okDef, def = pcall(function()
-                return ItemUtil:GetDef(id)
-            end)
-            if okDef and def then
-                local okRarName, rName = pcall(function()
-                    return ItemUtil:getRarityName(def.Rarity)
-                end)
-                if okRarName and rName then
-                    rarityName = rName
-                end
-            end
-
-            local okPrice, priceVal = pcall(function()
-                return ItemUtil:getPrice(id)
-            end)
-            if okPrice and priceVal then
-                if FormatUtil then
-                    local okFmt, fmtText = pcall(function()
-                        return FormatUtil:DesignNumberShort(priceVal)
-                    end)
-                    if okFmt and fmtText then
-                        priceText = fmtText
-                    else
-                        priceText = tostring(priceVal)
-                    end
-                else
-                    priceText = tostring(priceVal)
-                end
-            end
-        end
-
-        local item = Instance.new("Frame")
-        item.Name = id
-        item.Parent = scroll
-        item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        item.BackgroundTransparency = 0.1
-        item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 210)
-        item.LayoutOrder = index
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = item
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(70, 70, 70)
-        stroke.Thickness = 1
-        stroke.Parent = item
-
-        local img = Instance.new("ImageLabel")
-        img.Name = "Icon"
-        img.Parent = item
-        img.BackgroundTransparency = 1
-        img.BorderSizePixel = 0
-        img.Position = UDim2.new(0, 6, 0, 6)
-        img.Size = UDim2.new(1, -12, 0, 70)
-        img.Image = icon or ""
-        img.ScaleType = Enum.ScaleType.Fit
-
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "Name"
-        nameLabel.Parent = item
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 12
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.Position = UDim2.new(0, 6, 0, 80)
-        nameLabel.Size = UDim2.new(1, -12, 0, 16)
-        nameLabel.Text = name
-
-        local attrLabel = Instance.new("TextLabel")
-        attrLabel.Name = "Attr"
-        attrLabel.Parent = item
-        attrLabel.BackgroundTransparency = 1
-        attrLabel.Font = Enum.Font.Gotham
-        attrLabel.TextSize = 11
-        attrLabel.TextXAlignment = Enum.TextXAlignment.Left
-        attrLabel.TextYAlignment = Enum.TextYAlignment.Top
-        attrLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-        attrLabel.TextWrapped = true
-        attrLabel.Position = UDim2.new(0, 6, 0, 98)
-        attrLabel.Size = UDim2.new(1, -12, 0, 36)
-        attrLabel.Text = "Attracts " .. tostring(rarityName) .. " fish"
-
-        local stockLabel = Instance.new("TextLabel")
-        stockLabel.Name = "Stock"
-        stockLabel.Parent = item
-        stockLabel.BackgroundTransparency = 1
-        stockLabel.Font = Enum.Font.Gotham
-        stockLabel.TextSize = 11
-        stockLabel.TextXAlignment = Enum.TextXAlignment.Left
-        stockLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        stockLabel.Position = UDim2.new(0, 6, 0, 136)
-        stockLabel.Size = UDim2.new(1, -12, 0, 16)
-        stockLabel.Text = "Stock: -"
-
-        local priceLabel = Instance.new("TextLabel")
-        priceLabel.Name = "Price"
-        priceLabel.Parent = item
-        priceLabel.BackgroundTransparency = 1
-        priceLabel.Font = Enum.Font.Gotham
-        priceLabel.TextSize = 11
-        priceLabel.TextXAlignment = Enum.TextXAlignment.Left
-        priceLabel.TextColor3 = Color3.fromRGB(200, 200, 0)
-        priceLabel.Position = UDim2.new(0, 6, 0, 154)
-        priceLabel.Size = UDim2.new(1, -12, 0, 16)
-        priceLabel.Text = "Price: " .. priceText
-
-        local noStockLabel = Instance.new("TextLabel")
-        noStockLabel.Name = "NoStock"
-        noStockLabel.Parent = item
-        noStockLabel.BackgroundTransparency = 1
-        noStockLabel.Font = Enum.Font.GothamSemibold
-        noStockLabel.TextSize = 11
-        noStockLabel.TextXAlignment = Enum.TextXAlignment.Center
-        noStockLabel.TextColor3 = Color3.fromRGB(220, 100, 100)
-        noStockLabel.Position = UDim2.new(0, 6, 1, -46)
-        noStockLabel.Size = UDim2.new(1, -12, 0, 18)
-        noStockLabel.Text = "No Stock"
-        noStockLabel.Visible = false
-
-        local buyBtn = Instance.new("TextButton")
-        buyBtn.Name = "BuyButton"
-        buyBtn.Parent = item
-        buyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        buyBtn.BorderSizePixel = 0
-        buyBtn.AutoButtonColor = true
-        buyBtn.Font = Enum.Font.GothamSemibold
-        buyBtn.TextSize = 12
-        buyBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        buyBtn.Text = "Buy"
-        buyBtn.Position = UDim2.new(0, 6, 1, -26)
-        buyBtn.Size = UDim2.new(1, -12, 0, 22)
-
-        local cornerBtn = Instance.new("UICorner")
-        cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = buyBtn
-
-        baitCardsById[id] = {
-            frame       = item,
-            buyButton   = buyBtn,
-            stockLabel  = stockLabel,
-            noStockLabel= noStockLabel,
-        }
-
-        local function onBuy()
-            if not BaitRE then
-                notify("Spear Fishing", "Remote BaitRE tidak ditemukan.", 4)
-                return
-            end
-
-            local args = {
-                [1] = "Buy",
-                [2] = { ["ID"] = id }
-            }
-
-            local ok, err = pcall(function()
-                BaitRE:FireServer(unpack(args))
-            end)
-
-            if ok then
-                notify("Spear Fishing", "Request beli " .. name .. " dikirim.", 4)
-            else
-                warn("[SpearFishing] BaitRE:Buy gagal:", err)
-                notify("Spear Fishing", "Gagal mengirim request beli bait, cek Output.", 4)
-            end
-        end
-
-        table.insert(connections, buyBtn.MouseButton1Click:Connect(onBuy))
-    end
-
-    refreshBaitStock()
-
-    if FishBaitShop then
-        table.insert(connections, FishBaitShop.Changed:Connect(function(value)
-            if not alive then return end
-            local txt
-            if MathUtil and type(value) == "number" then
-                local okFmt, mmss = pcall(function()
-                    return MathUtil:secondsToMMSS(value)
-                end)
-                txt = okFmt and mmss or tostring(value) .. "s"
-            else
-                txt = tostring(value)
-            end
-            timeLabel.Text = "Reset in: " .. txt
-        end))
-
-        table.insert(connections, FishBaitShop.AttributeChanged:Connect(function()
-            if not alive then return end
-            refreshBaitStock()
-        end))
-    end
-
-    return card
-end
-
-------------------- SPAWN BOSS / HP BOSS NOTIFIER: DISCORD EMBED -------------------
+------------------- SPAWN BOSS / HP BOSS NOTIFIER -------------------
 local SPAWN_BOSS_WEBHOOK_URL   = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
 local SPAWN_BOSS_BOT_USERNAME  = "Spawn Boss Notifier"
 local SPAWN_BOSS_BOT_AVATAR    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
@@ -1684,14 +1130,14 @@ local function getSpawnBossRequestFunc()
     return spawnBossRequestFunc
 end
 
-local function sendSpawnBossWebhookEmbed(embed)
-    if not SPAWN_BOSS_WEBHOOK_URL or SPAWN_BOSS_WEBHOOK_URL == "" then
+local function sendWebhookGeneric(url, username, avatar, embed)
+    if not url or url == "" then
         return
     end
 
     local payload = {
-        username   = SPAWN_BOSS_BOT_USERNAME,
-        avatar_url = SPAWN_BOSS_BOT_AVATAR,
+        username   = username,
+        avatar_url = avatar,
         content    = DEFAULT_OWNER_DISCORD,
         embeds     = { embed },
     }
@@ -1703,14 +1149,14 @@ local function sendSpawnBossWebhookEmbed(embed)
     if okEncode then
         encoded = resEncode
     else
-        warn("[SpearFishing] SpawnBoss JSONEncode failed:", resEncode)
+        warn("[SpearFishing] JSONEncode failed:", resEncode)
         return
     end
 
     local reqFunc = getSpawnBossRequestFunc()
     if reqFunc then
         local okReq, resReq = pcall(reqFunc, {
-            Url     = SPAWN_BOSS_WEBHOOK_URL,
+            Url     = url,
             Method  = "POST",
             Headers = {
                 ["Content-Type"] = "application/json",
@@ -1718,62 +1164,24 @@ local function sendSpawnBossWebhookEmbed(embed)
             Body    = encoded,
         })
         if not okReq then
-            warn("[SpearFishing] SpawnBoss webhook request failed:", resReq)
+            warn("[SpearFishing] webhook request failed:", resReq)
         end
     else
         local okPost, errPost = pcall(function()
-            HttpService:PostAsync(SPAWN_BOSS_WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
+            HttpService:PostAsync(url, encoded, Enum.HttpContentType.ApplicationJson, false)
         end)
         if not okPost then
-            warn("[SpearFishing] SpawnBoss HttpService PostAsync failed:", errPost)
+            warn("[SpearFishing] HttpService PostAsync failed:", errPost)
         end
     end
 end
 
+local function sendSpawnBossWebhookEmbed(embed)
+    sendWebhookGeneric(SPAWN_BOSS_WEBHOOK_URL, SPAWN_BOSS_BOT_USERNAME, SPAWN_BOSS_BOT_AVATAR, embed)
+end
+
 local function sendHpBossWebhookEmbed(embed)
-    if not HP_BOSS_WEBHOOK_URL or HP_BOSS_WEBHOOK_URL == "" then
-        return
-    end
-
-    local payload = {
-        username   = HP_BOSS_BOT_USERNAME,
-        avatar_url = SPAWN_BOSS_BOT_AVATAR,
-        content    = DEFAULT_OWNER_DISCORD,
-        embeds     = { embed },
-    }
-
-    local encoded
-    local okEncode, resEncode = pcall(function()
-        return HttpService:JSONEncode(payload)
-    end)
-    if okEncode then
-        encoded = resEncode
-    else
-        warn("[SpearFishing] HPBoss JSONEncode failed:", resEncode)
-        return
-    end
-
-    local reqFunc = getSpawnBossRequestFunc()
-    if reqFunc then
-        local okReq, resReq = pcall(reqFunc, {
-            Url     = HP_BOSS_WEBHOOK_URL,
-            Method  = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-            },
-            Body    = encoded,
-        })
-        if not okReq then
-            warn("[SpearFishing] HPBoss webhook request failed:", resReq)
-        end
-    else
-        local okPost, errPost = pcall(function()
-            HttpService:PostAsync(HP_BOSS_WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
-        end)
-        if not okPost then
-            warn("[SpearFishing] HPBoss HttpService PostAsync failed:", errPost)
-        end
-    end
+    sendWebhookGeneric(HP_BOSS_WEBHOOK_URL, HP_BOSS_BOT_USERNAME, SPAWN_BOSS_BOT_AVATAR, embed)
 end
 
 local function getRegionNameForBoss(region)
@@ -1892,7 +1300,6 @@ local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
     local userId      = LocalPlayer.UserId or 0
 
     local playerValue = string.format("%s (@%s) [%s]", tostring(displayName), tostring(username), tostring(userId))
-
     local serverId = game.JobId
     if not serverId or serverId == "" then
         serverId = "N/A"
@@ -2026,10 +1433,7 @@ local function buildHpBossEmbed(region, bossName, curHpText, maxHpText, percentT
 end
 
 local function sendSpawnBossStage(region, stageKey, remainSeconds)
-    if not alive then
-        return
-    end
-    if not spawnBossNotifier then
+    if not alive or not spawnBossNotifier then
         return
     end
 
@@ -2043,62 +1447,6 @@ local function sendSpawnBossStage(region, stageKey, remainSeconds)
     local embed = buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
     sendSpawnBossWebhookEmbed(embed)
 end
-
-local function updateWorldBossRegion(region)
-    if not region then
-        return
-    end
-
-    local state = bossRegionState[region]
-    if not state then
-        state = {
-            sentStart = false,
-            sentNear  = false,
-            sentSpawn = false,
-        }
-        bossRegionState[region] = state
-    end
-
-    local hasBoss   = region:GetAttribute("HasBoss")
-    local remainRaw = region:GetAttribute("RemainTime")
-    local remain    = tonumber(remainRaw) or 0
-
-    if not hasBoss and remain <= 0 then
-        state.sentStart = false
-        state.sentNear  = false
-        state.sentSpawn = false
-    end
-
-    if remain > 0 and not hasBoss and not state.sentStart then
-        state.sentStart = true
-        task.spawn(function()
-            sendSpawnBossStage(region, "start", remain)
-        end)
-    end
-
-    if remain > 0
-        and remain <= NEAR_REMAIN_THRESHOLD
-        and remain >= 180
-        and state.sentStart
-        and not state.sentNear
-    then
-        state.sentNear = true
-        task.spawn(function()
-            sendSpawnBossStage(region, "near", remain)
-        end)
-    end
-
-    if hasBoss and not state.sentSpawn then
-        state.sentSpawn = true
-        task.spawn(function()
-            sendSpawnBossStage(region, "spawn", remain)
-        end)
-    end
-end
-
-------------------- HP BOSS NOTIFIER -------------------
-local HP_SEND_MIN_INTERVAL = 1.5
-local HP_MIN_DELTA_RATIO   = 0.005
 
 local function getBossPartInRegion(region)
     if not region then
@@ -2115,15 +1463,10 @@ local function getBossPartInRegion(region)
     if FishUtil then
         for _, inst in ipairs(descendants) do
             if inst:IsA("BasePart") then
-                local isFish = false
-                local okFish, resFish = pcall(function()
+                local okFish, isFish = pcall(function()
                     return FishUtil:isFish(inst)
                 end)
-                if okFish and resFish then
-                    isFish = true
-                end
-
-                if isFish then
+                if okFish and isFish then
                     local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("CurHp") or inst:GetAttribute("HP") or inst:GetAttribute("Hp")
                     if hpAttr ~= nil then
                         return inst
@@ -2166,6 +1509,9 @@ local function detachHpWatcher(region)
 
     hpRegionState[region] = nil
 end
+
+local HP_SEND_MIN_INTERVAL = 1.5
+local HP_MIN_DELTA_RATIO   = 0.005
 
 local function sendHpBossProgress(region, bossPart)
     if not alive then
@@ -2333,6 +1679,58 @@ local function attachHpWatcher(region)
     end)
 end
 
+local function updateWorldBossRegion(region)
+    if not region then
+        return
+    end
+
+    local state = bossRegionState[region]
+    if not state then
+        state = {
+            sentStart = false,
+            sentNear  = false,
+            sentSpawn = false,
+        }
+        bossRegionState[region] = state
+    end
+
+    local hasBoss   = region:GetAttribute("HasBoss")
+    local remainRaw = region:GetAttribute("RemainTime")
+    local remain    = tonumber(remainRaw) or 0
+
+    if not hasBoss and remain <= 0 then
+        state.sentStart = false
+        state.sentNear  = false
+        state.sentSpawn = false
+    end
+
+    if remain > 0 and not hasBoss and not state.sentStart then
+        state.sentStart = true
+        task.spawn(function()
+            sendSpawnBossStage(region, "start", remain)
+        end)
+    end
+
+    if remain > 0
+        and remain <= NEAR_REMAIN_THRESHOLD
+        and remain >= 180
+        and state.sentStart
+        and not state.sentNear
+    then
+        state.sentNear = true
+        task.spawn(function()
+            sendSpawnBossStage(region, "near", remain)
+        end)
+    end
+
+    if hasBoss and not state.sentSpawn then
+        state.sentSpawn = true
+        task.spawn(function()
+            sendSpawnBossStage(region, "spawn", remain)
+        end)
+    end
+end
+
 local function registerWorldBossRegion(region)
     if not region then
         return
@@ -2408,7 +1806,7 @@ local function initWorldBossNotifier()
     end)
 end
 
-------------------- SPAWN ILLAHI NOTIFIER (NETHER ISLAND) -------------------
+------------------- SPAWN ILLAHI NOTIFIER -------------------
 local function initIllahiSpawnNotifier()
     task.spawn(function()
         task.wait(3)
@@ -2418,66 +1816,6 @@ local function initIllahiSpawnNotifier()
 
         local WEBHOOK_URL = "https://discord.com/api/webhooks/1456157133325209764/ymVmoJR0gV21o_IpvCn6sj2jR31TqZPnWMem7jEmxZLt_Pn__7j1cdsqna1u1mBq7yWz"
         local BOT_USERNAME = "Spawn Illahi Notifier"
-
-        local ILLAHI_FISH_MAP = {
-            Fish400 = { name = "Nether Barracuda",  sea = "Sea7" },
-            Fish401 = { name = "Nether Anglerfish", sea = "Sea7" },
-            Fish402 = { name = "Nether Manta Ray", sea = "Sea6" },
-            Fish403 = { name = "Nether SwordFish", sea = "Sea6" },
-            Fish404 = { name = "Diamond Flying Fish", sea = "Sea6" },
-            Fish405 = { name = "Diamond Flying Fish", sea = "Sea6" },
-        }
-
-        local ILLAHI_SEA_SET = {
-            Sea6 = true,
-            Sea7 = true,
-        }
-
-        local function sendIllahiWebhookEmbed(embed)
-            if not WEBHOOK_URL or WEBHOOK_URL == "" then
-                return
-            end
-
-            local payload = {
-                username   = BOT_USERNAME,
-                avatar_url = SPAWN_BOSS_BOT_AVATAR,
-                content    = DEFAULT_OWNER_DISCORD,
-                embeds     = { embed },
-            }
-
-            local encoded
-            local okEncode, resEncode = pcall(function()
-                return HttpService:JSONEncode(payload)
-            end)
-            if okEncode then
-                encoded = resEncode
-            else
-                warn("[SpearFishing] Illahi JSONEncode failed:", resEncode)
-                return
-            end
-
-            local reqFunc = getSpawnBossRequestFunc()
-            if reqFunc then
-                local okReq, resReq = pcall(reqFunc, {
-                    Url     = WEBHOOK_URL,
-                    Method  = "POST",
-                    Headers = {
-                        ["Content-Type"] = "application/json",
-                    },
-                    Body    = encoded,
-                })
-                if not okReq then
-                    warn("[SpearFishing] Illahi webhook request failed:", resReq)
-                end
-            else
-                local okPost, errPost = pcall(function()
-                    HttpService:PostAsync(WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
-                end)
-                if not okPost then
-                    warn("[SpearFishing] Illahi HttpService PostAsync failed:", errPost)
-                end
-            end
-        end
 
         local function buildIllahiSpawnEmbed(region, fishId, fishName)
             local regionName = getRegionNameForBoss(region)
@@ -2543,19 +1881,27 @@ local function initIllahiSpawnNotifier()
             return embed
         end
 
+        local function sendIllahiWebhookEmbed(embed)
+            sendWebhookGeneric(WEBHOOK_URL, BOT_USERNAME, SPAWN_BOSS_BOT_AVATAR, embed)
+        end
+
         local function handleIllahiFish(region, fishPart)
             if not alive then
                 return
             end
-            if not _G.AxaHub or _G.AxaHub.SpawnIllahiNotifier == false then
+            if not spawnIllahiNotifier then
                 return
             end
             if not fishPart or not fishPart.Name then
                 return
             end
 
-            local def = ILLAHI_FISH_MAP[fishPart.Name]
+            local def = ILLAHI_FISH_DEFS[fishPart.Name]
             if not def then
+                return
+            end
+
+            if illahiFishEnabled[fishPart.Name] == false then
                 return
             end
 
@@ -2582,7 +1928,7 @@ local function initIllahiSpawnNotifier()
                 if not child:IsA("BasePart") then
                     return
                 end
-                if ILLAHI_FISH_MAP[child.Name] then
+                if ILLAHI_FISH_DEFS[child.Name] then
                     handleIllahiFish(region, child)
                 end
             end
@@ -2623,377 +1969,167 @@ local function initIllahiSpawnNotifier()
     end)
 end
 
-------------------- DAILY REWARD: DATA & UI -------------------
-local function findNextClaimableDailyIndex()
-    if not ResDailyReward then return nil end
-    if not DailyData then return nil end
-
-    for index = 1, #ResDailyReward do
-        local child = DailyData:FindFirstChild(tostring(index))
-        if child then
-            local claimedAttr = child:GetAttribute("claimed")
-            if not claimedAttr then
-                return index
-            end
-        end
-    end
-
-    return nil
-end
-
-local function updateDailyStatusLabel()
-    if not dailyStatusLabel then return end
-
-    if not ResDailyReward then
-        dailyStatusLabel.Text = "Config ResDailyReward tidak ditemukan."
-        return
-    end
-
-    local idx = findNextClaimableDailyIndex()
-    if idx then
-        dailyStatusLabel.Text = "Next klaim tersedia: Day " .. tostring(idx) .. "."
-    else
-        dailyStatusLabel.Text = "Next klaim tersedia: - (menunggu reset harian)."
-    end
-end
-
-local function refreshDailyUI()
-    if not ResDailyReward then
-        updateDailyStatusLabel()
-        return
-    end
-
-    for index, entry in pairs(dailyCardsByIndex) do
-        local claimBtn   = entry.claimButton
-        local claimedLbl = entry.claimedLabel
-
-        local child = DailyData and DailyData:FindFirstChild(tostring(index)) or nil
-        local claimed  = false
-        local claimable = false
-
-        if child then
-            local claimedAttr = child:GetAttribute("claimed")
-            claimed = (claimedAttr == true)
-            claimable = not claimed
-        else
-            claimed = false
-            claimable = false
-        end
-
-        if claimBtn then
-            claimBtn.Visible = claimable
-            claimBtn.Active  = claimable
-        end
-        if claimedLbl then
-            claimedLbl.Visible = claimed
-        end
-    end
-
-    updateDailyStatusLabel()
-end
-
-local function claimDailyReward(index)
-    if not DailyRE then
-        notify("Spear Fishing", "Remote DailyRE tidak ditemukan.", 4)
-        return
-    end
-
-    local payload = { index = index }
-
-    local ok, err = pcall(function()
-        DailyRE:FireServer(payload)
-    end)
-
-    if ok then
-        notify("Spear Fishing", "Claim Daily Reward Day " .. tostring(index) .. " dikirim.", 3)
-    else
-        warn("[SpearFishing] DailyRE:FireServer gagal:", err)
-        notify("Spear Fishing", "Gagal claim Daily Reward (Day " .. tostring(index) .. ").", 4)
-    end
-end
-
-local function initDailyDataWatcher()
+------------------- SPAWN SECRET NOTIFIER -------------------
+local function initSecretSpawnNotifier()
     task.spawn(function()
-        if DailyData then return end
-
-        local waitFn
-        while alive and not waitFn do
-            local ok, fn = pcall(function()
-                return shared and shared.WaitPlayerData
-            end)
-            if ok and typeof(fn) == "function" then
-                waitFn = fn
-                break
-            end
-            task.wait(0.2)
-        end
-
-        if not alive or not waitFn then
+        task.wait(3)
+        if not alive then
             return
         end
 
-        local ok2, result = pcall(function()
-            return waitFn("Daily")
-        end)
-        if not ok2 or not result then
-            warn("[SpearFishing] Gagal WaitPlayerData('Daily'):", ok2 and "no result" or result)
-            return
-        end
+        local WEBHOOK_URL = "https://discord.com/api/webhooks/1456257955682062367/UKn20-hMHwtjd0BNsoH_aV_f30V7jlkTux2QNlwnb259BEEbabIifrYinj1I7XPK_0xK"
+        local BOT_USERNAME = "Spawn Secret Notifier"
 
-        DailyData = result
+        local function buildSecretSpawnEmbed(region, fishId, fishName)
+            local regionName = getRegionNameForBoss(region)
+            local islandName = "Nether Island"
 
-        local function onDailyChanged()
-            if not alive then return end
-            pcall(refreshDailyUI)
-        end
+            local displayName = LocalPlayer.DisplayName or LocalPlayer.Name or "Player"
+            local username    = LocalPlayer.Name or "Player"
+            local userId      = LocalPlayer.UserId or 0
+            local playerValue = string.format("%s (@%s) [%s]", tostring(displayName), tostring(username), tostring(userId))
 
-        for _, child in ipairs(DailyData:GetChildren()) do
-            if child.AttributeChanged then
-                table.insert(connections, child.AttributeChanged:Connect(function()
-                    onDailyChanged()
-                end))
+            local serverId = game.JobId
+            if not serverId or serverId == "" then
+                serverId = "N/A"
             end
+
+            local fishLabel = fishName or "Unknown"
+            if fishId and fishId ~= "" then
+                fishLabel = fishLabel .. " (" .. tostring(fishId) .. ")"
+            end
+
+            local embed = {
+                title       = "Spawn Secret",
+                description = DEFAULT_OWNER_DISCORD,
+                color       = 0xFFD700,
+                fields      = {
+                    {
+                        name   = "Secret Fish",
+                        value  = fishLabel,
+                        inline = true,
+                    },
+                    {
+                        name   = "Sea",
+                        value  = regionName,
+                        inline = true,
+                    },
+                    {
+                        name   = "Island",
+                        value  = islandName,
+                        inline = true,
+                    },
+                    {
+                        name   = "Name Map",
+                        value  = GAME_NAME,
+                        inline = false,
+                    },
+                    {
+                        name   = "Player",
+                        value  = playerValue,
+                        inline = false,
+                    },
+                    {
+                        name   = "Server ID",
+                        value  = serverId,
+                        inline = false,
+                    },
+                },
+                footer = {
+                    text = "Spear Fishing PRO+ | Spawn Secret Notifier",
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+            }
+
+            return embed
         end
 
-        if DailyData.ChildAdded then
-            table.insert(connections, DailyData.ChildAdded:Connect(function(child)
-                if not alive then return end
-                onDailyChanged()
-                if child and child.AttributeChanged then
-                    table.insert(connections, child.AttributeChanged:Connect(function()
-                        onDailyChanged()
-                    end))
+        local function sendSecretWebhookEmbed(embed)
+            sendWebhookGeneric(WEBHOOK_URL, BOT_USERNAME, SPAWN_BOSS_BOT_AVATAR, embed)
+        end
+
+        local function handleSecretFish(region, fishPart)
+            if not alive then
+                return
+            end
+            if not spawnSecretNotifier then
+                return
+            end
+            if not fishPart or not fishPart.Name then
+                return
+            end
+
+            local def = SECRET_FISH_DEFS[fishPart.Name]
+            if not def then
+                return
+            end
+
+            if secretFishEnabled[fishPart.Name] ~= true then
+                return
+            end
+
+            local fishName = def.name or fishPart.Name
+            local embed = buildSecretSpawnEmbed(region, fishPart.Name, fishName)
+            sendSecretWebhookEmbed(embed)
+        end
+
+        local function registerSecretRegion(region)
+            if not region or not region.Name then
+                return
+            end
+            if not SECRET_SEA_SET[region.Name] then
+                return
+            end
+            if not (region:IsA("BasePart") or region:IsA("Model")) then
+                return
+            end
+
+            local function checkChild(child)
+                if not child or not child.Name then
+                    return
                 end
+                if not child:IsA("BasePart") then
+                    return
+                end
+                if SECRET_FISH_DEFS[child.Name] then
+                    handleSecretFish(region, child)
+                end
+            end
+
+            for _, child in ipairs(region:GetChildren()) do
+                checkChild(child)
+            end
+
+            table.insert(connections, region.ChildAdded:Connect(function(child)
+                if not alive then return end
+                checkChild(child)
             end))
         end
 
-        onDailyChanged()
-    end)
-end
-
-local function buildDailyRewardCard(parent)
-    local card, _, _ = createCard(
-        parent,
-        "Auto Daily Reward",
-        "Auto claim + manual claim Daily Reward (Day 1 ~ 30).",
-        2,
-        320
-    )
-
-    local content = Instance.new("Frame")
-    content.Name = "DailyContent"
-    content.Parent = card
-    content.BackgroundTransparency = 1
-    content.BorderSizePixel = 0
-    content.Position = UDim2.new(0, 0, 0, 40)
-    content.Size = UDim2.new(1, 0, 1, -40)
-
-    local autoBtn, updateFn = createToggleButton(content, "Auto Daily Reward", autoDailyReward)
-    autoBtn.Position = UDim2.new(0, 0, 0, 0)
-    autoBtn.Size     = UDim2.new(1, 0, 0, 30)
-    updateAutoDailyUI = updateFn
-    updateAutoDailyUI(autoDailyReward)
-
-    local status = Instance.new("TextLabel")
-    status.Name = "DailyStatus"
-    status.Parent = content
-    status.BackgroundTransparency = 1
-    status.Font = Enum.Font.Gotham
-    status.TextSize = 11
-    status.TextColor3 = Color3.fromRGB(185, 185, 185)
-    status.TextXAlignment = Enum.TextXAlignment.Left
-    status.TextWrapped = true
-    status.Position = UDim2.new(0, 0, 0, 34)
-    status.Size = UDim2.new(1, 0, 0, 24)
-    status.Text = "Next klaim tersedia: --."
-    dailyStatusLabel = status
-
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = "DailyScroll"
-    scroll.Parent = content
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.Position = UDim2.new(0, 0, 0, 62)
-    scroll.Size = UDim2.new(1, 0, 1, -66)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarThickness = 4
-    scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    scroll.ScrollingDirection = Enum.ScrollingDirection.XY
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
-
-    local padding = Instance.new("UIPadding")
-    padding.Parent = scroll
-    padding.PaddingLeft = UDim.new(0, 4)
-    padding.PaddingRight = UDim.new(0, 4)
-    padding.PaddingTop = UDim.new(0, 4)
-    padding.PaddingBottom = UDim.new(0, 4)
-
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scroll
-    layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 8)
-
-    local totalDays = 0
-    if ResDailyReward then
-        totalDays = math.min(30, #ResDailyReward)
-    else
-        totalDays = 0
-    end
-
-    for index = 1, totalDays do
-        local cfg = ResDailyReward[index]
-        local thingId    = cfg and cfg.ThingId
-        local thingCount = cfg and cfg.ThingCount or 1
-        local iconName   = cfg and cfg.IconName
-        local rewardName = cfg and cfg.Name
-
-        local iconImage = ""
-        if ItemUtil then
-            if not rewardName and thingId then
-                local okName, nameRes = pcall(function()
-                    return ItemUtil:getName(thingId)
-                end)
-                if okName and nameRes then
-                    rewardName = nameRes
-                end
-            end
-
-            local iconKey = iconName or thingId
-            if iconKey then
-                local okIcon, iconRes = pcall(function()
-                    return ItemUtil:getIcon(iconKey)
-                end)
-                if okIcon and iconRes then
-                    iconImage = iconRes
-                end
+        local worldSea = workspace:FindFirstChild("WorldSea")
+        if not worldSea then
+            local okWait, inst = pcall(function()
+                return workspace:WaitForChild("WorldSea", 10)
+            end)
+            if okWait and inst then
+                worldSea = inst
             end
         end
 
-        rewardName = rewardName or ("Reward Day " .. tostring(index))
+        if not worldSea then
+            warn("[SpearFishing] WorldSea folder tidak ditemukan, Spawn Secret Notifier idle.")
+            return
+        end
 
-        local item = Instance.new("Frame")
-        item.Name = "Day" .. index
-        item.Parent = scroll
-        item.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        item.BackgroundTransparency = 0.1
-        item.BorderSizePixel = 0
-        item.Size = UDim2.new(0, 150, 0, 190)
-        item.LayoutOrder = index
+        for _, child in ipairs(worldSea:GetChildren()) do
+            registerSecretRegion(child)
+        end
 
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = item
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(70, 70, 70)
-        stroke.Thickness = 1
-        stroke.Parent = item
-
-        local dayLabel = Instance.new("TextLabel")
-        dayLabel.Name = "DayLabel"
-        dayLabel.Parent = item
-        dayLabel.BackgroundTransparency = 1
-        dayLabel.Font = Enum.Font.GothamSemibold
-        dayLabel.TextSize = 11
-        dayLabel.TextXAlignment = Enum.TextXAlignment.Left
-        dayLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        dayLabel.Position = UDim2.new(0, 6, 0, 6)
-        dayLabel.Size = UDim2.new(1, -12, 0, 16)
-        dayLabel.Text = "Day " .. tostring(index)
-
-        local img = Instance.new("ImageLabel")
-        img.Name = "Icon"
-        img.Parent = item
-        img.BackgroundTransparency = 1
-        img.BorderSizePixel = 0
-        img.Position = UDim2.new(0, 6, 0, 26)
-        img.Size = UDim2.new(1, -12, 0, 60)
-        img.Image = iconImage or ""
-        img.ScaleType = Enum.ScaleType.Fit
-
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "Name"
-        nameLabel.Parent = item
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 12
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextYAlignment = Enum.TextYAlignment.Top
-        nameLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
-        nameLabel.TextWrapped = true
-        nameLabel.Position = UDim2.new(0, 6, 0, 88)
-        nameLabel.Size = UDim2.new(1, -12, 0, 30)
-        nameLabel.Text = rewardName
-
-        local countLabel = Instance.new("TextLabel")
-        countLabel.Name = "Count"
-        countLabel.Parent = item
-        countLabel.BackgroundTransparency = 1
-        countLabel.Font = Enum.Font.Gotham
-        countLabel.TextSize = 11
-        countLabel.TextXAlignment = Enum.TextXAlignment.Left
-        countLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-        countLabel.Position = UDim2.new(0, 6, 0, 120)
-        countLabel.Size = UDim2.new(1, -12, 0, 16)
-        countLabel.Text = "x" .. tostring(thingCount)
-
-        local claimedLabel = Instance.new("TextLabel")
-        claimedLabel.Name = "Claimed"
-        claimedLabel.Parent = item
-        claimedLabel.BackgroundTransparency = 1
-        claimedLabel.Font = Enum.Font.GothamSemibold
-        claimedLabel.TextSize = 11
-        claimedLabel.TextXAlignment = Enum.TextXAlignment.Center
-        claimedLabel.TextColor3 = Color3.fromRGB(120, 210, 120)
-        claimedLabel.Position = UDim2.new(0, 6, 0, 138)
-        claimedLabel.Size = UDim2.new(1, -12, 0, 18)
-        claimedLabel.Text = "CLAIMED"
-        claimedLabel.Visible = false
-
-        local claimBtn = Instance.new("TextButton")
-        claimBtn.Name = "ClaimButton"
-        claimBtn.Parent = item
-        claimBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        claimBtn.BorderSizePixel = 0
-        claimBtn.AutoButtonColor = true
-        claimBtn.Font = Enum.Font.GothamSemibold
-        claimBtn.TextSize = 12
-        claimBtn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        claimBtn.Text = "Claim"
-        claimBtn.Position = UDim2.new(0, 6, 1, -26)
-        claimBtn.Size = UDim2.new(1, -12, 0, 22)
-
-        local cornerBtn = Instance.new("UICorner")
-        cornerBtn.CornerRadius = UDim.new(0, 6)
-        cornerBtn.Parent = claimBtn
-
-        dailyCardsByIndex[index] = {
-            frame        = item,
-            claimButton  = claimBtn,
-            claimedLabel = claimedLabel,
-            dayLabel     = dayLabel,
-            nameLabel    = nameLabel,
-            countLabel   = countLabel,
-        }
-
-        table.insert(connections, claimBtn.MouseButton1Click:Connect(function()
-            claimDailyReward(index)
+        table.insert(connections, worldSea.ChildAdded:Connect(function(child)
+            if not alive then return end
+            registerSecretRegion(child)
         end))
-    end
-
-    table.insert(connections, autoBtn.MouseButton1Click:Connect(function()
-        autoDailyReward = not autoDailyReward
-        if updateAutoDailyUI then
-            updateAutoDailyUI(autoDailyReward)
-        end
-        updateDailyStatusLabel()
-        notify("Spear Fishing", "Auto Daily Reward: " .. (autoDailyReward and "ON" or "OFF"), 2)
-    end))
-
-    updateDailyStatusLabel()
-
-    return card
+    end)
 end
 
 ------------------- TOOLSDATA INIT -------------------
@@ -3030,7 +2166,6 @@ local function initToolsDataWatcher()
         local function onToolsChanged()
             if not alive then return end
             refreshHarpoonOwnership()
-            refreshBasketOwnership()
         end
 
         if ToolsData.AttributeChanged then
@@ -3043,13 +2178,13 @@ local function initToolsDataWatcher()
     end)
 end
 
-------------------- BUILD UI: CONTROL CARD -------------------
+------------------- BUILD UI: MAIN + SPEAR CONTROLS -------------------
 local header, bodyScroll = createMainLayout()
 
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + HP Boss Notifier + Spawn Illahi Notifier + Sell All + Auto Skill 1 ~ 5.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Auto Skill 1~5 + Sell All.",
     1,
     260
 )
@@ -3165,15 +2300,6 @@ table.insert(connections, tapSpeedBox.FocusLost:Connect(function()
     applyTapSpeedFromBox()
 end))
 
-local spawnBossToggleButton, updateSpawnBossNotifierUI =
-    createToggleButton(controlsScroll, "Spawn Boss Notifier", spawnBossNotifier)
-
-local spawnIllahiToggleButton, updateSpawnIllahiNotifierUI =
-    createToggleButton(controlsScroll, "Spawn Illahi Notifier", _G.AxaHub.SpawnIllahiNotifier)
-
-local hpBossToggleButton, updateHpBossNotifierUI =
-    createToggleButton(controlsScroll, "HPBar Boss Notifier", hpBossNotifier)
-
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
 local autoSkill3Button, updateAutoSkill3UI = createToggleButton(controlsScroll, "Auto Skill 3", autoSkill3)
@@ -3181,7 +2307,7 @@ local autoSkill4Button, updateAutoSkill4UI = createToggleButton(controlsScroll, 
 local autoSkill5Button, updateAutoSkill5UI = createToggleButton(controlsScroll, "Auto Skill 5", autoSkill5)
 
 local skill1BaseInfoText = string.format(
-    "Skill 1 (Skill04) Cooldown server (perkiraan): %d detik (UI info).",
+    "Skill 1 (Skill02) Cooldown server (perkiraan): %d detik (UI info).",
     SKILL1_COOLDOWN
 )
 
@@ -3215,7 +2341,7 @@ skillInfo2.TextWrapped = true
 skillInfo2.Size = UDim2.new(1, 0, 0, 30)
 skillInfo2.Text = skill2BaseInfoText
 
-updateSkillCooldownUI = function()
+local function updateSkillCooldownUI()
     local now = os.clock()
 
     if skillInfo1 then
@@ -3279,14 +2405,15 @@ statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
         autoFarmV2TapInterval,
         spawnBossNotifier and "ON" or "OFF",
-        (_G.AxaHub and _G.AxaHub.SpawnIllahiNotifier) and "ON" or "OFF",
+        spawnIllahiNotifier and "ON" or "OFF",
+        spawnSecretNotifier and "ON" or "OFF",
         hpBossNotifier and "ON" or "OFF",
         autoSkill1 and "ON" or "OFF",
         autoSkill2 and "ON" or "OFF",
@@ -3296,6 +2423,9 @@ local function updateStatusLabel()
     )
 end
 
+updateStatusLabel()
+
+-- Spear Controls button events
 table.insert(connections, autoFarmButton.MouseButton1Click:Connect(function()
     autoFarm = not autoFarm
     updateAutoFarmUI(autoFarm)
@@ -3321,27 +2451,6 @@ table.insert(connections, v2ModeButton.MouseButton1Click:Connect(function()
     autoFarmV2Mode = (autoFarmV2Mode == "Center") and "Left" or "Center"
     updateV2ModeButton()
     updateStatusLabel()
-end))
-
-table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
-    spawnBossNotifier = not spawnBossNotifier
-    updateSpawnBossNotifierUI(spawnBossNotifier)
-    updateStatusLabel()
-    notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
-end))
-
-table.insert(connections, spawnIllahiToggleButton.MouseButton1Click:Connect(function()
-    _G.AxaHub.SpawnIllahiNotifier = not _G.AxaHub.SpawnIllahiNotifier
-    updateSpawnIllahiNotifierUI(_G.AxaHub.SpawnIllahiNotifier)
-    updateStatusLabel()
-    notify("Spear Fishing", "Spawn Illahi Notifier: " .. (_G.AxaHub.SpawnIllahiNotifier and "ON" or "OFF"), 2)
-end))
-
-table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
-    hpBossNotifier = not hpBossNotifier
-    updateHpBossNotifierUI(hpBossNotifier)
-    updateStatusLabel()
-    notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
 end))
 
 table.insert(connections, autoSkill1Button.MouseButton1Click:Connect(function()
@@ -3378,9 +2487,144 @@ table.insert(connections, sellButton.MouseButton1Click:Connect(function()
     sellAllFish()
 end))
 
-updateStatusLabel()
+------------------- UI: SPAWN CONTROLS CARD -------------------
+local spawnCard, _, _ = createCard(
+    bodyScroll,
+    "Spawn Controls",
+    "Pengaturan Notifier Spawn (Boss, HP Boss, Illahi, Secret) global + per ikan.",
+    2,
+    420
+)
 
-------------------- KEY G HOTKEY (TOGGLE AUTOFARM V2) -------------------
+local spawnScroll = Instance.new("ScrollingFrame")
+spawnScroll.Name = "SpawnScroll"
+spawnScroll.Parent = spawnCard
+spawnScroll.BackgroundTransparency = 1
+spawnScroll.BorderSizePixel = 0
+spawnScroll.Position = UDim2.new(0, 0, 0, 40)
+spawnScroll.Size = UDim2.new(1, 0, 1, -40)
+spawnScroll.ScrollBarThickness = 4
+spawnScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+spawnScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local spawnPadding = Instance.new("UIPadding")
+spawnPadding.Parent = spawnScroll
+spawnPadding.PaddingTop = UDim.new(0, 0)
+spawnPadding.PaddingBottom = UDim.new(0, 8)
+spawnPadding.PaddingLeft = UDim.new(0, 0)
+spawnPadding.PaddingRight = UDim.new(0, 0)
+
+local spawnLayout = Instance.new("UIListLayout")
+spawnLayout.Parent = spawnScroll
+spawnLayout.FillDirection = Enum.FillDirection.Vertical
+spawnLayout.SortOrder = Enum.SortOrder.LayoutOrder
+spawnLayout.Padding = UDim.new(0, 6)
+
+table.insert(connections, spawnLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    spawnScroll.CanvasSize = UDim2.new(0, 0, 0, spawnLayout.AbsoluteContentSize.Y + 8)
+end))
+
+-- Global notifier toggles
+local spawnBossToggleButton, updateSpawnBossNotifierUI =
+    createToggleButton(spawnScroll, "Spawn Boss Notifier", spawnBossNotifier)
+
+local hpBossToggleButton, updateHpBossNotifierUI =
+    createToggleButton(spawnScroll, "HPBar Boss Notifier", hpBossNotifier)
+
+local spawnIllahiToggleButton, updateSpawnIllahiNotifierUI =
+    createToggleButton(spawnScroll, "Spawn Illahi Notifier", spawnIllahiNotifier)
+
+local spawnSecretToggleButton, updateSpawnSecretNotifierUI =
+    createToggleButton(spawnScroll, "Spawn Secret Notifier", spawnSecretNotifier)
+
+table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
+    spawnBossNotifier = not spawnBossNotifier
+    updateSpawnBossNotifierUI(spawnBossNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
+    hpBossNotifier = not hpBossNotifier
+    updateHpBossNotifierUI(hpBossNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, spawnIllahiToggleButton.MouseButton1Click:Connect(function()
+    spawnIllahiNotifier = not spawnIllahiNotifier
+    updateSpawnIllahiNotifierUI(spawnIllahiNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "Spawn Illahi Notifier: " .. (spawnIllahiNotifier and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, spawnSecretToggleButton.MouseButton1Click:Connect(function()
+    spawnSecretNotifier = not spawnSecretNotifier
+    updateSpawnSecretNotifierUI(spawnSecretNotifier)
+    updateStatusLabel()
+    notify("Spear Fishing", "Spawn Secret Notifier: " .. (spawnSecretNotifier and "ON" or "OFF"), 2)
+end))
+
+-- Illahi per-ikan toggles
+local illahiLabel = Instance.new("TextLabel")
+illahiLabel.Name = "IllahiLabel"
+illahiLabel.Parent = spawnScroll
+illahiLabel.BackgroundTransparency = 1
+illahiLabel.Font = Enum.Font.GothamSemibold
+illahiLabel.TextSize = 12
+illahiLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+illahiLabel.TextXAlignment = Enum.TextXAlignment.Left
+illahiLabel.Size = UDim2.new(1, 0, 0, 18)
+illahiLabel.Text = "Illahi per Ikan (Nether Island):"
+
+for _, fishId in ipairs(ILLAHI_ORDER) do
+    local def = ILLAHI_FISH_DEFS[fishId]
+    local labelText = "Illahi " .. (def and def.name or fishId)
+    local state = illahiFishEnabled[fishId] ~= false
+
+    illahiFishEnabled[fishId] = state
+
+    local btn, upd = createToggleButton(spawnScroll, labelText, state)
+    table.insert(connections, btn.MouseButton1Click:Connect(function()
+        local newState = not illahiFishEnabled[fishId]
+        illahiFishEnabled[fishId] = newState
+        upd(newState)
+        updateStatusLabel()
+    end))
+end
+
+-- Secret per-ikan toggles
+local secretLabel = Instance.new("TextLabel")
+secretLabel.Name = "SecretLabel"
+secretLabel.Parent = spawnScroll
+secretLabel.BackgroundTransparency = 1
+secretLabel.Font = Enum.Font.GothamSemibold
+secretLabel.TextSize = 12
+secretLabel.TextColor3 = Color3.fromRGB(255, 220, 180)
+secretLabel.TextXAlignment = Enum.TextXAlignment.Left
+secretLabel.Size = UDim2.new(1, 0, 0, 18)
+secretLabel.Text = "Secret per Ikan (Nether Island):"
+
+for _, fishId in ipairs(SECRET_ORDER) do
+    local def = SECRET_FISH_DEFS[fishId]
+    local labelText = "Secret " .. (def and def.name or fishId)
+    local state = secretFishEnabled[fishId] == true
+
+    secretFishEnabled[fishId] = state
+
+    local btn, upd = createToggleButton(spawnScroll, labelText, state)
+    table.insert(connections, btn.MouseButton1Click:Connect(function()
+        local newState = not secretFishEnabled[fishId]
+        secretFishEnabled[fishId] = newState
+        upd(newState)
+        updateStatusLabel()
+    end))
+end
+
+------------------- UI: HARPOON SHOP CARD -------------------
+buildHarpoonShopCard(bodyScroll)
+
+------------------- HOTKEY G: TOGGLE AUTOFARM V2 -------------------
 local function onInputBegan(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -3395,16 +2639,11 @@ end
 
 table.insert(connections, UserInputService.InputBegan:Connect(onInputBegan))
 
-------------------- BUILD UI: DAILY REWARD + SHOP CARDS -------------------
-buildDailyRewardCard(bodyScroll)
-buildHarpoonShopCard(bodyScroll)
-buildBasketShopCard(bodyScroll)
-buildBaitShopCard(bodyScroll)
-
+------------------- INIT WATCHERS -------------------
 initToolsDataWatcher()
-initDailyDataWatcher()
 initWorldBossNotifier()
 initIllahiSpawnNotifier()
+initSecretSpawnNotifier()
 
 ------------------- BACKPACK / CHARACTER EVENT -------------------
 table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
@@ -3413,8 +2652,6 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
         if alive then
             ensureHarpoonEquipped()
             refreshHarpoonOwnership()
-            refreshBasketOwnership()
-            refreshDailyUI()
         end
     end)
 end))
@@ -3425,7 +2662,6 @@ table.insert(connections, LocalPlayer.ChildAdded:Connect(function(child)
         task.delay(0.5, function()
             if alive then
                 refreshHarpoonOwnership()
-                refreshBasketOwnership()
             end
         end)
     end
@@ -3435,14 +2671,12 @@ if backpack then
     table.insert(connections, backpack.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then
             refreshHarpoonOwnership()
-            refreshBasketOwnership()
         end
     end))
 
     table.insert(connections, backpack.ChildRemoved:Connect(function(child)
         if child:IsA("Tool") then
             refreshHarpoonOwnership()
-            refreshBasketOwnership()
         end
     end))
 end
@@ -3480,18 +2714,6 @@ task.spawn(function()
         else
             task.wait(0.2)
         end
-    end
-end)
-
-task.spawn(function()
-    while alive do
-        if autoDailyReward then
-            local idx = findNextClaimableDailyIndex()
-            if idx then
-                claimDailyReward(idx)
-            end
-        end
-        task.wait(5)
     end
 end)
 
@@ -3564,9 +2786,7 @@ end)
 
 task.spawn(function()
     while alive do
-        if updateSkillCooldownUI then
-            pcall(updateSkillCooldownUI)
-        end
+        pcall(updateSkillCooldownUI)
         task.wait(0.2)
     end
 end)
@@ -3577,7 +2797,6 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoFarm           = false
     autoEquip          = false
     autoFarmV2         = false
-    autoDailyReward    = false
     autoSkill1         = false
     autoSkill2         = false
     autoSkill3         = false
@@ -3585,9 +2804,10 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoSkill5         = false
     spawnBossNotifier  = false
     hpBossNotifier     = false
+    spawnIllahiNotifier  = false
+    spawnSecretNotifier = false
     bossRegionState    = {}
     hpRegionState      = {}
-    _G.AxaHub.SpawnIllahiNotifier = false
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
