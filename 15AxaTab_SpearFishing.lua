@@ -172,7 +172,7 @@ local ILLAHI_FISH_DEFS = {
     Fish401 = { name = "Nether Anglerfish",  sea = "Sea7" },
     Fish402 = { name = "Nether Manta Ray",   sea = "Sea6" },
     Fish403 = { name = "Nether SwordFish",   sea = "Sea6" },
-    Fish404 = { name = "Diamond Flying Fish", sea = "Sea6" },
+    Fish404 = { name = "Nether Flying Fish", sea = "Sea6" },
     Fish405 = { name = "Diamond Flying Fish", sea = "Sea6" },
 }
 
