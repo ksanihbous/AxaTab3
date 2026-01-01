@@ -10,6 +10,7 @@
 --    - Spawn Boss Notifier + HP Boss Notifier
 --    - Spawn Illahi Notifier (global + per ikan)
 --    - Spawn Secret Notifier (global + per ikan)
+--    - ESP Boss / Illahi / Secret + ESP per ikan
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -50,10 +51,15 @@ local autoFarmV2         = false      -- AutoFarm Fish V2 (tap)
 local autoFarmV2Mode     = "Left"     -- "Left" / "Center"
 
 -- Notifier
-local spawnBossNotifier  = true       -- Spawn Boss Notifier (global)
-local hpBossNotifier     = true       -- HP Boss HPBar Notifier (global)
+local spawnBossNotifier    = true     -- Spawn Boss Notifier (global)
+local hpBossNotifier       = true     -- HP Boss HPBar Notifier (global)
 local spawnIllahiNotifier  = true     -- Illahi Notifier (global)
-local spawnSecretNotifier = true      -- Secret Notifier (global)
+local spawnSecretNotifier  = true     -- Secret Notifier (global)
+
+-- ESP
+local espBoss              = true     -- ESP Boss global (default ON)
+local espIllahi            = false    -- ESP Illahi global (default OFF)
+local espSecret            = false    -- ESP Secret global (default OFF)
 
 -- Auto Skill
 local autoSkill1      = true          -- Skill02
@@ -195,7 +201,7 @@ local SECRET_SEA_SET = {
     Sea5 = true,
 }
 
--- Per ikan toggle
+-- Per ikan toggle notifier
 local illahiFishEnabled = {
     Fish400 = true,
     Fish401 = true,
@@ -214,6 +220,255 @@ local secretFishEnabled = {
     Fish508 = false,
     Fish510 = false,
 }
+
+-- Per ikan toggle ESP (default false semua)
+local espIllahiFishEnabled = {
+    Fish400 = false,
+    Fish401 = false,
+    Fish402 = false,
+    Fish403 = false,
+    Fish404 = false,
+    Fish405 = false,
+}
+
+local espSecretFishEnabled = {
+    Fish500 = false,
+    Fish501 = false,
+    Fish503 = false,
+    Fish504 = false,
+    Fish505 = false,
+    Fish508 = false,
+    Fish510 = false,
+}
+
+------------------- ESP DATA STRUCT -------------------
+-- target yang bisa di-ESP (Boss, Illahi, Secret)
+-- trackedFishEspTargets[part] = { fishId, fishType, displayName }
+local trackedFishEspTargets = {}
+
+-- ESP instance aktif
+-- fishEspMap[part] = { beam, attachment, billboard, label, displayName, fishType, fishId }
+local fishEspMap    = {}
+local hrpAttachment = nil
+
+------------------- ESP HELPER -------------------
+local function getHRP()
+    if not character then
+        return nil
+    end
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function ensureHRPAttachment()
+    local hrp = getHRP()
+    if not hrp then
+        hrpAttachment = nil
+        return nil
+    end
+
+    if hrpAttachment and hrpAttachment.Parent == hrp then
+        return hrpAttachment
+    end
+
+    local existing = hrp:FindFirstChild("AxaESP_HRP_Att")
+    if existing and existing:IsA("Attachment") then
+        hrpAttachment = existing
+    else
+        local att = Instance.new("Attachment")
+        att.Name = "AxaESP_HRP_Att"
+        att.Parent = hrp
+        hrpAttachment = att
+    end
+    return hrpAttachment
+end
+
+local function destroyFishEsp(part)
+    local data = fishEspMap[part]
+    if not data then
+        return
+    end
+
+    if data.beam then
+        pcall(function()
+            data.beam:Destroy()
+        end)
+    end
+
+    if data.attachment and data.attachment.Parent then
+        pcall(function()
+            data.attachment:Destroy()
+        end)
+    end
+
+    if data.billboard then
+        pcall(function()
+            data.billboard:Destroy()
+        end)
+    end
+
+    fishEspMap[part] = nil
+end
+
+local function createEspInstancesForPart(part, displayName, fishType, fishId)
+    local hrpAtt = ensureHRPAttachment()
+    if not hrpAtt then
+        return
+    end
+    if not part or not part:IsA("BasePart") then
+        return
+    end
+
+    if fishEspMap[part] then
+        return
+    end
+
+    local fishAttachment = part:FindFirstChild("AxaESP_Attachment")
+    if not fishAttachment or not fishAttachment:IsA("Attachment") then
+        fishAttachment = Instance.new("Attachment")
+        fishAttachment.Name = "AxaESP_Attachment"
+        fishAttachment.Parent = part
+    end
+
+    local beam = Instance.new("Beam")
+    beam.Name = "AxaESP_Beam"
+    beam.Attachment0 = hrpAtt
+    beam.Attachment1 = fishAttachment
+    beam.FaceCamera = true
+    beam.Width0 = 0.12
+    beam.Width1 = 0.12
+    beam.Segments = 10
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+    beam.LightEmission = 1
+    beam.LightInfluence = 0
+    beam.Transparency = NumberSequence.new(0)
+    beam.Parent = part
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "AxaESP_Billboard"
+    billboard.Size = UDim2.new(0, 160, 0, 24)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = part
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Text"
+    label.Parent = billboard
+    label.BackgroundTransparency = 0.25
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    label.BorderSizePixel = 0
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 12
+    label.TextColor3 = Color3.fromRGB(255, 255, 0)
+    label.TextStrokeTransparency = 0.5
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.TextWrapped = true
+    label.Text = displayName or "Fish"
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = label
+
+    fishEspMap[part] = {
+        beam        = beam,
+        attachment  = fishAttachment,
+        billboard   = billboard,
+        label       = label,
+        displayName = displayName or "Fish",
+        fishType    = fishType,
+        fishId      = fishId,
+    }
+end
+
+local function evaluateEspForPart(part)
+    local info = trackedFishEspTargets[part]
+    if not info or not part or part.Parent == nil then
+        destroyFishEsp(part)
+        trackedFishEspTargets[part] = nil
+        return
+    end
+
+    local should = false
+
+    if info.fishType == "Boss" then
+        should = espBoss
+    elseif info.fishType == "Illahi" then
+        if espIllahi and espIllahiFishEnabled[info.fishId] == true then
+            should = true
+        end
+    elseif info.fishType == "Secret" then
+        if espSecret and espSecretFishEnabled[info.fishId] == true then
+            should = true
+        end
+    end
+
+    if not should then
+        destroyFishEsp(part)
+        return
+    end
+
+    if not fishEspMap[part] then
+        createEspInstancesForPart(part, info.displayName, info.fishType, info.fishId)
+    end
+end
+
+local function refreshAllEsp()
+    for part, _ in pairs(fishEspMap) do
+        destroyFishEsp(part)
+    end
+    for part, _ in pairs(trackedFishEspTargets) do
+        evaluateEspForPart(part)
+    end
+end
+
+local function registerFishPartForEsp(part, fishId, fishType, displayName)
+    if not part or not part:IsA("BasePart") then
+        return
+    end
+
+    trackedFishEspTargets[part] = {
+        fishId      = fishId,
+        fishType    = fishType,
+        displayName = displayName or fishId or "Fish",
+    }
+
+    evaluateEspForPart(part)
+
+    local conn = part.AncestryChanged:Connect(function(_, parent)
+        if parent == nil then
+            trackedFishEspTargets[part] = nil
+            destroyFishEsp(part)
+        end
+    end)
+    table.insert(connections, conn)
+end
+
+local function updateEspTextDistances()
+    if not next(fishEspMap) then
+        return
+    end
+
+    local hrp = getHRP()
+    if not hrp then
+        return
+    end
+    local hrpPos = hrp.Position
+
+    for part, data in pairs(fishEspMap) do
+        if not part or part.Parent == nil then
+            destroyFishEsp(part)
+        else
+            local ok, dist = pcall(function()
+                return (part.Position - hrpPos).Magnitude
+            end)
+            if ok and data.label then
+                local nameText = data.displayName or "Fish"
+                local d = math.floor(dist or 0)
+                data.label.Text = string.format("%s | %d suds", nameText, d)
+            end
+        end
+    end
+end
 
 ------------------- TOOL / HARPOON DETECTION -------------------
 local function isHarpoonTool(tool)
@@ -321,7 +576,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.5"
+    title.Text = "Spear Fishing V3.5+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -333,7 +588,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Spawn Illahi + Spawn Secret Notifier."
+    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Illahi + Secret + ESP Fish."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -926,7 +1181,7 @@ local function buildHarpoonShopCard(parent)
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
-        3,
+        4,
         280
     )
 
@@ -1635,6 +1890,10 @@ local function attachHpWatcher(region)
         return
     end
 
+    -- register ESP Boss
+    local bossName = getBossNameForRegion(region)
+    registerFishPartForEsp(bossPart, bossPart.Name or "Boss", "Boss", bossName)
+
     local state = hpRegionState[region]
     if state and state.bossPart == bossPart and (state.conn or state.connCurHP or state.connHP or state.connHp) then
         return
@@ -1886,12 +2145,6 @@ local function initIllahiSpawnNotifier()
         end
 
         local function handleIllahiFish(region, fishPart)
-            if not alive then
-                return
-            end
-            if not spawnIllahiNotifier then
-                return
-            end
             if not fishPart or not fishPart.Name then
                 return
             end
@@ -1901,6 +2154,15 @@ local function initIllahiSpawnNotifier()
                 return
             end
 
+            -- register ESP target (selalu, walau notifier OFF)
+            registerFishPartForEsp(fishPart, fishPart.Name, "Illahi", def.name)
+
+            if not alive then
+                return
+            end
+            if not spawnIllahiNotifier then
+                return
+            end
             if illahiFishEnabled[fishPart.Name] == false then
                 return
             end
@@ -2049,12 +2311,6 @@ local function initSecretSpawnNotifier()
         end
 
         local function handleSecretFish(region, fishPart)
-            if not alive then
-                return
-            end
-            if not spawnSecretNotifier then
-                return
-            end
             if not fishPart or not fishPart.Name then
                 return
             end
@@ -2064,6 +2320,15 @@ local function initSecretSpawnNotifier()
                 return
             end
 
+            -- register ESP target (selalu, walau notifier OFF)
+            registerFishPartForEsp(fishPart, fishPart.Name, "Secret", def.name)
+
+            if not alive then
+                return
+            end
+            if not spawnSecretNotifier then
+                return
+            end
             if secretFishEnabled[fishPart.Name] ~= true then
                 return
             end
@@ -2400,12 +2665,12 @@ statusLabel.TextSize = 11
 statusLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
-statusLabel.Size = UDim2.new(1, 0, 0, 60)
+statusLabel.Size = UDim2.new(1, 0, 0, 70)
 statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, ESP Boss %s, ESP Illahi %s, ESP Secret %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
@@ -2415,6 +2680,9 @@ local function updateStatusLabel()
         spawnIllahiNotifier and "ON" or "OFF",
         spawnSecretNotifier and "ON" or "OFF",
         hpBossNotifier and "ON" or "OFF",
+        espBoss and "ON" or "OFF",
+        espIllahi and "ON" or "OFF",
+        espSecret and "ON" or "OFF",
         autoSkill1 and "ON" or "OFF",
         autoSkill2 and "ON" or "OFF",
         autoSkill3 and "ON" or "OFF",
@@ -2565,7 +2833,7 @@ table.insert(connections, spawnSecretToggleButton.MouseButton1Click:Connect(func
     notify("Spear Fishing", "Spawn Secret Notifier: " .. (spawnSecretNotifier and "ON" or "OFF"), 2)
 end))
 
--- Illahi per-ikan toggles
+-- Illahi per-ikan toggles (Notifier)
 local illahiLabel = Instance.new("TextLabel")
 illahiLabel.Name = "IllahiLabel"
 illahiLabel.Parent = spawnScroll
@@ -2575,11 +2843,11 @@ illahiLabel.TextSize = 12
 illahiLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
 illahiLabel.TextXAlignment = Enum.TextXAlignment.Left
 illahiLabel.Size = UDim2.new(1, 0, 0, 18)
-illahiLabel.Text = "Illahi per Ikan (Nether Island):"
+illahiLabel.Text = "Illahi Notifier per Ikan (Nether Island):"
 
 for _, fishId in ipairs(ILLAHI_ORDER) do
     local def = ILLAHI_FISH_DEFS[fishId]
-    local labelText = "Illahi " .. (def and def.name or fishId)
+    local labelText = "Notifier Illahi " .. (def and def.name or fishId)
     local state = illahiFishEnabled[fishId] ~= false
 
     illahiFishEnabled[fishId] = state
@@ -2589,11 +2857,10 @@ for _, fishId in ipairs(ILLAHI_ORDER) do
         local newState = not illahiFishEnabled[fishId]
         illahiFishEnabled[fishId] = newState
         upd(newState)
-        updateStatusLabel()
     end))
 end
 
--- Secret per-ikan toggles
+-- Secret per-ikan toggles (Notifier)
 local secretLabel = Instance.new("TextLabel")
 secretLabel.Name = "SecretLabel"
 secretLabel.Parent = spawnScroll
@@ -2603,11 +2870,11 @@ secretLabel.TextSize = 12
 secretLabel.TextColor3 = Color3.fromRGB(255, 220, 180)
 secretLabel.TextXAlignment = Enum.TextXAlignment.Left
 secretLabel.Size = UDim2.new(1, 0, 0, 18)
-secretLabel.Text = "Secret per Ikan (Nether Island):"
+secretLabel.Text = "Secret Notifier per Ikan (Nether Island):"
 
 for _, fishId in ipairs(SECRET_ORDER) do
     local def = SECRET_FISH_DEFS[fishId]
-    local labelText = "Secret " .. (def and def.name or fishId)
+    local labelText = "Notifier Secret " .. (def and def.name or fishId)
     local state = secretFishEnabled[fishId] == true
 
     secretFishEnabled[fishId] = state
@@ -2617,6 +2884,134 @@ for _, fishId in ipairs(SECRET_ORDER) do
         local newState = not secretFishEnabled[fishId]
         secretFishEnabled[fishId] = newState
         upd(newState)
+    end))
+end
+
+------------------- UI: ESP FISH CONTROLS CARD -------------------
+local espCard, _, _ = createCard(
+    bodyScroll,
+    "ESP Fish Controls",
+    "ESP antena kuning dari karakter ke Boss/Illahi/Secret + nama dan jarak (stud).",
+    3,
+    420
+)
+
+local espScroll = Instance.new("ScrollingFrame")
+espScroll.Name = "ESPScroll"
+espScroll.Parent = espCard
+espScroll.BackgroundTransparency = 1
+espScroll.BorderSizePixel = 0
+espScroll.Position = UDim2.new(0, 0, 0, 40)
+espScroll.Size = UDim2.new(1, 0, 1, -40)
+espScroll.ScrollBarThickness = 4
+espScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+espScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local espPadding = Instance.new("UIPadding")
+espPadding.Parent = espScroll
+espPadding.PaddingTop = UDim.new(0, 0)
+espPadding.PaddingBottom = UDim.new(0, 8)
+espPadding.PaddingLeft = UDim.new(0, 0)
+espPadding.PaddingRight = UDim.new(0, 0)
+
+local espLayout = Instance.new("UIListLayout")
+espLayout.Parent = espScroll
+espLayout.FillDirection = Enum.FillDirection.Vertical
+espLayout.SortOrder = Enum.SortOrder.LayoutOrder
+espLayout.Padding = UDim.new(0, 6)
+
+table.insert(connections, espLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    espScroll.CanvasSize = UDim2.new(0, 0, 0, espLayout.AbsoluteContentSize.Y + 8)
+end))
+
+-- Global ESP toggles
+local espBossButton, updateEspBossUI =
+    createToggleButton(espScroll, "ESP Boss", espBoss)
+
+local espIllahiButton, updateEspIllahiUI =
+    createToggleButton(espScroll, "ESP Illahi", espIllahi)
+
+local espSecretButton, updateEspSecretUI =
+    createToggleButton(espScroll, "ESP Secret", espSecret)
+
+table.insert(connections, espBossButton.MouseButton1Click:Connect(function()
+    espBoss = not espBoss
+    updateEspBossUI(espBoss)
+    refreshAllEsp()
+    updateStatusLabel()
+    notify("Spear Fishing", "ESP Boss: " .. (espBoss and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, espIllahiButton.MouseButton1Click:Connect(function()
+    espIllahi = not espIllahi
+    updateEspIllahiUI(espIllahi)
+    refreshAllEsp()
+    updateStatusLabel()
+    notify("Spear Fishing", "ESP Illahi: " .. (espIllahi and "ON" or "OFF"), 2)
+end))
+
+table.insert(connections, espSecretButton.MouseButton1Click:Connect(function()
+    espSecret = not espSecret
+    updateEspSecretUI(espSecret)
+    refreshAllEsp()
+    updateStatusLabel()
+    notify("Spear Fishing", "ESP Secret: " .. (espSecret and "ON" or "OFF"), 2)
+end))
+
+-- ESP Illahi per ikan
+local espIllahiLabel = Instance.new("TextLabel")
+espIllahiLabel.Name = "ESPIllahiLabel"
+espIllahiLabel.Parent = espScroll
+espIllahiLabel.BackgroundTransparency = 1
+espIllahiLabel.Font = Enum.Font.GothamSemibold
+espIllahiLabel.TextSize = 12
+espIllahiLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+espIllahiLabel.TextXAlignment = Enum.TextXAlignment.Left
+espIllahiLabel.Size = UDim2.new(1, 0, 0, 18)
+espIllahiLabel.Text = "ESP Illahi per Ikan (Nether Island):"
+
+for _, fishId in ipairs(ILLAHI_ORDER) do
+    local def = ILLAHI_FISH_DEFS[fishId]
+    local labelText = "ESP Illahi " .. (def and def.name or fishId)
+    local state = espIllahiFishEnabled[fishId] == true
+
+    espIllahiFishEnabled[fishId] = state
+
+    local btn, upd = createToggleButton(espScroll, labelText, state)
+    table.insert(connections, btn.MouseButton1Click:Connect(function()
+        local newState = not espIllahiFishEnabled[fishId]
+        espIllahiFishEnabled[fishId] = newState
+        upd(newState)
+        refreshAllEsp()
+        updateStatusLabel()
+    end))
+end
+
+-- ESP Secret per ikan
+local espSecretLabel = Instance.new("TextLabel")
+espSecretLabel.Name = "ESPSecretLabel"
+espSecretLabel.Parent = espScroll
+espSecretLabel.BackgroundTransparency = 1
+espSecretLabel.Font = Enum.Font.GothamSemibold
+espSecretLabel.TextSize = 12
+espSecretLabel.TextColor3 = Color3.fromRGB(255, 220, 180)
+espSecretLabel.TextXAlignment = Enum.TextXAlignment.Left
+espSecretLabel.Size = UDim2.new(1, 0, 0, 18)
+espSecretLabel.Text = "ESP Secret per Ikan (Nether Island):"
+
+for _, fishId in ipairs(SECRET_ORDER) do
+    local def = SECRET_FISH_DEFS[fishId]
+    local labelText = "ESP Secret " .. (def and def.name or fishId)
+    local state = espSecretFishEnabled[fishId] == true
+
+    espSecretFishEnabled[fishId] = state
+
+    local btn, upd = createToggleButton(espScroll, labelText, state)
+    table.insert(connections, btn.MouseButton1Click:Connect(function()
+        local newState = not espSecretFishEnabled[fishId]
+        espSecretFishEnabled[fishId] = newState
+        upd(newState)
+        refreshAllEsp()
         updateStatusLabel()
     end))
 end
@@ -2652,6 +3047,7 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
         if alive then
             ensureHarpoonEquipped()
             refreshHarpoonOwnership()
+            refreshAllEsp()
         end
     end)
 end))
@@ -2791,23 +3187,40 @@ task.spawn(function()
     end
 end)
 
+task.spawn(function()
+    while alive do
+        pcall(updateEspTextDistances)
+        task.wait(0.25)
+    end
+end)
+
 ------------------- TAB CLEANUP -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
-    alive              = false
-    autoFarm           = false
-    autoEquip          = false
-    autoFarmV2         = false
-    autoSkill1         = false
-    autoSkill2         = false
-    autoSkill3         = false
-    autoSkill4         = false
-    autoSkill5         = false
-    spawnBossNotifier  = false
-    hpBossNotifier     = false
-    spawnIllahiNotifier  = false
-    spawnSecretNotifier = false
-    bossRegionState    = {}
-    hpRegionState      = {}
+    alive                 = false
+    autoFarm              = false
+    autoEquip             = false
+    autoFarmV2            = false
+    autoSkill1            = false
+    autoSkill2            = false
+    autoSkill3            = false
+    autoSkill4            = false
+    autoSkill5            = false
+    spawnBossNotifier     = false
+    hpBossNotifier        = false
+    spawnIllahiNotifier   = false
+    spawnSecretNotifier   = false
+    espBoss               = false
+    espIllahi             = false
+    espSecret             = false
+    bossRegionState       = {}
+    hpRegionState         = {}
+    trackedFishEspTargets = {}
+
+    for part, _ in pairs(fishEspMap) do
+        destroyFishEsp(part)
+    end
+    fishEspMap    = {}
+    hrpAttachment = nil
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
