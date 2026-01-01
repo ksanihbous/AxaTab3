@@ -208,12 +208,12 @@ local SECRET_SEA_SET = {
 
 -- Per ikan toggle notifier
 local illahiFishEnabled = {
-    Fish400 = true,
-    Fish401 = true,
-    Fish402 = true,
-    Fish403 = true,
-    Fish404 = true,
-    Fish405 = true,
+    Fish400 = false,
+    Fish401 = false,
+    Fish402 = false,
+    Fish403 = false,
+    Fish404 = false,
+    Fish405 = false,
 }
 
 local secretFishEnabled = {
@@ -581,7 +581,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.6"
+    title.Text = "Spear Fishing V3.5"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
