@@ -11,6 +11,7 @@
 --    - Spawn Illahi Notifier (global + per ikan)
 --    - Spawn Secret Notifier (global + per ikan)
 --    - ESP Boss / Illahi / Secret + ESP per ikan
+--    - HPBar Controls (Boss HPBar UI map)
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -56,10 +57,15 @@ local hpBossNotifier       = true     -- HP Boss HPBar Notifier (global)
 local spawnIllahiNotifier  = true     -- Illahi Notifier (global)
 local spawnSecretNotifier  = true     -- Secret Notifier (global)
 
+-- HPBar Controls
+local hpBarSpeedEnabled   = true      -- HPBar Speed master (sinkron HPBar UI map)
+local hpBarInitialEnabled = true      -- Initial Progress master
+local hpBarManualMax      = nil       -- Manual Max HP (angka, misal 78e6 untuk 78M)
+
 -- ESP
 local espBoss              = true     -- ESP Boss global (default ON)
-local espIllahi            = true    -- ESP Illahi global (default OFF)
-local espSecret            = true    -- ESP Secret global (default OFF)
+local espIllahi            = true     -- ESP Illahi global (default OFF)
+local espSecret            = true     -- ESP Secret global (default OFF)
 
 -- Auto Skill
 local autoSkill1      = true          -- Skill02
@@ -475,6 +481,202 @@ local function updateEspTextDistances()
     end
 end
 
+------------------- HP BAR CONTROLS: STATE & HELPERS -------------------
+local hpBarPreviewTag        = nil
+local hpBarPreviewCountLabel = nil
+local bossBarGuiRef          = nil
+local bossBarLastScanTime    = 0
+local bossBarCurrentTween    = nil
+local lastBossHpCur          = nil
+local lastBossHpMax          = nil
+
+-- parse "78M", "10.5m", "25k", "1000000" jadi number
+local function parseNumberWithSuffix(str)
+    if not str then
+        return nil
+    end
+    local s = tostring(str)
+    s = s:gsub("%s+", "")
+    if s == "" then
+        return nil
+    end
+    s = s:lower()
+
+    local mult = 1
+    if s:find("k") then
+        mult = 1e3
+        s = s:gsub("k", "")
+    elseif s:find("m") then
+        mult = 1e6
+        s = s:gsub("m", "")
+    elseif s:find("b") then
+        mult = 1e9
+        s = s:gsub("b", "")
+    end
+
+    s = s:gsub(",", ".")
+    local num = tonumber(s)
+    if not num then
+        return nil
+    end
+    return num * mult
+end
+
+-- parse "cur/max", contoh "0/78M" atau hanya "78M" (otomatis jadi 0/78M)
+local function parseHpProgressInput(text)
+    if not text then
+        return nil, nil
+    end
+    local cleaned = text:gsub("%s+", "")
+    if cleaned == "" then
+        return nil, nil
+    end
+    cleaned = cleaned:gsub(",", ".")
+    cleaned = cleaned:lower()
+
+    local left, right = cleaned:match("([^/]+)/([^/]+)")
+    if left and right then
+        local cur = parseNumberWithSuffix(left)
+        local maxv = parseNumberWithSuffix(right)
+        if not cur or not maxv or maxv <= 0 then
+            return nil, nil
+        end
+        return cur, maxv
+    else
+        local maxv = parseNumberWithSuffix(cleaned)
+        if not maxv or maxv <= 0 then
+            return nil, nil
+        end
+        return 0, maxv
+    end
+end
+
+-- cari BossBar UI di PlayerGui (BossBar > HpBar > Tag + Count)
+local function ensureMapBossBar()
+    if bossBarGuiRef
+        and bossBarGuiRef.bossBar
+        and bossBarGuiRef.bossBar.Parent
+    then
+        return bossBarGuiRef
+    end
+
+    local now = os.clock()
+    if now - bossBarLastScanTime < 3 then
+        return bossBarGuiRef
+    end
+    bossBarLastScanTime = now
+
+    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not pg then
+        return nil
+    end
+
+    local found
+    for _, inst in ipairs(pg:GetDescendants()) do
+        if inst:IsA("Frame") and inst.Name == "BossBar" then
+            local vpf   = inst:FindFirstChild("VPF")
+            local hpBar = inst:FindFirstChild("HpBar")
+            if vpf and hpBar and hpBar:IsA("Frame") then
+                local tagFrame   = hpBar:FindFirstChild("Tag")
+                local countLabel = hpBar:FindFirstChild("Count")
+                if tagFrame and tagFrame:IsA("Frame")
+                    and countLabel and countLabel:IsA("TextLabel")
+                then
+                    found = {
+                        bossBar    = inst,
+                        vpf        = vpf,
+                        hpBar      = hpBar,
+                        tag        = tagFrame,
+                        countLabel = countLabel,
+                    }
+                    break
+                end
+            end
+        end
+    end
+
+    bossBarGuiRef = found
+    return bossBarGuiRef
+end
+
+-- update preview HPBar + (opsional) BossBar UI map
+local function updateBossHpUiVisual(curHp, totalHp, forceVisible)
+    curHp   = tonumber(curHp) or 0
+    totalHp = tonumber(totalHp) or 0
+    if curHp < 0 then curHp = 0 end
+    if totalHp < 0 then totalHp = 0 end
+
+    local ratio = 0
+    if totalHp > 0 then
+        ratio = math.clamp(curHp / totalHp, 0, 1)
+    end
+
+    local curText = tostring(curHp)
+    local maxText = tostring(totalHp)
+    if FormatUtil then
+        local ok1, res1 = pcall(function()
+            return FormatUtil:DesignNumberShort(curHp)
+        end)
+        if ok1 and res1 then
+            curText = res1
+        end
+
+        local ok2, res2 = pcall(function()
+            return FormatUtil:DesignNumberShort(totalHp)
+        end)
+        if ok2 and res2 then
+            maxText = res2
+        end
+    end
+
+    -- Preview di card HPBar Controls
+    if hpBarPreviewTag and hpBarPreviewCountLabel then
+        hpBarPreviewTag.Size = UDim2.new(ratio, 0, 1, 0)
+        hpBarPreviewCountLabel.Text = curText .. " / " .. maxText
+    end
+
+    -- Master off: tidak sentuh BossBar UI map
+    if not hpBarSpeedEnabled then
+        return
+    end
+
+    local refs = ensureMapBossBar()
+    if not refs then
+        return
+    end
+
+    local visible
+    if forceVisible ~= nil then
+        visible = forceVisible
+    else
+        visible = (totalHp > 0 and curHp > 0)
+    end
+
+    refs.bossBar.Visible = visible
+    refs.hpBar.Visible   = visible
+
+    -- Tween kecil supaya bar gerak halus
+    local targetSize = UDim2.new(ratio, 0, 1, 0)
+
+    if bossBarCurrentTween then
+        pcall(function()
+            bossBarCurrentTween:Cancel()
+        end)
+        bossBarCurrentTween = nil
+    end
+
+    if TweenService and visible then
+        local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(refs.tag, tweenInfo, { Size = targetSize })
+        bossBarCurrentTween = tween
+        tween:Play()
+    else
+        refs.tag.Size = targetSize
+    end
+
+    refs.countLabel.Text = curText .. " / " .. maxText
+end
+
 ------------------- TOOL / HARPOON DETECTION -------------------
 local function isHarpoonTool(tool)
     if not tool or not tool:IsA("Tool") then return false end
@@ -593,7 +795,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Illahi + Secret + ESP Fish."
+    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Illahi + Secret + ESP Fish + HPBar Controls."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1077,7 +1279,7 @@ local function fireSkill5()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill03"
+            ["ID"] = "Skill09"
         }
     }
 
@@ -1087,7 +1289,7 @@ local function fireSkill5()
     if ok then
         skill5LastFireTime = os.clock()
     else
-        warn("[SpearFishing] Auto Skill03 gagal:", err)
+        warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
 end
 
@@ -1572,6 +1774,9 @@ local function sendHpBossProgress(region, bossPart)
 
     if totalHp <= 0 and curHp <= 0 then
         detachHpWatcher(region)
+        lastBossHpCur = 0
+        lastBossHpMax = 0
+        updateBossHpUiVisual(0, 0, false)
         return
     end
 
@@ -1589,6 +1794,23 @@ local function sendHpBossProgress(region, bossPart)
     if not changed then
         return
     end
+
+    -- Hitung display HPBar (mengikuti Initial Progress / manual Max jika diaktifkan)
+    local displayCur = curHp
+    local displayMax = totalHp
+    if hpBarInitialEnabled and hpBarManualMax and hpBarManualMax > 0 then
+        displayMax = hpBarManualMax
+        if totalHp > 0 then
+            local ratioSim = math.clamp(curHp / totalHp, 0, 1)
+            displayCur = math.floor(ratioSim * hpBarManualMax + 0.5)
+        else
+            displayCur = 0
+        end
+    end
+
+    lastBossHpCur = displayCur
+    lastBossHpMax = displayMax
+    updateBossHpUiVisual(displayCur, displayMax, curHp > 0)
 
     local dropRatio = 0
     if totalHp > 0 and lastHp ~= nil and lastHp > 0 then
@@ -2284,7 +2506,7 @@ local function buildHarpoonShopCard(parent)
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
-        4,
+        5,
         280
     )
 
@@ -2501,7 +2723,7 @@ local function updateStatusLabel()
     end
 
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, ESP Boss %s, ESP Illahi %s, ESP Secret %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, ESP Boss %s, ESP Illahi %s, ESP Secret %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s, HPBarSpeed %s, InitialProgress %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
@@ -2518,11 +2740,13 @@ local function updateStatusLabel()
         autoSkill2 and "ON" or "OFF",
         autoSkill3 and "ON" or "OFF",
         autoSkill4 and "ON" or "OFF",
-        autoSkill5 and "ON" or "OFF"
+        autoSkill5 and "ON" or "OFF",
+        hpBarSpeedEnabled and "ON" or "OFF",
+        hpBarInitialEnabled and "ON" or "OFF"
     )
 end
 
-------------------- UI BUILDERS (SPEAR / SPAWN / ESP) -------------------
+------------------- UI BUILDERS (SPEAR / SPAWN / HPBAR / ESP) -------------------
 local function buildSpearControlsCard(bodyScroll)
     local controlCard = createCard(
         bodyScroll,
@@ -2905,12 +3129,189 @@ local function buildSpawnControlsCard(bodyScroll)
     end
 end
 
+local function buildHpBarControlsCard(bodyScroll)
+    local card = createCard(
+        bodyScroll,
+        "HPBar Controls",
+        "Kontrol Boss HPBar UI map + preview (format input: cur/max, contoh 0/78M).",
+        3,
+        200
+    )
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "HPBarScroll"
+    scroll.Parent = card
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.Position = UDim2.new(0, 0, 0, 40)
+    scroll.Size = UDim2.new(1, 0, 1, -40)
+    scroll.ScrollBarThickness = 4
+    scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    local padding = Instance.new("UIPadding")
+    padding.Parent = scroll
+    padding.PaddingTop = UDim.new(0, 0)
+    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 0)
+    padding.PaddingRight = UDim.new(0, 0)
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 6)
+
+    table.insert(connections, layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
+    end))
+
+    local hpSpeedButton =
+        select(1, createToggleButton(scroll, "HPBar Speed", hpBarSpeedEnabled))
+
+    local initToggleButton =
+        select(1, createToggleButton(scroll, "Initial Progress", hpBarInitialEnabled))
+
+    local initFrame = Instance.new("Frame")
+    initFrame.Name = "InitProgressFrame"
+    initFrame.Parent = scroll
+    initFrame.BackgroundTransparency = 1
+    initFrame.BorderSizePixel = 0
+    initFrame.Size = UDim2.new(1, 0, 0, 28)
+
+    local initLabel = Instance.new("TextLabel")
+    initLabel.Name = "InitLabel"
+    initLabel.Parent = initFrame
+    initLabel.BackgroundTransparency = 1
+    initLabel.Font = Enum.Font.Gotham
+    initLabel.TextSize = 11
+    initLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
+    initLabel.TextXAlignment = Enum.TextXAlignment.Left
+    initLabel.Text = "Initial Progress (cur/max, contoh 0/78M):"
+    initLabel.Position = UDim2.new(0, 0, 0, 0)
+    initLabel.Size = UDim2.new(0.6, 0, 1, 0)
+
+    local initBox = Instance.new("TextBox")
+    initBox.Name = "InitProgressBox"
+    initBox.Parent = initFrame
+    initBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    initBox.BorderSizePixel = 0
+    initBox.Font = Enum.Font.GothamSemibold
+    initBox.TextSize = 11
+    initBox.TextColor3 = Color3.fromRGB(230, 230, 230)
+    initBox.ClearTextOnFocus = false
+    initBox.TextXAlignment = Enum.TextXAlignment.Center
+    initBox.Position = UDim2.new(0.62, 0, 0, 0)
+    initBox.Size = UDim2.new(0.38, 0, 1, 0)
+    initBox.Text = "0/78M"
+
+    local initCorner = Instance.new("UICorner")
+    initCorner.CornerRadius = UDim.new(0, 6)
+    initCorner.Parent = initBox
+
+    local previewFrame = Instance.new("Frame")
+    previewFrame.Name = "HpPreview"
+    previewFrame.Parent = scroll
+    previewFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    previewFrame.BorderSizePixel = 0
+    previewFrame.Size = UDim2.new(1, 0, 0, 26)
+
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 6)
+    previewCorner.Parent = previewFrame
+
+    local previewTag = Instance.new("Frame")
+    previewTag.Name = "Tag"
+    previewTag.Parent = previewFrame
+    previewTag.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    previewTag.BorderSizePixel = 0
+    previewTag.Size = UDim2.new(0, 0, 1, 0)
+
+    local previewCount = Instance.new("TextLabel")
+    previewCount.Name = "Count"
+    previewCount.Parent = previewFrame
+    previewCount.BackgroundTransparency = 1
+    previewCount.Font = Enum.Font.GothamSemibold
+    previewCount.TextSize = 11
+    previewCount.TextColor3 = Color3.fromRGB(240, 240, 240)
+    previewCount.TextXAlignment = Enum.TextXAlignment.Center
+    previewCount.Size = UDim2.new(1, -4, 1, 0)
+    previewCount.Position = UDim2.new(0, 2, 0, 0)
+    previewCount.Text = "0 / 0"
+
+    hpBarPreviewTag        = previewTag
+    hpBarPreviewCountLabel = previewCount
+
+    local function applyInitProgress()
+        local text = initBox.Text or ""
+        local cur, maxv = parseHpProgressInput(text)
+        if not cur or not maxv then
+            notify("Spear Fishing", "Format Initial Progress tidak valid. Contoh: 0/78M", 3)
+            return
+        end
+        hpBarManualMax = maxv
+        lastBossHpCur  = cur
+        lastBossHpMax  = maxv
+        updateBossHpUiVisual(cur, maxv, cur > 0)
+        updateStatusLabel()
+    end
+
+    -- default: pakai 0/78M sebagai contoh
+    applyInitProgress()
+
+    table.insert(connections, initBox.FocusLost:Connect(function()
+        applyInitProgress()
+    end))
+
+    table.insert(connections, hpSpeedButton.MouseButton1Click:Connect(function()
+        hpBarSpeedEnabled = not hpBarSpeedEnabled
+        setToggleButtonState(hpSpeedButton, "HPBar Speed", hpBarSpeedEnabled)
+        updateStatusLabel()
+
+        if hpBarSpeedEnabled then
+            if lastBossHpMax and lastBossHpMax > 0 then
+                updateBossHpUiVisual(lastBossHpCur or 0, lastBossHpMax, (lastBossHpCur or 0) > 0)
+            elseif hpBarManualMax and hpBarManualMax > 0 then
+                updateBossHpUiVisual(0, hpBarManualMax, false)
+            end
+        else
+            -- matikan BossBar map, preview tetap jalan
+            updateBossHpUiVisual(lastBossHpCur or 0, lastBossHpMax or (hpBarManualMax or 0), false)
+        end
+
+        notify("Spear Fishing", "HPBar Speed: " .. (hpBarSpeedEnabled and "ON" or "OFF"), 2)
+    end))
+
+    table.insert(connections, initToggleButton.MouseButton1Click:Connect(function()
+        hpBarInitialEnabled = not hpBarInitialEnabled
+        setToggleButtonState(initToggleButton, "Initial Progress", hpBarInitialEnabled)
+        updateStatusLabel()
+
+        if hpBarInitialEnabled then
+            -- aktifkan kembali mapping ke manual Max
+            if hpBarManualMax and hpBarManualMax > 0 then
+                -- paksa refresh dari nilai terakhir
+                local cur = lastBossHpCur or 0
+                local maxv = lastBossHpMax or hpBarManualMax
+                updateBossHpUiVisual(cur, maxv, cur > 0)
+            end
+        else
+            -- jika dimatikan, pakai nilai asli terakhir dari boss jika ada
+            if lastBossHpCur and lastBossHpMax and lastBossHpMax > 0 then
+                updateBossHpUiVisual(lastBossHpCur, lastBossHpMax, lastBossHpCur > 0)
+            end
+        end
+
+        notify("Spear Fishing", "Initial Progress: " .. (hpBarInitialEnabled and "ON" or "OFF"), 2)
+    end))
+end
+
 local function buildEspCard(bodyScroll)
     local espCard = createCard(
         bodyScroll,
         "ESP Fish Controls",
         "ESP antena kuning dari karakter ke Boss/Illahi/Secret + nama dan jarak (stud).",
-        3,
+        4,
         420
     )
 
@@ -3043,6 +3444,7 @@ local function buildAllUI()
     local _, bodyScroll = createMainLayout()
     buildSpearControlsCard(bodyScroll)
     buildSpawnControlsCard(bodyScroll)
+    buildHpBarControlsCard(bodyScroll)
     buildEspCard(bodyScroll)
     buildHarpoonShopCard(bodyScroll)
 end
@@ -3244,9 +3646,19 @@ _G.AxaHub.TabCleanup[tabId] = function()
     espBoss               = false
     espIllahi             = false
     espSecret             = false
+    hpBarSpeedEnabled     = false
+    hpBarInitialEnabled   = false
+    hpBarManualMax        = nil
     bossRegionState       = {}
     hpRegionState         = {}
     trackedFishEspTargets = {}
+    lastBossHpCur         = nil
+    lastBossHpMax         = nil
+    bossBarGuiRef         = nil
+    bossBarLastScanTime   = 0
+    bossBarCurrentTween   = nil
+    hpBarPreviewTag       = nil
+    hpBarPreviewCountLabel = nil
 
     for part, _ in pairs(fishEspMap) do
         destroyFishEsp(part)
