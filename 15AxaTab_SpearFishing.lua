@@ -1,6 +1,6 @@
 --==========================================================
 --  15AxaTab_SpearFishing.lua
---  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill + Spawn Boss Notifier)"
+--  TAB 15: "Spear Fishing PRO++ (AutoFarm + Harpoon/Basket/Bait Shop + Auto Daily Reward + Auto Skill + Spawn Boss Notifier + HP Boss Notifier)"
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -38,6 +38,7 @@ local autoEquip          = false      -- AutoEquip Harpoon: default OFF
 local autoFarmV2         = false      -- AutoFarm Fish V2 (tap trackpad): default OFF
 local autoFarmV2Mode     = "Left"     -- "Left" / "Center"
 local spawnBossNotifier  = true       -- Spawn Boss Notifier: default ON
+local hpBossNotifier     = true       -- HPBar Boss Notifier: default ON
 
 -- interval click AutoFarm V2 yang bisa diatur lewat UI (detik)
 local autoFarmV2TapInterval = 0.03    -- default cepat
@@ -279,7 +280,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.3"
+    title.Text = "Spear Fishing V3.4"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -291,7 +292,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier"
+    subtitle.Text = "AutoFarm Spear + AutoEquip + Auto Skill 1 ~ 5 + Spawn Notifier + HP Boss Notifier"
 
     -- Body scroll (vertical)
     local bodyScroll = Instance.new("ScrollingFrame")
@@ -1680,11 +1681,14 @@ local function buildBaitShopCard(parent)
     return card
 end
 
-------------------- SPAWN BOSS NOTIFIER: DISCORD EMBED -------------------
+------------------- SPAWN BOSS / HP BOSS NOTIFIER: DISCORD EMBED -------------------
 local SPAWN_BOSS_WEBHOOK_URL   = "https://discord.com/api/webhooks/1435079884073341050/vEy2YQrpQQcN7pMs7isWqPtylN_AyJbzCAo_xDqM7enRacbIBp43SG1IR_hH-3j4zrfW"
 local SPAWN_BOSS_BOT_USERNAME  = "Spawn Boss Notifier"
 local SPAWN_BOSS_BOT_AVATAR    = "https://mylogo.edgeone.app/Logo%20Ax%20(NO%20BG).png"
 local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
+
+local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456139721053966370/Z1Zhp9hh2fDGUB5DRAkb02LkO93-LZp5kjA3Dc_CZdlP6SKm0vvfFrO1VEMLXM7TaR7G"
+local HP_BOSS_BOT_USERNAME     = "HP Boss Notifier"
 
 -- Mapping boss ID (part / config) ke nama boss friendly
 local BOSS_ID_NAME_MAP = {
@@ -1696,6 +1700,7 @@ local BOSS_ID_NAME_MAP = {
 local NEAR_REMAIN_THRESHOLD = 240  -- detik (3–4 menit)
 
 local bossRegionState        = {}  -- [region Instance] -> {sentStart, sentNear, sentSpawn}
+local hpRegionState          = {}  -- [region Instance] -> {bossPart, conn, lastHp, lastSendTime}
 local spawnBossRequestFunc   = nil
 
 local function getSpawnBossRequestFunc()
@@ -1753,12 +1758,58 @@ local function sendSpawnBossWebhookEmbed(embed)
             warn("[SpearFishing] SpawnBoss webhook request failed:", resReq)
         end
     else
-        -- Fallback HttpService (bisa gagal ke Discord, tapi tetap dicoba)
+        -- Fallback HttpService
         local okPost, errPost = pcall(function()
             HttpService:PostAsync(SPAWN_BOSS_WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
         end)
         if not okPost then
             warn("[SpearFishing] SpawnBoss HttpService PostAsync failed:", errPost)
+        end
+    end
+end
+
+local function sendHpBossWebhookEmbed(embed)
+    if not HP_BOSS_WEBHOOK_URL or HP_BOSS_WEBHOOK_URL == "" then
+        return
+    end
+
+    local payload = {
+        username   = HP_BOSS_BOT_USERNAME,
+        avatar_url = SPAWN_BOSS_BOT_AVATAR,
+        content    = DEFAULT_OWNER_DISCORD,
+        embeds     = { embed },
+    }
+
+    local encoded
+    local okEncode, resEncode = pcall(function()
+        return HttpService:JSONEncode(payload)
+    end)
+    if okEncode then
+        encoded = resEncode
+    else
+        warn("[SpearFishing] HPBoss JSONEncode failed:", resEncode)
+        return
+    end
+
+    local reqFunc = getSpawnBossRequestFunc()
+    if reqFunc then
+        local okReq, resReq = pcall(reqFunc, {
+            Url     = HP_BOSS_WEBHOOK_URL,
+            Method  = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+            },
+            Body    = encoded,
+        })
+        if not okReq then
+            warn("[SpearFishing] HPBoss webhook request failed:", resReq)
+        end
+    else
+        local okPost, errPost = pcall(function()
+            HttpService:PostAsync(HP_BOSS_WEBHOOK_URL, encoded, Enum.HttpContentType.ApplicationJson, false)
+        end)
+        if not okPost then
+            warn("[SpearFishing] HPBoss HttpService PostAsync failed:", errPost)
         end
     end
 end
@@ -1866,7 +1917,7 @@ local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
         stageText = "Timer mulai"
         colorInt  = 0x00BFFF
     elseif stageKey == "near" then
-        stageText = "Sisa waktu 4-5 menit"
+        stageText = "Sisa waktu 3-4 menit"
         colorInt  = 0xFFA500
     elseif stageKey == "spawn" then
         stageText = "Boss Spawned"
@@ -1937,6 +1988,83 @@ local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
     return embed
 end
 
+local function buildHpBossEmbed(region, bossName, curHpText, maxHpText, percentText)
+    bossName    = bossName or "Unknown Boss"
+    curHpText   = curHpText or "0"
+    maxHpText   = maxHpText or "0"
+    percentText = percentText or "0%"
+
+    local regionName = getRegionNameForBoss(region)
+
+    local displayName = LocalPlayer.DisplayName or LocalPlayer.Name or "Player"
+    local username    = LocalPlayer.Name or "Player"
+    local userId      = LocalPlayer.UserId or 0
+    local playerValue = string.format("%s (@%s) [%s]", tostring(displayName), tostring(username), tostring(userId))
+
+    local serverId = game.JobId
+    if not serverId or serverId == "" then
+        serverId = "N/A"
+    end
+
+    local description = string.format(
+        "%s\nHP %s: %s / %s (%s)",
+        DEFAULT_OWNER_DISCORD,
+        bossName,
+        curHpText,
+        maxHpText,
+        percentText
+    )
+
+    local embed = {
+        title       = "HP Boss",
+        description = description,
+        color       = 0x00FF00,
+        fields      = {
+            {
+                name   = "Boss",
+                value  = bossName,
+                inline = true,
+            },
+            {
+                name   = "HP",
+                value  = curHpText .. " / " .. maxHpText,
+                inline = true,
+            },
+            {
+                name   = "HP Percent",
+                value  = percentText,
+                inline = true,
+            },
+            {
+                name   = "Region",
+                value  = regionName,
+                inline = true,
+            },
+            {
+                name   = "Name Map",
+                value  = GAME_NAME,
+                inline = false,
+            },
+            {
+                name   = "Player",
+                value  = playerValue,
+                inline = false,
+            },
+            {
+                name   = "Server ID",
+                value  = serverId,
+                inline = false,
+            },
+        },
+        footer = {
+            text = "Spear Fishing PRO+ | HP Boss Notifier",
+        },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+    }
+
+    return embed
+end
+
 local function sendSpawnBossStage(region, stageKey, remainSeconds)
     if not alive then
         return
@@ -1990,15 +2118,7 @@ local function updateWorldBossRegion(region)
         end)
     end
 
-    -- Stage: sisa 2-3 menit
-    --if remain > 0 and remain <= NEAR_REMAIN_THRESHOLD and state.sentStart and not state.sentNear then
-        --state.sentNear = true
-        --task.spawn(function()
-            --sendSpawnBossStage(region, "near", remain)
-        --end)
-    --end
-
-    -- Stage: sisa 5-6 menit
+    -- Stage: sisa 5-6 menit (di script ini 3-4 menit, sesuai NEAR_REMAIN_THRESHOLD = 240, 180~240)
     if remain > 0
         and remain <= NEAR_REMAIN_THRESHOLD  -- <= 240 detik (maks 4 menit)
         and remain >= 180                    -- >= 180 detik (min 3 menit)
@@ -2020,6 +2140,207 @@ local function updateWorldBossRegion(region)
     end
 end
 
+------------------- HP BOSS NOTIFIER (HP BAR PROGRESS) -------------------
+local HP_SEND_MIN_INTERVAL = 1.5      -- minimal jeda antar webhook
+local HP_MIN_DELTA_RATIO   = 0.005    -- minimal perubahan 0.5% HP baru kirim (kecuali mati)
+
+local function getBossPartInRegion(region)
+    if not region then
+        return nil
+    end
+
+    local okDesc, descendants = pcall(function()
+        return region:GetDescendants()
+    end)
+    if not okDesc or not descendants then
+        return nil
+    end
+
+    -- Prioritas: FishUtil:isFish
+    if FishUtil then
+        for _, inst in ipairs(descendants) do
+            if inst:IsA("BasePart") then
+                local isFish = false
+                local okFish, resFish = pcall(function()
+                    return FishUtil:isFish(inst)
+                end)
+                if okFish and resFish then
+                    isFish = true
+                end
+
+                if isFish then
+                    local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("HP")
+                    if hpAttr ~= nil then
+                        return inst
+                    end
+                end
+            end
+        end
+    end
+
+    -- Fallback: cari BasePart dengan atribut HP/CurHP
+    for _, inst in ipairs(descendants) do
+        if inst:IsA("BasePart") then
+            local hpAttr = inst:GetAttribute("CurHP") or inst:GetAttribute("HP")
+            if hpAttr ~= nil then
+                return inst
+            end
+        end
+    end
+
+    return nil
+end
+
+local function detachHpWatcher(region)
+    local state = hpRegionState[region]
+    if not state then
+        return
+    end
+
+    if state.conn and state.conn.Disconnect then
+        pcall(function()
+            state.conn:Disconnect()
+        end)
+    end
+
+    hpRegionState[region] = nil
+end
+
+local function sendHpBossProgress(region, bossPart)
+    if not alive then
+        return
+    end
+
+    local state = hpRegionState[region]
+    if not state or state.bossPart ~= bossPart then
+        return
+    end
+
+    local totalHp = tonumber(bossPart:GetAttribute("HP") or bossPart:GetAttribute("Hp")) or 0
+    local curHp   = tonumber(bossPart:GetAttribute("CurHP") or bossPart:GetAttribute("CurHp")) or 0
+
+    if totalHp <= 0 then
+        totalHp = curHp
+    end
+
+    if totalHp <= 0 and curHp <= 0 then
+        detachHpWatcher(region)
+        return
+    end
+
+    local now      = os.clock()
+    local lastHp   = state.lastHp or totalHp
+    local lastSend = state.lastSendTime or 0
+
+    local changed  = (curHp ~= lastHp)
+    if not changed then
+        return
+    end
+
+    local dropRatio = 0
+    if totalHp > 0 then
+        dropRatio = math.abs(curHp - lastHp) / totalHp
+    end
+
+    if not hpBossNotifier then
+        state.lastHp = curHp
+        -- tidak kirim webhook ketika toggle OFF
+        return
+    end
+
+    local mustSend = false
+
+    if curHp <= 0 and lastHp > 0 then
+        mustSend = true
+    elseif (now - lastSend) >= HP_SEND_MIN_INTERVAL and dropRatio >= HP_MIN_DELTA_RATIO then
+        mustSend = true
+    elseif (now - lastSend) >= 5 then
+        -- fallback: minimal tiap 5 detik tetap update supaya terlihat progres
+        mustSend = true
+    end
+
+    state.lastHp = curHp
+    if not mustSend then
+        return
+    end
+    state.lastSendTime = now
+
+    local curText   = tostring(curHp)
+    local maxText   = tostring(totalHp)
+    if FormatUtil then
+        local ok1, res1 = pcall(function()
+            return FormatUtil:DesignNumberShort(curHp)
+        end)
+        if ok1 and res1 then
+            curText = res1
+        end
+
+        local ok2, res2 = pcall(function()
+            return FormatUtil:DesignNumberShort(totalHp)
+        end)
+        if ok2 and res2 then
+            maxText = res2
+        end
+    end
+
+    local percentText = "N/A"
+    if totalHp > 0 then
+        local percent = math.max(0, math.min(1, curHp / totalHp)) * 100
+        percentText = string.format("%.2f%%", percent)
+    end
+
+    local bossName = getBossNameForRegion(region)
+    local embed    = buildHpBossEmbed(region, bossName, curText, maxText, percentText)
+    sendHpBossWebhookEmbed(embed)
+
+    if curHp <= 0 then
+        detachHpWatcher(region)
+    end
+end
+
+local function attachHpWatcher(region)
+    if not region then
+        return
+    end
+
+    local hasBoss = region:GetAttribute("HasBoss")
+    if not hasBoss then
+        detachHpWatcher(region)
+        return
+    end
+
+    local bossPart = getBossPartInRegion(region)
+    if not bossPart then
+        return
+    end
+
+    local state = hpRegionState[region]
+    if state and state.bossPart == bossPart and state.conn then
+        return
+    end
+
+    detachHpWatcher(region)
+
+    state = {
+        bossPart     = bossPart,
+        lastHp       = tonumber(bossPart:GetAttribute("CurHP") or bossPart:GetAttribute("CurHp") or bossPart:GetAttribute("HP") or bossPart:GetAttribute("Hp")) or 0,
+        lastSendTime = 0,
+        conn         = nil,
+    }
+    hpRegionState[region] = state
+
+    local conn = bossPart:GetAttributeChangedSignal("CurHP"):Connect(function()
+        if not alive then return end
+        sendHpBossProgress(region, bossPart)
+    end)
+    state.conn = conn
+    table.insert(connections, conn)
+
+    task.spawn(function()
+        sendHpBossProgress(region, bossPart)
+    end)
+end
+
 local function registerWorldBossRegion(region)
     if not region then
         return
@@ -2028,11 +2349,18 @@ local function registerWorldBossRegion(region)
     -- initial update
     task.spawn(function()
         updateWorldBossRegion(region)
+        attachHpWatcher(region)
     end)
 
     local c1 = region:GetAttributeChangedSignal("HasBoss"):Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
+        local hasBoss = region:GetAttribute("HasBoss")
+        if hasBoss then
+            attachHpWatcher(region)
+        else
+            detachHpWatcher(region)
+        end
     end)
     table.insert(connections, c1)
 
@@ -2051,6 +2379,7 @@ local function registerWorldBossRegion(region)
     local c4 = region.ChildAdded:Connect(function()
         if not alive then return end
         updateWorldBossRegion(region)
+        attachHpWatcher(region)
     end)
     table.insert(connections, c4)
 end
@@ -2074,7 +2403,7 @@ local function initWorldBossNotifier()
         end
 
         if not worldBossFolder then
-            warn("[SpearFishing] WorldBoss folder tidak ditemukan, Spawn Boss Notifier idle.")
+            warn("[SpearFishing] WorldBoss folder tidak ditemukan, Spawn/HP Boss Notifier idle.")
             return
         end
 
@@ -2537,7 +2866,7 @@ local header, bodyScroll = createMainLayout()
 local controlCard, _, _ = createCard(
     bodyScroll,
     "Spear Controls",
-    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + Sell All + Auto Skill 1 ~ 5.",
+    "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Spawn Boss Notifier + HP Boss Notifier + Sell All + Auto Skill 1 ~ 5.",
     1,
     260 -- tinggi cukup, isi di-scroll
 )
@@ -2664,6 +2993,10 @@ end
 local spawnBossToggleButton, updateSpawnBossNotifierUI =
     createToggleButton(controlsScroll, "Spawn Boss Notifier", spawnBossNotifier)
 
+-- Toggle HPBar Boss Notifier
+local hpBossToggleButton, updateHpBossNotifierUI =
+    createToggleButton(controlsScroll, "HPBar Boss Notifier", hpBossNotifier)
+
 -- Toggle Auto Skill 1 ~ 5 (terpisah)
 local autoSkill1Button, updateAutoSkill1UI = createToggleButton(controlsScroll, "Auto Skill 1", autoSkill1)
 local autoSkill2Button, updateAutoSkill2UI = createToggleButton(controlsScroll, "Auto Skill 2", autoSkill2)
@@ -2773,13 +3106,14 @@ statusLabel.Text = ""
 
 local function updateStatusLabel()
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, HPBossNotifier %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
         autoFarmV2Mode,
         autoFarmV2TapInterval,
         spawnBossNotifier and "ON" or "OFF",
+        hpBossNotifier and "ON" or "OFF",
         autoSkill1 and "ON" or "OFF",
         autoSkill2 and "ON" or "OFF",
         autoSkill3 and "ON" or "OFF",
@@ -2827,6 +3161,14 @@ do
         notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
     end)
     table.insert(connections, connSpawnBoss)
+
+    local connHpBoss = hpBossToggleButton.MouseButton1Click:Connect(function()
+        hpBossNotifier = not hpBossNotifier
+        updateHpBossNotifierUI(hpBossNotifier)
+        updateStatusLabel()
+        notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
+    end)
+    table.insert(connections, connHpBoss)
 
     local connSkill1 = autoSkill1Button.MouseButton1Click:Connect(function()
         autoSkill1 = not autoSkill1
@@ -3095,7 +3437,9 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoSkill4         = false
     autoSkill5         = false
     spawnBossNotifier  = false
+    hpBossNotifier     = false
     bossRegionState    = {}
+    hpRegionState      = {}
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
