@@ -576,7 +576,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.5+"
+    title.Text = "Spear Fishing V3.5++++"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -680,6 +680,21 @@ local function createCard(parent, titleText, subtitleText, layoutOrder, height)
     return card, title, subtitle
 end
 
+-- helper agar toggle tidak perlu banyak local update*
+local function setToggleButtonState(button, labelText, state)
+    if not button then
+        return
+    end
+    labelText = labelText or "Toggle"
+    if state then
+        button.Text = labelText .. ": ON"
+        button.BackgroundColor3 = Color3.fromRGB(45, 120, 75)
+    else
+        button.Text = labelText .. ": OFF"
+        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end
+end
+
 local function createToggleButton(parent, labelText, initialState)
     local button = Instance.new("TextButton")
     button.Name = (labelText or "Toggle"):gsub("%s+", "") .. "Button"
@@ -699,13 +714,7 @@ local function createToggleButton(parent, labelText, initialState)
     corner.Parent = button
 
     local function update(state)
-        if state then
-            button.Text = (labelText or "Toggle") .. ": ON"
-            button.BackgroundColor3 = Color3.fromRGB(45, 120, 75)
-        else
-            button.Text = (labelText or "Toggle") .. ": OFF"
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        end
+        setToggleButtonState(button, labelText, state)
     end
 
     update(initialState)
@@ -1177,13 +1186,13 @@ local function refreshHarpoonOwnership()
 end
 
 local function buildHarpoonShopCard(parent)
-    local card, _, _ = createCard(
+    local card = select(1, createCard(
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
         4,
         280
-    )
+    ))
 
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "HarpoonScroll"
@@ -2446,13 +2455,13 @@ end
 ------------------- BUILD UI: MAIN + SPEAR CONTROLS -------------------
 local header, bodyScroll = createMainLayout()
 
-local controlCard, _, _ = createCard(
+local controlCard = select(1, createCard(
     bodyScroll,
     "Spear Controls",
     "AutoFarm v1 + AutoFarm v2 (Tap Trackpad Left/Center) + AutoEquip + Auto Skill 1~5 + Sell All.",
     1,
     260
-)
+))
 
 local controlsScroll = Instance.new("ScrollingFrame")
 controlsScroll.Name = "ControlsScroll"
@@ -2756,13 +2765,13 @@ table.insert(connections, sellButton.MouseButton1Click:Connect(function()
 end))
 
 ------------------- UI: SPAWN CONTROLS CARD -------------------
-local spawnCard, _, _ = createCard(
+local spawnCard = select(1, createCard(
     bodyScroll,
     "Spawn Controls",
     "Pengaturan Notifier Spawn (Boss, HP Boss, Illahi, Secret) global + per ikan.",
     2,
     420
-)
+))
 
 local spawnScroll = Instance.new("ScrollingFrame")
 spawnScroll.Name = "SpawnScroll"
@@ -2793,42 +2802,42 @@ table.insert(connections, spawnLayout:GetPropertyChangedSignal("AbsoluteContentS
 end))
 
 -- Global notifier toggles
-local spawnBossToggleButton, updateSpawnBossNotifierUI =
-    createToggleButton(spawnScroll, "Spawn Boss Notifier", spawnBossNotifier)
+local spawnBossToggleButton =
+    select(1, createToggleButton(spawnScroll, "Spawn Boss Notifier", spawnBossNotifier))
 
-local hpBossToggleButton, updateHpBossNotifierUI =
-    createToggleButton(spawnScroll, "HPBar Boss Notifier", hpBossNotifier)
+local hpBossToggleButton =
+    select(1, createToggleButton(spawnScroll, "HPBar Boss Notifier", hpBossNotifier))
 
-local spawnIllahiToggleButton, updateSpawnIllahiNotifierUI =
-    createToggleButton(spawnScroll, "Spawn Illahi Notifier", spawnIllahiNotifier)
+local spawnIllahiToggleButton =
+    select(1, createToggleButton(spawnScroll, "Spawn Illahi Notifier", spawnIllahiNotifier))
 
-local spawnSecretToggleButton, updateSpawnSecretNotifierUI =
-    createToggleButton(spawnScroll, "Spawn Secret Notifier", spawnSecretNotifier)
+local spawnSecretToggleButton =
+    select(1, createToggleButton(spawnScroll, "Spawn Secret Notifier", spawnSecretNotifier))
 
 table.insert(connections, spawnBossToggleButton.MouseButton1Click:Connect(function()
     spawnBossNotifier = not spawnBossNotifier
-    updateSpawnBossNotifierUI(spawnBossNotifier)
+    setToggleButtonState(spawnBossToggleButton, "Spawn Boss Notifier", spawnBossNotifier)
     updateStatusLabel()
     notify("Spear Fishing", "Spawn Boss Notifier: " .. (spawnBossNotifier and "ON" or "OFF"), 2)
 end))
 
 table.insert(connections, hpBossToggleButton.MouseButton1Click:Connect(function()
     hpBossNotifier = not hpBossNotifier
-    updateHpBossNotifierUI(hpBossNotifier)
+    setToggleButtonState(hpBossToggleButton, "HPBar Boss Notifier", hpBossNotifier)
     updateStatusLabel()
     notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
 end))
 
 table.insert(connections, spawnIllahiToggleButton.MouseButton1Click:Connect(function()
     spawnIllahiNotifier = not spawnIllahiNotifier
-    updateSpawnIllahiNotifierUI(spawnIllahiNotifier)
+    setToggleButtonState(spawnIllahiToggleButton, "Spawn Illahi Notifier", spawnIllahiNotifier)
     updateStatusLabel()
     notify("Spear Fishing", "Spawn Illahi Notifier: " .. (spawnIllahiNotifier and "ON" or "OFF"), 2)
 end))
 
 table.insert(connections, spawnSecretToggleButton.MouseButton1Click:Connect(function()
     spawnSecretNotifier = not spawnSecretNotifier
-    updateSpawnSecretNotifierUI(spawnSecretNotifier)
+    setToggleButtonState(spawnSecretToggleButton, "Spawn Secret Notifier", spawnSecretNotifier)
     updateStatusLabel()
     notify("Spear Fishing", "Spawn Secret Notifier: " .. (spawnSecretNotifier and "ON" or "OFF"), 2)
 end))
@@ -2846,17 +2855,20 @@ illahiLabel.Size = UDim2.new(1, 0, 0, 18)
 illahiLabel.Text = "Illahi Notifier per Ikan (Nether Island):"
 
 for _, fishId in ipairs(ILLAHI_ORDER) do
-    local def = ILLAHI_FISH_DEFS[fishId]
-    local labelText = "Notifier Illahi " .. (def and def.name or fishId)
-    local state = illahiFishEnabled[fishId] ~= false
+    illahiFishEnabled[fishId] = illahiFishEnabled[fishId] ~= false
 
-    illahiFishEnabled[fishId] = state
+    local btn = select(1, createToggleButton(
+        spawnScroll,
+        "Notifier Illahi " .. ((ILLAHI_FISH_DEFS[fishId] and ILLAHI_FISH_DEFS[fishId].name) or fishId),
+        illahiFishEnabled[fishId]
+    ))
 
-    local btn, upd = createToggleButton(spawnScroll, labelText, state)
     table.insert(connections, btn.MouseButton1Click:Connect(function()
         local newState = not illahiFishEnabled[fishId]
         illahiFishEnabled[fishId] = newState
-        upd(newState)
+        local def = ILLAHI_FISH_DEFS[fishId]
+        local labelText = "Notifier Illahi " .. ((def and def.name) or fishId)
+        setToggleButtonState(btn, labelText, newState)
     end))
 end
 
@@ -2873,28 +2885,31 @@ secretLabel.Size = UDim2.new(1, 0, 0, 18)
 secretLabel.Text = "Secret Notifier per Ikan (Nether Island):"
 
 for _, fishId in ipairs(SECRET_ORDER) do
-    local def = SECRET_FISH_DEFS[fishId]
-    local labelText = "Notifier Secret " .. (def and def.name or fishId)
-    local state = secretFishEnabled[fishId] == true
+    secretFishEnabled[fishId] = secretFishEnabled[fishId] == true
 
-    secretFishEnabled[fishId] = state
+    local btn = select(1, createToggleButton(
+        spawnScroll,
+        "Notifier Secret " .. ((SECRET_FISH_DEFS[fishId] and SECRET_FISH_DEFS[fishId].name) or fishId),
+        secretFishEnabled[fishId]
+    ))
 
-    local btn, upd = createToggleButton(spawnScroll, labelText, state)
     table.insert(connections, btn.MouseButton1Click:Connect(function()
         local newState = not secretFishEnabled[fishId]
         secretFishEnabled[fishId] = newState
-        upd(newState)
+        local def = SECRET_FISH_DEFS[fishId]
+        local labelText = "Notifier Secret " .. ((def and def.name) or fishId)
+        setToggleButtonState(btn, labelText, newState)
     end))
 end
 
 ------------------- UI: ESP FISH CONTROLS CARD -------------------
-local espCard, _, _ = createCard(
+local espCard = select(1, createCard(
     bodyScroll,
     "ESP Fish Controls",
     "ESP antena kuning dari karakter ke Boss/Illahi/Secret + nama dan jarak (stud).",
     3,
     420
-)
+))
 
 local espScroll = Instance.new("ScrollingFrame")
 espScroll.Name = "ESPScroll"
@@ -2925,18 +2940,18 @@ table.insert(connections, espLayout:GetPropertyChangedSignal("AbsoluteContentSiz
 end))
 
 -- Global ESP toggles
-local espBossButton, updateEspBossUI =
-    createToggleButton(espScroll, "ESP Boss", espBoss)
+local espBossButton =
+    select(1, createToggleButton(espScroll, "ESP Boss", espBoss))
 
-local espIllahiButton, updateEspIllahiUI =
-    createToggleButton(espScroll, "ESP Illahi", espIllahi)
+local espIllahiButton =
+    select(1, createToggleButton(espScroll, "ESP Illahi", espIllahi))
 
-local espSecretButton, updateEspSecretUI =
-    createToggleButton(espScroll, "ESP Secret", espSecret)
+local espSecretButton =
+    select(1, createToggleButton(espScroll, "ESP Secret", espSecret))
 
 table.insert(connections, espBossButton.MouseButton1Click:Connect(function()
     espBoss = not espBoss
-    updateEspBossUI(espBoss)
+    setToggleButtonState(espBossButton, "ESP Boss", espBoss)
     refreshAllEsp()
     updateStatusLabel()
     notify("Spear Fishing", "ESP Boss: " .. (espBoss and "ON" or "OFF"), 2)
@@ -2944,7 +2959,7 @@ end))
 
 table.insert(connections, espIllahiButton.MouseButton1Click:Connect(function()
     espIllahi = not espIllahi
-    updateEspIllahiUI(espIllahi)
+    setToggleButtonState(espIllahiButton, "ESP Illahi", espIllahi)
     refreshAllEsp()
     updateStatusLabel()
     notify("Spear Fishing", "ESP Illahi: " .. (espIllahi and "ON" or "OFF"), 2)
@@ -2952,7 +2967,7 @@ end))
 
 table.insert(connections, espSecretButton.MouseButton1Click:Connect(function()
     espSecret = not espSecret
-    updateEspSecretUI(espSecret)
+    setToggleButtonState(espSecretButton, "ESP Secret", espSecret)
     refreshAllEsp()
     updateStatusLabel()
     notify("Spear Fishing", "ESP Secret: " .. (espSecret and "ON" or "OFF"), 2)
@@ -2971,17 +2986,20 @@ espIllahiLabel.Size = UDim2.new(1, 0, 0, 18)
 espIllahiLabel.Text = "ESP Illahi per Ikan (Nether Island):"
 
 for _, fishId in ipairs(ILLAHI_ORDER) do
-    local def = ILLAHI_FISH_DEFS[fishId]
-    local labelText = "ESP Illahi " .. (def and def.name or fishId)
-    local state = espIllahiFishEnabled[fishId] == true
+    espIllahiFishEnabled[fishId] = espIllahiFishEnabled[fishId] == true
 
-    espIllahiFishEnabled[fishId] = state
+    local btn = select(1, createToggleButton(
+        espScroll,
+        "ESP Illahi " .. ((ILLAHI_FISH_DEFS[fishId] and ILLAHI_FISH_DEFS[fishId].name) or fishId),
+        espIllahiFishEnabled[fishId]
+    ))
 
-    local btn, upd = createToggleButton(espScroll, labelText, state)
     table.insert(connections, btn.MouseButton1Click:Connect(function()
         local newState = not espIllahiFishEnabled[fishId]
         espIllahiFishEnabled[fishId] = newState
-        upd(newState)
+        local def = ILLAHI_FISH_DEFS[fishId]
+        local labelText = "ESP Illahi " .. ((def and def.name) or fishId)
+        setToggleButtonState(btn, labelText, newState)
         refreshAllEsp()
         updateStatusLabel()
     end))
@@ -3000,17 +3018,20 @@ espSecretLabel.Size = UDim2.new(1, 0, 0, 18)
 espSecretLabel.Text = "ESP Secret per Ikan (Nether Island):"
 
 for _, fishId in ipairs(SECRET_ORDER) do
-    local def = SECRET_FISH_DEFS[fishId]
-    local labelText = "ESP Secret " .. (def and def.name or fishId)
-    local state = espSecretFishEnabled[fishId] == true
+    espSecretFishEnabled[fishId] = espSecretFishEnabled[fishId] == true
 
-    espSecretFishEnabled[fishId] = state
+    local btn = select(1, createToggleButton(
+        espScroll,
+        "ESP Secret " .. ((SECRET_FISH_DEFS[fishId] and SECRET_FISH_DEFS[fishId].name) or fishId),
+        espSecretFishEnabled[fishId]
+    ))
 
-    local btn, upd = createToggleButton(espScroll, labelText, state)
     table.insert(connections, btn.MouseButton1Click:Connect(function()
         local newState = not espSecretFishEnabled[fishId]
         espSecretFishEnabled[fishId] = newState
-        upd(newState)
+        local def = SECRET_FISH_DEFS[fishId]
+        local labelText = "ESP Secret " .. ((def and def.name) or fishId)
+        setToggleButtonState(btn, labelText, newState)
         refreshAllEsp()
         updateStatusLabel()
     end))
@@ -3126,10 +3147,10 @@ task.spawn(function()
                 if not alive then break end
                 if autoSkill1 and autoSkill2 then
                     pcall(fireSkill2)
-                    t = 0
-                    while t < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
+                    local t2 = 0
+                    while t2 < SKILL_SEQUENCE_GAP and alive and autoSkill1 and autoSkill2 do
                         task.wait(0.2)
-                        t = t + 0.2
+                        t2 = t2 + 0.2
                     end
                 end
             else
