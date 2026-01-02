@@ -1253,7 +1253,7 @@ local function fireSkill5()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill09"
+            ["ID"] = "Skill03"
         }
     }
 
@@ -1263,7 +1263,7 @@ local function fireSkill5()
     if ok then
         skill5LastFireTime = os.clock()
     else
-        warn("[SpearFishing] Auto Skill09 gagal:", err)
+        warn("[SpearFishing] Auto Skill03 gagal:", err)
     end
 end
 
