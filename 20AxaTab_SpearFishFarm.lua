@@ -794,6 +794,16 @@ local function isRareTypeFish(seaName, fishName)
     return false
 end
 
+-- Helper: cek apakah ada minimal satu Illahi yang di-toggle ON di Per Fish
+local function anyIllahiPerFishEnabled()
+    for fishId, _ in pairs(ILLAHI_SET) do
+        if PER_FISH_FLAGS[fishId] == true then
+            return true
+        end
+    end
+    return false
+end
+
 local function shouldTargetFish(seaName, fishName)
     if not fishName or fishName == "" then
         return false
@@ -807,11 +817,23 @@ local function shouldTargetFish(seaName, fishName)
         return false
     end
 
+    -- PRIORITAS / UPGRADE:
+    -- Jika AutoFarm Illahi aktif dan ada minimal satu Illahi yang di-toggle
+    -- maka semua Illahi akan mengikuti toggle Per Fish, walaupun Rarity Mode bukan "Per Fish".
+    if (seaName == "Sea6" or seaName == "Sea7") and ILLAHI_SET[fishName] then
+        if anyIllahiPerFishEnabled() then
+            return PER_FISH_FLAGS[fishName] == true
+        end
+    end
+
     if rarityModeIndex == 1 then
+        -- Disabled: hanya pakai flag AutoFarm (All / Rare / Illahi)
         return true
     elseif rarityModeIndex == 2 then
+        -- Legendary/Mythic/Secret/Illahi
         return isRareTypeFish(seaName, fishName)
     elseif rarityModeIndex == 3 then
+        -- Per Fish global (termasuk Illahi kalau tidak sedang override khusus di atas)
         return PER_FISH_FLAGS[fishName] == true
     end
 
@@ -867,7 +889,6 @@ local function pickNewFishTarget(seaFolder, seaName)
         currentFishTarget    = closestFish
         currentFishTargetSea = seaName
 
-        -- PAKAI NAMA RAPI: Fish404 -> "Nether Flying Fish"
         local dispName = resolveFishDisplayName(closestFish.Name)
         setAimLockTarget(closestPart, dispName)
         return closestFish
@@ -1004,7 +1025,6 @@ local function pickBossTarget()
         currentBossTarget     = bestPart
         currentBossTargetPart = bestPart
 
-        -- Pakai nama rapi boss
         local dispName = resolveBossDisplayName(bestPart.Name)
         setAimLockTarget(bestPart, dispName)
         return bestPart
@@ -1087,7 +1107,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.2"
+    title.Text = "Spear Fish Farm V3.3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1465,7 +1485,6 @@ local function getPerFishCandidates()
     local seaText
 
     if uiMode == "Sea6_7" then
-        -- gabungkan Sea6 dan Sea7
         allowedSeas["Sea6"] = true
         allowedSeas["Sea7"] = true
         seaText = "Sea6&Sea7"
@@ -1473,7 +1492,6 @@ local function getPerFishCandidates()
         allowedSeas[uiMode] = true
         seaText = uiMode
     else
-        -- AutoDetect atau Sea1-3: pakai Sea aktif bila termasuk Sea4-7
         if detectedSeaName and (detectedSeaName == "Sea4" or detectedSeaName == "Sea5" or detectedSeaName == "Sea6" or detectedSeaName == "Sea7") then
             allowedSeas[detectedSeaName] = true
             seaText = detectedSeaName
