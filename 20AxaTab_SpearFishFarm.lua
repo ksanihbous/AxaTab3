@@ -52,7 +52,7 @@ local WorldBoss    = workspace:FindFirstChild("WorldBoss")
 
 -- Auto farm flags
 local autoFarmAll      = false  -- Semua fish sesuai Sea filter
-local autoFarmBoss     = false  -- Boss di WorldBoss
+local autoFarmBoss     = true  -- Boss di WorldBoss
 local autoFarmRare     = false  -- Mythic/Legendary/Secret Sea4, Secret Sea5
 local autoFarmIllahi   = false  -- Illahi Sea6, Sea7
 
@@ -88,7 +88,7 @@ local shootRange      = 600   -- default
 -- Farm delay (detik)
 local FARM_DELAY_MIN  = 0.01
 local FARM_DELAY_MAX  = 0.30
-local farmDelay       = 0.01
+local farmDelay       = 0.05
 
 -- Status label UI
 local statusLabel
@@ -1107,7 +1107,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.3"
+    title.Text = "Spear Fish Farm V3.2+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
