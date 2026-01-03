@@ -1,17 +1,6 @@
 --==========================================================
 --  19AxaTab_SpearFishFarm.lua
 --  TAB 19: "Spear Fish Farm PRO++"
---  Fitur:
---    - AutoFarm: universal fish Sea1 - Sea7 (Hit remote)
---    - AutoFarm Boss (WorldBoss > Point1 / Point2) PRIORITY
---    - AutoFarm Mythic/Legendary/Secret (Sea4, Sea5)
---    - AutoFarm Illahi/Divine (Sea6 & Sea7 gabung)
---    - Sea Selector: AutoDetect / Sea1 - Sea5 / Sea6&7
---    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
---    - Per Fish list dinamis, sinkron Sea + Climate real time
---    - AimLock Fish + ESP Antena neon kuning (toggle terpisah)
---    - Shooting Range slider (25 - 1000 stud)
---    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
