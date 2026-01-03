@@ -10,7 +10,7 @@
 --    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
 --    - Per Fish list dinamis, sinkron Sea + Climate real time
 --    - AimLock Fish + ESP Antena neon kuning (toggle terpisah)
---    - Shooting Range slider (300 - 1000 stud)
+--    - Shooting Range slider (25 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
 
@@ -82,7 +82,7 @@ local aimLockEnabled    = true   -- lock target + label + highlight
 local espAntennaEnabled = true   -- khusus garis neon kuning HRP -> fish
 
 -- Shooting range (stud)
-local SHOOT_RANGE_MIN = 300
+local SHOOT_RANGE_MIN = 25
 local SHOOT_RANGE_MAX = 1000
 local shootRange      = 600   -- default
 
@@ -904,7 +904,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V1.5 (AimLock + ESP Antena)"
+    title.Text = "Spear Fish Farm V2"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1446,7 +1446,7 @@ local function buildAutoFarmCard(bodyScroll)
 
     createSliderWithBox(
         scroll,
-        "Shooting Range (stud) 300 - 1000",
+        "Shooting Range (stud) 25 - 1000",
         SHOOT_RANGE_MIN,
         SHOOT_RANGE_MAX,
         shootRange,
