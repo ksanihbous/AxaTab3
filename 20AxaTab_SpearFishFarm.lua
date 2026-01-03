@@ -9,7 +9,7 @@
 --    - Sea Selector: AutoDetect / Sea1 - Sea5 / Sea6&Sea7 (gabung)
 --    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
 --    - Per Fish list dinamis, sinkron Sea + Climate real time
---    - AimLock Fish + ESP Antena kuning (Attachment + Beam di workspace)
+--    - AimLock Fish + ESP Antena kuning (Attachment + Beam dari HRP)
 --    - Shooting Range slider (25 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
@@ -77,7 +77,7 @@ local rarityModeList = {
 local rarityModeIndex = 1  -- default Disabled
 
 -- AimLock + ESP Antena
-local aimLockEnabled    = true   -- lock target + label + highlight
+local aimLockEnabled    = true   -- lock target + pemilihan target
 local espAntennaEnabled = true   -- garis kuning (Beam) HRP -> target
 
 -- Shooting range (stud)
@@ -220,6 +220,247 @@ end
 table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
     character = newChar
 end))
+
+------------------- ESP DATA STRUCT (ANTENA BEAM SEPERTI TAB 15) -------------------
+-- target yang bisa di-ESP (AimLock target)
+-- trackedFishEspTargets[part] = { fishId, fishType, displayName }
+local trackedFishEspTargets = {}
+
+-- ESP instance aktif
+-- fishEspMap[part] = { beam, attachment, billboard, label, displayName, fishType, fishId }
+local fishEspMap    = {}
+local hrpAttachment = nil
+
+local function ensureHRPAttachment()
+    local hrp = getHRP()
+    if not hrp then
+        hrpAttachment = nil
+        return nil
+    end
+
+    if hrpAttachment and hrpAttachment.Parent == hrp then
+        return hrpAttachment
+    end
+
+    local existing = hrp:FindFirstChild("AxaESP_HRP_Att")
+    if existing and existing:IsA("Attachment") then
+        hrpAttachment = existing
+    else
+        local att = Instance.new("Attachment")
+        att.Name = "AxaESP_HRP_Att"
+        att.Parent = hrp
+        hrpAttachment = att
+    end
+    return hrpAttachment
+end
+
+local function destroyFishEsp(part)
+    local data = fishEspMap[part]
+    if not data then
+        return
+    end
+
+    if data.beam then
+        pcall(function()
+            data.beam:Destroy()
+        end)
+    end
+
+    if data.attachment and data.attachment.Parent then
+        pcall(function()
+            data.attachment:Destroy()
+        end)
+    end
+
+    if data.billboard then
+        pcall(function()
+            data.billboard:Destroy()
+        end)
+    end
+
+    fishEspMap[part] = nil
+end
+
+local function createEspInstancesForPart(part, displayName, fishType, fishId)
+    local hrpAtt = ensureHRPAttachment()
+    if not hrpAtt then
+        return
+    end
+    if not part or not part:IsA("BasePart") then
+        return
+    end
+
+    if fishEspMap[part] then
+        return
+    end
+
+    local fishAttachment = part:FindFirstChild("AxaESP_Attachment")
+    if not fishAttachment or not fishAttachment:IsA("Attachment") then
+        fishAttachment = Instance.new("Attachment")
+        fishAttachment.Name = "AxaESP_Attachment"
+        fishAttachment.Parent = part
+    end
+
+    local beam = Instance.new("Beam")
+    beam.Name = "AxaESP_Beam"
+    beam.Attachment0 = hrpAtt
+    beam.Attachment1 = fishAttachment
+    beam.FaceCamera = true
+    beam.Width0 = 0.12
+    beam.Width1 = 0.12
+    beam.Segments = 10
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+    beam.LightEmission = 1
+    beam.LightInfluence = 0
+    beam.Transparency = NumberSequence.new(0)
+    beam.Parent = part
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "AxaESP_Billboard"
+    billboard.Size = UDim2.new(0, 160, 0, 24)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = part
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Text"
+    label.Parent = billboard
+    label.BackgroundTransparency = 0.25
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    label.BorderSizePixel = 0
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 12
+    label.TextColor3 = Color3.fromRGB(255, 255, 0)
+    label.TextStrokeTransparency = 0.5
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.TextWrapped = true
+    label.Text = displayName or "Fish"
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = label
+
+    fishEspMap[part] = {
+        beam        = beam,
+        attachment  = fishAttachment,
+        billboard   = billboard,
+        label       = label,
+        displayName = displayName or "Fish",
+        fishType    = fishType,
+        fishId      = fishId,
+    }
+end
+
+local function evaluateEspForPart(part)
+    local info = trackedFishEspTargets[part]
+    if not info or not part or part.Parent == nil then
+        destroyFishEsp(part)
+        trackedFishEspTargets[part] = nil
+        return
+    end
+
+    -- Di tab ini ESP hanya dikontrol oleh espAntennaEnabled
+    if not espAntennaEnabled then
+        destroyFishEsp(part)
+        return
+    end
+
+    if not fishEspMap[part] then
+        createEspInstancesForPart(part, info.displayName, info.fishType, info.fishId)
+    end
+end
+
+local function refreshAllEsp()
+    for part, _ in pairs(fishEspMap) do
+        destroyFishEsp(part)
+    end
+    for part, _ in pairs(trackedFishEspTargets) do
+        evaluateEspForPart(part)
+    end
+end
+
+local function registerFishPartForEsp(part, fishId, fishType, displayName)
+    if not part or not part:IsA("BasePart") then
+        return
+    end
+
+    trackedFishEspTargets[part] = {
+        fishId      = fishId,
+        fishType    = fishType,
+        displayName = displayName or fishId or "Fish",
+    }
+
+    evaluateEspForPart(part)
+
+    local conn = part.AncestryChanged:Connect(function(_, parent)
+        if parent == nil then
+            trackedFishEspTargets[part] = nil
+            destroyFishEsp(part)
+        end
+    end)
+    table.insert(connections, conn)
+end
+
+local function updateEspTextDistances()
+    if not next(fishEspMap) then
+        return
+    end
+
+    local hrp = getHRP()
+    if not hrp then
+        return
+    end
+    local hrpPos = hrp.Position
+
+    for part, data in pairs(fishEspMap) do
+        if not part or part.Parent == nil then
+            destroyFishEsp(part)
+        else
+            local ok, dist = pcall(function()
+                return (part.Position - hrpPos).Magnitude
+            end)
+            if ok and data.label then
+                local nameText = data.displayName or "Fish"
+                local d = math.floor(dist or 0)
+                data.label.Text = string.format("%s | %d suds", nameText, d)
+            end
+        end
+    end
+end
+
+------------------- AIMLOCK STATE (PAKAI ESP DI ATAS) -------------------
+local aimLockTarget     = nil
+local aimLockTargetPart = nil
+local aimLockLabelName  = "Target"
+
+local function clearAimLockVisual()
+    if aimLockTargetPart then
+        destroyFishEsp(aimLockTargetPart)
+        trackedFishEspTargets[aimLockTargetPart] = nil
+    end
+    aimLockTargetPart = nil
+    aimLockTarget     = nil
+end
+
+local function setAimLockTarget(newPart, displayName)
+    clearAimLockVisual()
+
+    if not newPart or not newPart:IsA("BasePart") then
+        return
+    end
+
+    aimLockTarget     = newPart
+    aimLockTargetPart = newPart
+    aimLockLabelName  = displayName or "Fish"
+
+    -- Visual selalu mengikuti target aktif
+    registerFishPartForEsp(newPart, "AimLock", "AimLock", aimLockLabelName)
+end
+
+local function updateAimLockDistanceLabel()
+    updateEspTextDistances()
+end
 
 ------------------- HARPOON TOOL HELPERS -------------------
 local lastAutoEquipWarn = 0
@@ -371,200 +612,6 @@ local function getActiveSeaFolder()
     else
         local seaFolder = getSeaFolderByName(mode)
         return seaFolder, mode
-    end
-end
-
-------------------- AIMLOCK + ESP ANTENA (ATTACHMENT + BEAM) -------------------
-local aimLockTarget        = nil
-local aimLockTargetPart    = nil
-local aimLockLabelName     = "Target"
-local aimLockBillboard     = nil
-local aimLockLabel         = nil
-local aimLockHighlight     = nil
-
-local antennaBeam          = nil
-local antennaAttachHRP     = nil
-local antennaAttachFish    = nil
-
-local function clearAimLockVisual()
-    if aimLockBillboard then
-        pcall(function() aimLockBillboard:Destroy() end)
-    end
-    if aimLockHighlight then
-        pcall(function() aimLockHighlight:Destroy() end)
-    end
-    if antennaBeam then
-        pcall(function() antennaBeam:Destroy() end)
-    end
-    if antennaAttachHRP then
-        pcall(function() antennaAttachHRP:Destroy() end)
-    end
-    if antennaAttachFish then
-        pcall(function() antennaAttachFish:Destroy() end)
-    end
-
-    aimLockBillboard  = nil
-    aimLockLabel      = nil
-    aimLockHighlight  = nil
-    antennaBeam       = nil
-    antennaAttachHRP  = nil
-    antennaAttachFish = nil
-    aimLockTargetPart = nil
-    aimLockTarget     = nil
-end
-
-local function buildAntennaBeam()
-    if not espAntennaEnabled then
-        return
-    end
-    local hrp = getHRP()
-    if not hrp or not aimLockTargetPart then
-        return
-    end
-
-    -- Attachment di HRP
-    if not antennaAttachHRP or antennaAttachHRP.Parent ~= hrp then
-        if antennaAttachHRP then
-            pcall(function() antennaAttachHRP:Destroy() end)
-        end
-        antennaAttachHRP = Instance.new("Attachment")
-        antennaAttachHRP.Name = "AxaFarm_Antenna_HRP"
-        antennaAttachHRP.Parent = hrp
-    end
-
-    -- Attachment di fish target
-    if not antennaAttachFish or antennaAttachFish.Parent ~= aimLockTargetPart then
-        if antennaAttachFish then
-            pcall(function() antennaAttachFish:Destroy() end)
-        end
-        antennaAttachFish = Instance.new("Attachment")
-        antennaAttachFish.Name = "AxaFarm_Antenna_Fish"
-        antennaAttachFish.Parent = aimLockTargetPart
-    end
-
-    -- Beam kuning dari HRP ke fish
-    if not antennaBeam or antennaBeam.Parent == nil then
-        if antennaBeam then
-            pcall(function() antennaBeam:Destroy() end)
-        end
-        antennaBeam = Instance.new("Beam")
-        antennaBeam.Name = "AxaFarm_AntennaBeam"
-        antennaBeam.Attachment0 = antennaAttachHRP
-        antennaBeam.Attachment1 = antennaAttachFish
-        antennaBeam.Color       = ColorSequence.new(Color3.fromRGB(255, 255, 0))
-        antennaBeam.Width0      = 0.1
-        antennaBeam.Width1      = 0.1
-        antennaBeam.LightEmission = 1
-        antennaBeam.FaceCamera  = true
-        antennaBeam.Transparency = NumberSequence.new(0)
-        antennaBeam.Enabled     = true
-        antennaBeam.Parent      = workspace
-    else
-        antennaBeam.Attachment0 = antennaAttachHRP
-        antennaBeam.Attachment1 = antennaAttachFish
-        antennaBeam.Enabled     = true
-    end
-end
-
-local function setAimLockTarget(newPart, displayName)
-    aimLockTarget     = newPart
-    aimLockTargetPart = newPart
-    aimLockLabelName  = displayName or "Fish"
-
-    clearAimLockVisual()
-
-    if not aimLockEnabled then
-        return
-    end
-
-    if not aimLockTargetPart or not aimLockTargetPart:IsA("BasePart") then
-        return
-    end
-
-    -- Billboard teks di atas fish (Nama + jarak)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name        = "AxaFarm_Target_Billboard"
-    billboard.Size        = UDim2.new(0, 170, 0, 26)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent      = aimLockTargetPart
-
-    local label = Instance.new("TextLabel")
-    label.Name                   = "Text"
-    label.Parent                 = billboard
-    label.BackgroundTransparency = 0.2
-    label.BackgroundColor3       = Color3.fromRGB(10, 10, 10)
-    label.BorderSizePixel        = 0
-    label.Size                   = UDim2.new(1, 0, 1, 0)
-    label.Font                   = Enum.Font.GothamSemibold
-    label.TextSize               = 12
-    label.TextColor3             = Color3.fromRGB(255, 255, 0)
-    label.TextStrokeTransparency = 0.3
-    label.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
-    label.TextWrapped            = true
-    label.Text                   = aimLockLabelName .. " | 0 suds"
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent       = label
-
-    -- Highlight di fish
-    local adornee = aimLockTargetPart
-    if aimLockTargetPart.Parent and aimLockTargetPart.Parent:IsA("Model") then
-        adornee = aimLockTargetPart.Parent
-    end
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name                = "AxaFarm_Target_Highlight"
-    highlight.FillColor           = Color3.fromRGB(255, 40, 40)
-    highlight.FillTransparency    = 0.7
-    highlight.OutlineColor        = Color3.fromRGB(255, 255, 0)
-    highlight.OutlineTransparency = 0
-    highlight.Adornee             = adornee
-    highlight.Parent              = adornee
-
-    aimLockBillboard = billboard
-    aimLockLabel     = label
-    aimLockHighlight = highlight
-
-    -- ESP Antena via Attachment + Beam di workspace
-    if espAntennaEnabled then
-        buildAntennaBeam()
-    end
-end
-
-local function updateAimLockDistanceLabel()
-    if not aimLockEnabled then
-        return
-    end
-    if not aimLockTargetPart then
-        return
-    end
-
-    local hrp = getHRP()
-    if not hrp then
-        return
-    end
-
-    if aimLockTargetPart.Parent == nil then
-        clearAimLockVisual()
-        return
-    end
-
-    local fromPos = hrp.Position
-    local toPos   = aimLockTargetPart.Position
-    local dist    = (toPos - fromPos).Magnitude
-
-    if aimLockLabel then
-        aimLockLabel.Text = string.format("%s | %d suds", aimLockLabelName, math.floor(dist or 0))
-    end
-
-    -- Sinkron ON/OFF antena
-    if antennaBeam then
-        antennaBeam.Enabled = espAntennaEnabled
-    elseif espAntennaEnabled and aimLockTargetPart then
-        -- kalau beam belum ada tapi antena ON, bangun ulang
-        buildAntennaBeam()
     end
 end
 
@@ -972,7 +1019,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3"
+    title.Text = "Spear Fish Farm V3+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1446,7 +1493,7 @@ local function buildAutoFarmCard(bodyScroll)
     local autoFarmRareButton   = createToggleButton(scroll, "AutoFarm Mythic/Legendary/Secret", autoFarmRare)
     local autoFarmIllahiButton = createToggleButton(scroll, "AutoFarm Illahi/Divine", autoFarmIllahi)
 
-    local aimLockButton        = createToggleButton(scroll, "AimLock Fish + Label", aimLockEnabled)
+    local aimLockButton        = createToggleButton(scroll, "AimLock Fish Mode", aimLockEnabled)
     local espAntennaButton     = createToggleButton(scroll, "ESP Antena (Beam Kuning)", espAntennaEnabled)
 
     local seaModeButton = Instance.new("TextButton")
@@ -1629,34 +1676,15 @@ local function buildAutoFarmCard(bodyScroll)
 
     table.insert(connections, aimLockButton.MouseButton1Click:Connect(function()
         aimLockEnabled = not aimLockEnabled
-        setToggleButtonState(aimLockButton, "AimLock Fish + Label", aimLockEnabled)
-        if not aimLockEnabled then
-            clearAimLockVisual()
-        else
-            -- kalau aimLock diaktifkan lagi dan ada target lama, rebuild label + beam
-            if aimLockTargetPart then
-                setAimLockTarget(aimLockTargetPart, aimLockLabelName)
-            end
-        end
+        setToggleButtonState(aimLockButton, "AimLock Fish Mode", aimLockEnabled)
         updateStatusLabel()
-        notify("Spear Fish Farm", "AimLock: " .. (aimLockEnabled and "ON" or "OFF"), 2)
+        notify("Spear Fish Farm", "AimLock Mode: " .. (aimLockEnabled and "ON" or "OFF"), 2)
     end))
 
     table.insert(connections, espAntennaButton.MouseButton1Click:Connect(function()
         espAntennaEnabled = not espAntennaEnabled
         setToggleButtonState(espAntennaButton, "ESP Antena (Beam Kuning)", espAntennaEnabled)
-
-        if not espAntennaEnabled then
-            if antennaBeam then
-                antennaBeam.Enabled = false
-            end
-        else
-            -- antena ON, kalau sudah ada target, bangun beam langsung
-            if aimLockEnabled and aimLockTargetPart then
-                buildAntennaBeam()
-            end
-        end
-
+        refreshAllEsp()
         updateStatusLabel()
         notify("Spear Fish Farm", "ESP Antena: " .. (espAntennaEnabled and "ON" or "OFF"), 2)
     end))
@@ -1751,6 +1779,9 @@ _G.AxaHub.TabCleanup[tabId] = function()
     currentBossTargetPart  = nil
 
     clearAimLockVisual()
+
+    trackedFishEspTargets = {}
+    fishEspMap            = {}
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
