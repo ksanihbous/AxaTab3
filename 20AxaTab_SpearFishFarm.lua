@@ -1087,7 +1087,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V2 (Boss Priority)"
+    title.Text = "Spear Fish Farm V2.1"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
