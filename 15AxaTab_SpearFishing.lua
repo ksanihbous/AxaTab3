@@ -11,7 +11,7 @@
 --    - Spawn Illahi Notifier (global + per ikan)
 --    - Spawn Secret Notifier (global + per ikan)
 --    - ESP Boss / Illahi / Secret + ESP per ikan
---    - HPBar Controls (Speed + Initial Progress -> override UI HP Boss di map)
+--    - Climate Time Notifier (Discord Webhook)
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -56,11 +56,12 @@ local spawnBossNotifier    = true     -- Spawn Boss Notifier (global)
 local hpBossNotifier       = true     -- HP Boss HPBar Notifier (global)
 local spawnIllahiNotifier  = true     -- Illahi Notifier (global)
 local spawnSecretNotifier  = true     -- Secret Notifier (global)
+local climateTimeNotifier  = true     -- Climate Time Notifier (global)
 
 -- ESP
 local espBoss              = true     -- ESP Boss global (default ON)
-local espIllahi            = true     -- ESP Illahi global
-local espSecret            = true     -- ESP Secret global
+local espIllahi            = true     -- ESP Illahi global (default OFF)
+local espSecret            = true     -- ESP Secret global (default OFF)
 
 -- Auto Skill
 local autoSkill1      = true          -- Skill02
@@ -73,15 +74,6 @@ local autoSkill5      = true          -- Skill09
 local autoFarmV2TapInterval = 0.03
 local TAP_INTERVAL_MIN      = 0.01
 local TAP_INTERVAL_MAX      = 1.00
-
--- HPBar Controls
-local hpBarSpeedEnabled        = true   -- master ON/OFF
-local hpBarInitialEnabled      = true   -- toggle apply input
-local hpBarManualMax           = nil    -- manual max HP dari input
-local lastBossHpCur            = nil    -- last HP server
-local lastBossHpMax            = nil    -- last Max HP server
-local hpBarPreviewTag          = nil    -- preview bar di card
-local hpBarPreviewCountLabel   = nil    -- preview label di card
 
 local character       = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local backpack        = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack")
@@ -126,6 +118,7 @@ local FormatUtil   = safeRequire(UtilityFolder, "Format")
 local PurchaseUtil = safeRequire(UtilityFolder, "PurchaseUtil")
 local MathUtil     = safeRequire(UtilityFolder, "MathUtil")
 local FishUtil     = safeRequire(UtilityFolder, "FishUtil")
+local RepMgr       = safeRequire(UtilityFolder, "RepMgr")
 
 ------------------- GAME NAME -------------------
 local GAME_NAME = "Unknown Map"
@@ -485,172 +478,6 @@ local function updateEspTextDistances()
     end
 end
 
-------------------- HP BAR BOSS UI HELPER -------------------
-local bossBarUiCache = nil
-
-local function ensureMapBossBar()
-    if bossBarUiCache and bossBarUiCache.bossBar and bossBarUiCache.bossBar.Parent then
-        return bossBarUiCache
-    end
-
-    bossBarUiCache = nil
-
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then
-        return nil
-    end
-
-    local ok, descendants = pcall(function()
-        return playerGui:GetDescendants()
-    end)
-    if not ok or not descendants then
-        return nil
-    end
-
-    for _, inst in ipairs(descendants) do
-        if inst:IsA("Frame") and inst.Name == "BossBar" then
-            local hpBar = inst:FindFirstChild("HpBar")
-            if hpBar and hpBar:IsA("Frame") then
-                local tag = hpBar:FindFirstChild("Tag")
-                local count = hpBar:FindFirstChild("Count")
-                if tag and tag:IsA("Frame") and count and count:IsA("TextLabel") then
-                    bossBarUiCache = {
-                        bossBar    = inst,
-                        hpBar      = hpBar,
-                        tag        = tag,
-                        countLabel = count,
-                    }
-                    break
-                end
-            end
-        end
-    end
-
-    return bossBarUiCache
-end
-
-local function parseShortNumber(text)
-    if not text then
-        return nil
-    end
-    text = tostring(text)
-    text = text:lower()
-    text = text:gsub("%s+", "")
-    if text == "" then
-        return nil
-    end
-
-    local mult = 1
-    if text:find("k") then
-        mult = 1e3
-        text = text:gsub("k", "")
-    elseif text:find("m") then
-        mult = 1e6
-        text = text:gsub("m", "")
-    elseif text:find("b") then
-        mult = 1e9
-        text = text:gsub("b", "")
-    end
-
-    text = text:gsub(",", ".")
-    local num = tonumber(text)
-    if not num then
-        return nil
-    end
-
-    return math.floor(num * mult + 0.5)
-end
-
-local function parseHpProgressInput(raw)
-    if not raw then
-        return nil, nil
-    end
-    local text = tostring(raw)
-    text = text:gsub("%s+", "")
-
-    if text == "" then
-        return nil, nil
-    end
-
-    local curStr, maxStr = text:match("^([^/]+)/([^/]+)$")
-    if not curStr then
-        maxStr = text
-        curStr = "0"
-    end
-
-    local cur = parseShortNumber(curStr)
-    local maxv = parseShortNumber(maxStr)
-    if not cur or not maxv or maxv <= 0 then
-        return nil, nil
-    end
-    if cur < 0 then
-        cur = 0
-    end
-    if cur > maxv then
-        cur = maxv
-    end
-    return cur, maxv
-end
-
-local function updateBossHpUiVisual(curHp, maxHp, forceVisible, previewOnly)
-    curHp = tonumber(curHp) or 0
-    maxHp = tonumber(maxHp) or 0
-    if maxHp <= 0 then
-        maxHp = math.max(curHp, 1)
-    end
-
-    local ratio = 0
-    if maxHp > 0 then
-        ratio = math.clamp(curHp / maxHp, 0, 1)
-    end
-
-    local curText = tostring(curHp)
-    local maxText = tostring(maxHp)
-    if FormatUtil then
-        local ok1, v1 = pcall(function()
-            return FormatUtil:DesignNumberShort(curHp)
-        end)
-        if ok1 and v1 then
-            curText = v1
-        end
-        local ok2, v2 = pcall(function()
-            return FormatUtil:DesignNumberShort(maxHp)
-        end)
-        if ok2 and v2 then
-            maxText = v2
-        end
-    end
-
-    local displayText = curText .. " / " .. maxText
-
-    if hpBarPreviewTag and hpBarPreviewTag.Parent then
-        hpBarPreviewTag.Size = UDim2.new(ratio, 0, 1, 0)
-    end
-    if hpBarPreviewCountLabel and hpBarPreviewCountLabel.Parent then
-        hpBarPreviewCountLabel.Text = displayText
-    end
-
-    if previewOnly then
-        return
-    end
-
-    if not hpBarSpeedEnabled then
-        return
-    end
-
-    local refs = ensureMapBossBar()
-    if not refs then
-        return
-    end
-
-    local visible = forceVisible and true or curHp > 0
-    refs.bossBar.Visible = visible
-    refs.hpBar.Visible   = visible
-
-    refs.tag.Size = UDim2.new(ratio, 0, 1, 0)
-    refs.countLabel.Text = displayText
-end
-
 ------------------- TOOL / HARPOON DETECTION -------------------
 local function isHarpoonTool(tool)
     if not tool or not tool:IsA("Tool") then return false end
@@ -757,7 +584,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fishing V3.6 PRO+"
+    title.Text = "Spear Fishing V3.6"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -769,7 +596,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Illahi + Secret + ESP Fish + HPBar Controls."
+    subtitle.Text = "AutoFarm + Auto Skill + Spawn Boss/HP + Illahi + Secret + ESP Fish."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1263,7 +1090,7 @@ local function fireSkill5()
     if ok then
         skill5LastFireTime = os.clock()
     else
-        warn("[SpearFishing] Auto Skill03 gagal:", err)
+        warn("[SpearFishing] Auto Skill09 gagal:", err)
     end
 end
 
@@ -1307,6 +1134,9 @@ local DEFAULT_OWNER_DISCORD    = "<@1403052152691101857>"
 
 local HP_BOSS_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456150372686237849/NTDxNaXWeJ1ytvzTo9vnmG5Qvbl6gsvZor4MMb9rWUwKT4fFkRQ9NbNiPsy7-TWogTmR"
 local HP_BOSS_BOT_USERNAME     = "HP Boss Notifier"
+
+local CLIMATE_WEBHOOK_URL      = "https://discord.com/api/webhooks/1456868357138681938/-3FnsflNnf9z3tm2RQvsqbBHKoLjlgQxsTF1KVsTkBEmYd6sYRWr-bQndJQSG2Y0hWNf"
+local CLIMATE_BOT_USERNAME     = "Climate Notifier"
 
 local BOSS_ID_NAME_MAP = {
     Boss01 = "Humpback Whale",
@@ -1749,21 +1579,6 @@ local function sendHpBossProgress(region, bossPart)
     if totalHp <= 0 and curHp <= 0 then
         detachHpWatcher(region)
         return
-    end
-
-    -- simpan last server HP
-    lastBossHpCur = curHp
-    lastBossHpMax = totalHp
-
-    -- update HPBar UI (preview + map UI)
-    do
-        local uiCur = curHp
-        local uiMax = totalHp
-        if hpBarManualMax and hpBarManualMax > 0 and totalHp > 0 then
-            uiMax = hpBarManualMax
-            uiCur = math.max(0, math.min(uiMax, uiMax * (curHp / totalHp)))
-        end
-        updateBossHpUiVisual(uiCur, uiMax, true, false)
     end
 
     local now      = os.clock()
@@ -2362,6 +2177,179 @@ local function initSecretSpawnNotifier()
     end)
 end
 
+------------------- CLIMATE TIME NOTIFIER -------------------
+local function initClimateTimeNotifier()
+    task.spawn(function()
+        task.wait(3)
+        if not alive then
+            return
+        end
+
+        local repMgr = RepMgr
+        if not repMgr then
+            repMgr = safeRequire(UtilityFolder, "RepMgr")
+        end
+        if not repMgr then
+            warn("[SpearFishing] RepMgr module tidak ditemukan, Climate Time Notifier idle.")
+            return
+        end
+
+        local climateTimeParam
+        local climateParam
+
+        local okTime, resTime = pcall(function()
+            return repMgr:GetParameterTarget("CurrentClimateTime")
+        end)
+        if okTime and resTime then
+            climateTimeParam = resTime
+        end
+
+        local okClimate, resClimate = pcall(function()
+            return repMgr:GetParameterTarget("CurrentClimate")
+        end)
+        if okClimate and resClimate then
+            climateParam = resClimate
+        end
+
+        if not climateParam then
+            warn("[SpearFishing] Parameter CurrentClimate tidak ditemukan, Climate Time Notifier idle.")
+            return
+        end
+
+        local function getRemainSeconds()
+            if not climateTimeParam then
+                return 0
+            end
+            local ok, val = pcall(function()
+                return climateTimeParam.Value
+            end)
+            if ok and type(val) == "number" then
+                return val
+            end
+            return 0
+        end
+
+        local function formatRemainText(sec)
+            sec = tonumber(sec) or 0
+            if sec < 0 then
+                sec = 0
+            end
+
+            if MathUtil then
+                local okFmt, resFmt = pcall(function()
+                    return MathUtil:secondsToMMSS(sec)
+                end)
+                if okFmt and type(resFmt) == "string" and resFmt ~= "" then
+                    return resFmt
+                end
+            end
+
+            local total = math.floor(sec + 0.5)
+            local m = math.floor(total / 60)
+            local s = total % 60
+            return string.format("%02d:%02d", m, s)
+        end
+
+        local function sendClimateWebhook(climateId)
+            if not alive then
+                return
+            end
+            if not climateTimeNotifier then
+                return
+            end
+
+            climateId = climateId or climateParam.Value
+            if not climateId or climateId == "" then
+                return
+            end
+
+            local remainSec  = getRemainSeconds()
+            local remainText = formatRemainText(remainSec)
+
+            local climateName = climateId
+            if ItemUtil then
+                local okName, resName = pcall(function()
+                    return ItemUtil:getName(climateId)
+                end)
+                if okName and type(resName) == "string" and resName ~= "" then
+                    climateName = resName
+                end
+            end
+
+            local displayName = LocalPlayer.DisplayName or LocalPlayer.Name or "Player"
+            local username    = LocalPlayer.Name or "Player"
+            local userId      = LocalPlayer.UserId or 0
+            local playerValue = string.format("%s (@%s) [%s]", tostring(displayName), tostring(username), tostring(userId))
+
+            local serverId = game.JobId
+            if not serverId or serverId == "" then
+                serverId = "N/A"
+            end
+
+            local embed = {
+                title       = "Climate Time",
+                description = DEFAULT_OWNER_DISCORD,
+                color       = 0x1E90FF,
+                fields      = {
+                    {
+                        name   = "Climate",
+                        value  = string.format("%s (%s)", climateName, tostring(climateId)),
+                        inline = false,
+                    },
+                    {
+                        name   = "Countdown",
+                        value  = string.format("Next climate change in %s", remainText),
+                        inline = false,
+                    },
+                    {
+                        name   = "Name Map",
+                        value  = GAME_NAME,
+                        inline = false,
+                    },
+                    {
+                        name   = "Player",
+                        value  = playerValue,
+                        inline = false,
+                    },
+                    {
+                        name   = "Server ID",
+                        value  = serverId,
+                        inline = false,
+                    },
+                },
+                footer = {
+                    text = "Spear Fishing PRO+ | Climate Time Notifier",
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+            }
+
+            sendWebhookGeneric(CLIMATE_WEBHOOK_URL, CLIMATE_BOT_USERNAME, SPAWN_BOSS_BOT_AVATAR, embed)
+        end
+
+        local lastClimateId = nil
+
+        local okInit, currentClimateId = pcall(function()
+            return climateParam.Value
+        end)
+        if okInit and currentClimateId ~= nil then
+            lastClimateId = currentClimateId
+            -- kirim satu kali saat init untuk state climate sekarang
+            sendClimateWebhook(currentClimateId)
+        end
+
+        table.insert(connections, climateParam.Changed:Connect(function(newId)
+            if not alive then
+                return
+            end
+            if newId == lastClimateId then
+                return
+            end
+            lastClimateId = newId
+            sendClimateWebhook(newId)
+        end))
+    end)
+end
+
 ------------------- HARPOON SHOP: DATA & UI -------------------
 local function getHarpoonDisplayData(id)
     local name      = id
@@ -2475,7 +2463,7 @@ local function buildHarpoonShopCard(parent)
         parent,
         "Harpoon Shop",
         "Toko Harpoon (Image + DMG + CRT + Charge + Price).",
-        5,
+        4,
         280
     )
 
@@ -2692,7 +2680,7 @@ local function updateStatusLabel()
     end
 
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, HPBarSpeed %s, InitialProgress %s, ESP Boss %s, ESP Illahi %s, ESP Secret %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
+        "Status: AutoFarm %s, AutoEquip %s, AutoFarm V2 %s (%s, %.2fs), SpawnBossNotifier %s, SpawnIllahiNotifier %s, SpawnSecretNotifier %s, HPBossNotifier %s, ClimateNotifier %s, ESP Boss %s, ESP Illahi %s, ESP Secret %s, Skill1 %s, Skill2 %s, Skill3 %s, Skill4 %s, Skill5 %s.",
         autoFarm and "ON" or "OFF",
         autoEquip and "ON" or "OFF",
         autoFarmV2 and "ON" or "OFF",
@@ -2702,8 +2690,7 @@ local function updateStatusLabel()
         spawnIllahiNotifier and "ON" or "OFF",
         spawnSecretNotifier and "ON" or "OFF",
         hpBossNotifier and "ON" or "OFF",
-        hpBarSpeedEnabled and "ON" or "OFF",
-        hpBarInitialEnabled and "ON" or "OFF",
+        climateTimeNotifier and "ON" or "OFF",
         espBoss and "ON" or "OFF",
         espIllahi and "ON" or "OFF",
         espSecret and "ON" or "OFF",
@@ -2715,7 +2702,7 @@ local function updateStatusLabel()
     )
 end
 
-------------------- UI BUILDERS (SPEAR / SPAWN / HPBAR / ESP) -------------------
+------------------- UI BUILDERS (SPEAR / SPAWN / ESP) -------------------
 local function buildSpearControlsCard(bodyScroll)
     local controlCard = createCard(
         bodyScroll,
@@ -2966,9 +2953,9 @@ local function buildSpawnControlsCard(bodyScroll)
     local spawnCard = createCard(
         bodyScroll,
         "Spawn Controls",
-        "Pengaturan Notifier Spawn (Boss, HP Boss, Illahi, Secret) global + per ikan.",
+        "Pengaturan Notifier Spawn (Boss, HP Boss, Illahi, Secret, Climate) global + per ikan.",
         2,
-        420
+        440
     )
 
     local spawnScroll = Instance.new("ScrollingFrame")
@@ -3005,6 +2992,9 @@ local function buildSpawnControlsCard(bodyScroll)
     local hpBossToggleButton =
         select(1, createToggleButton(spawnScroll, "HPBar Boss Notifier", hpBossNotifier))
 
+    local climateToggleButton =
+        select(1, createToggleButton(spawnScroll, "Climate Time Notifier", climateTimeNotifier))
+
     local spawnIllahiToggleButton =
         select(1, createToggleButton(spawnScroll, "Spawn Illahi Notifier", spawnIllahiNotifier))
 
@@ -3023,6 +3013,13 @@ local function buildSpawnControlsCard(bodyScroll)
         setToggleButtonState(hpBossToggleButton, "HPBar Boss Notifier", hpBossNotifier)
         updateStatusLabel()
         notify("Spear Fishing", "HPBar Boss Notifier: " .. (hpBossNotifier and "ON" or "OFF"), 2)
+    end))
+
+    table.insert(connections, climateToggleButton.MouseButton1Click:Connect(function()
+        climateTimeNotifier = not climateTimeNotifier
+        setToggleButtonState(climateToggleButton, "Climate Time Notifier", climateTimeNotifier)
+        updateStatusLabel()
+        notify("Spear Fishing", "Climate Time Notifier: " .. (climateTimeNotifier and "ON" or "OFF"), 2)
     end))
 
     table.insert(connections, spawnIllahiToggleButton.MouseButton1Click:Connect(function()
@@ -3098,186 +3095,12 @@ local function buildSpawnControlsCard(bodyScroll)
     end
 end
 
--- HPBar Controls: master speed + initial progress input (override HPBar UI map)
-local function buildHpBarControlsCard(bodyScroll)
-    local card = createCard(
-        bodyScroll,
-        "HPBar Controls",
-        "Kontrol HPBar Boss (Speed master + Initial Progress / placeholder).",
-        3,
-        200
-    )
-
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = "HPBarScroll"
-    scroll.Parent = card
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.Position = UDim2.new(0, 0, 0, 40)
-    scroll.Size = UDim2.new(1, 0, 1, -40)
-    scroll.ScrollBarThickness = 4
-    scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    local padding = Instance.new("UIPadding")
-    padding.Parent = scroll
-    padding.PaddingTop    = UDim.new(0, 0)
-    padding.PaddingBottom = UDim.new(0, 8)
-    padding.PaddingLeft   = UDim.new(0, 0)
-    padding.PaddingRight  = UDim.new(0, 0)
-
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scroll
-    layout.FillDirection = Enum.FillDirection.Vertical
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 6)
-
-    table.insert(connections, layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
-    end))
-
-    -- Toggles
-    local hpSpeedButton =
-        select(1, createToggleButton(scroll, "HPBar Speed", hpBarSpeedEnabled))
-
-    local initToggleButton =
-        select(1, createToggleButton(scroll, "Initial Progress", hpBarInitialEnabled))
-
-    -- Input initial progress
-    local initFrame = Instance.new("Frame")
-    initFrame.Name = "InitProgressFrame"
-    initFrame.Parent = scroll
-    initFrame.BackgroundTransparency = 1
-    initFrame.BorderSizePixel = 0
-    initFrame.Size = UDim2.new(1, 0, 0, 28)
-
-    local initLabel = Instance.new("TextLabel")
-    initLabel.Name = "InitLabel"
-    initLabel.Parent = initFrame
-    initLabel.BackgroundTransparency = 1
-    initLabel.Font = Enum.Font.Gotham
-    initLabel.TextSize = 11
-    initLabel.TextColor3 = Color3.fromRGB(185, 185, 185)
-    initLabel.TextXAlignment = Enum.TextXAlignment.Left
-    initLabel.Text = "Initial Progress (cur/max, contoh 0/78M):"
-    initLabel.Position = UDim2.new(0, 0, 0, 0)
-    initLabel.Size = UDim2.new(0.6, 0, 1, 0)
-
-    local initBox = Instance.new("TextBox")
-    initBox.Name = "InitProgressBox"
-    initBox.Parent = initFrame
-    initBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    initBox.BorderSizePixel = 0
-    initBox.Font = Enum.Font.GothamSemibold
-    initBox.TextSize = 11
-    initBox.TextColor3 = Color3.fromRGB(230, 230, 230)
-    initBox.ClearTextOnFocus = false
-    initBox.TextXAlignment = Enum.TextXAlignment.Center
-    initBox.Position = UDim2.new(0.62, 0, 0, 0)
-    initBox.Size = UDim2.new(0.38, 0, 1, 0)
-    initBox.Text = ""
-
-    local initCorner = Instance.new("UICorner")
-    initCorner.CornerRadius = UDim.new(0, 6)
-    initCorner.Parent = initBox
-
-    -- Preview bar
-    local previewFrame = Instance.new("Frame")
-    previewFrame.Name = "HpPreview"
-    previewFrame.Parent = scroll
-    previewFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    previewFrame.BorderSizePixel = 0
-    previewFrame.Size = UDim2.new(1, 0, 0, 26)
-
-    local previewCorner = Instance.new("UICorner")
-    previewCorner.CornerRadius = UDim.new(0, 6)
-    previewCorner.Parent = previewFrame
-
-    local previewTag = Instance.new("Frame")
-    previewTag.Name = "Tag"
-    previewTag.Parent = previewFrame
-    previewTag.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-    previewTag.BorderSizePixel = 0
-    previewTag.Size = UDim2.new(0, 0, 1, 0)
-
-    local previewCount = Instance.new("TextLabel")
-    previewCount.Name = "Count"
-    previewCount.Parent = previewFrame
-    previewCount.BackgroundTransparency = 1
-    previewCount.Font = Enum.Font.GothamSemibold
-    previewCount.TextSize = 11
-    previewCount.TextColor3 = Color3.fromRGB(240, 240, 240)
-    previewCount.TextXAlignment = Enum.TextXAlignment.Center
-    previewCount.Size = UDim2.new(1, -4, 1, 0)
-    previewCount.Position = UDim2.new(0, 2, 0, 0)
-    previewCount.Text = "0 / 0"
-
-    hpBarPreviewTag        = previewTag
-    hpBarPreviewCountLabel = previewCount
-
-    local function applyInitProgress()
-        if not hpBarInitialEnabled then
-            notify("Spear Fishing", "Initial Progress sedang OFF.", 2)
-            return
-        end
-
-        local text = initBox.Text or ""
-        local cur, maxv = parseHpProgressInput(text)
-        if not cur or not maxv then
-            notify("Spear Fishing", "Format Initial Progress tidak valid. Contoh: 0/78M", 3)
-            return
-        end
-
-        hpBarManualMax = maxv
-        lastBossHpCur  = cur
-        lastBossHpMax  = maxv
-
-        updateBossHpUiVisual(cur, maxv, true, false)
-        updateStatusLabel()
-    end
-
-    table.insert(connections, initBox.FocusLost:Connect(function()
-        applyInitProgress()
-    end))
-
-    table.insert(connections, hpSpeedButton.MouseButton1Click:Connect(function()
-        hpBarSpeedEnabled = not hpBarSpeedEnabled
-        setToggleButtonState(hpSpeedButton, "HPBar Speed", hpBarSpeedEnabled)
-        updateStatusLabel()
-
-        if hpBarSpeedEnabled and lastBossHpMax and lastBossHpMax > 0 then
-            local uiCur = lastBossHpCur or 0
-            local uiMax = lastBossHpMax
-            if hpBarManualMax and hpBarManualMax > 0 and lastBossHpMax > 0 then
-                uiMax = hpBarManualMax
-                uiCur = math.max(0, math.min(uiMax, uiMax * (uiCur / lastBossHpMax)))
-            end
-            updateBossHpUiVisual(uiCur, uiMax, true, false)
-        else
-            local refs = ensureMapBossBar()
-            if refs then
-                refs.bossBar.Visible = false
-                refs.hpBar.Visible   = false
-            end
-        end
-
-        notify("Spear Fishing", "HPBar Speed: " .. (hpBarSpeedEnabled and "ON" or "OFF"), 2)
-    end))
-
-    table.insert(connections, initToggleButton.MouseButton1Click:Connect(function()
-        hpBarInitialEnabled = not hpBarInitialEnabled
-        setToggleButtonState(initToggleButton, "Initial Progress", hpBarInitialEnabled)
-        updateStatusLabel()
-        notify("Spear Fishing", "Initial Progress: " .. (hpBarInitialEnabled and "ON" or "OFF"), 2)
-    end))
-end
-
 local function buildEspCard(bodyScroll)
     local espCard = createCard(
         bodyScroll,
         "ESP Fish Controls",
         "ESP antena kuning dari karakter ke Boss/Illahi/Secret + nama dan jarak (stud).",
-        4,
+        3,
         420
     )
 
@@ -3410,7 +3233,6 @@ local function buildAllUI()
     local _, bodyScroll = createMainLayout()
     buildSpearControlsCard(bodyScroll)
     buildSpawnControlsCard(bodyScroll)
-    buildHpBarControlsCard(bodyScroll)
     buildEspCard(bodyScroll)
     buildHarpoonShopCard(bodyScroll)
 end
@@ -3439,6 +3261,7 @@ initToolsDataWatcher()
 initWorldBossNotifier()
 initIllahiSpawnNotifier()
 initSecretSpawnNotifier()
+initClimateTimeNotifier()
 
 ------------------- BACKPACK / CHARACTER EVENT -------------------
 table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
@@ -3609,15 +3432,13 @@ _G.AxaHub.TabCleanup[tabId] = function()
     hpBossNotifier        = false
     spawnIllahiNotifier   = false
     spawnSecretNotifier   = false
+    climateTimeNotifier   = false
     espBoss               = false
     espIllahi             = false
     espSecret             = false
     bossRegionState       = {}
     hpRegionState         = {}
     trackedFishEspTargets = {}
-    hpBarManualMax        = nil
-    lastBossHpCur         = nil
-    lastBossHpMax         = nil
 
     for part, _ in pairs(fishEspMap) do
         destroyFishEsp(part)
