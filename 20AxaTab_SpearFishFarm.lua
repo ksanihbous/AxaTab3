@@ -88,7 +88,7 @@ local shootRange      = 600   -- default
 -- Farm delay (detik)
 local FARM_DELAY_MIN  = 0.01
 local FARM_DELAY_MAX  = 0.30
-local farmDelay       = 0.05
+local farmDelay       = 0.01
 
 -- Status label UI
 local statusLabel
@@ -464,6 +464,8 @@ local function registerFishPartForEsp(part, fishId, fishType, displayName)
     table.insert(connections, conn)
 end
 
+-- UPDATE: ESP Antena sekarang ikut Shooting Range:
+-- jika target keluar dari jarak shootRange, ESP dihancurkan.
 local function updateEspTextDistances()
     if not next(fishEspMap) then
         return
@@ -478,14 +480,21 @@ local function updateEspTextDistances()
     for part, data in pairs(fishEspMap) do
         if not part or part.Parent == nil then
             destroyFishEsp(part)
+            trackedFishEspTargets[part] = nil
         else
             local ok, dist = pcall(function()
                 return (part.Position - hrpPos).Magnitude
             end)
-            if ok and data.label then
-                local nameText = data.displayName or "Fish"
-                local d = math.floor(dist or 0)
-                data.label.Text = string.format("%s | %d suds", nameText, d)
+            if ok then
+                -- Range check untuk ESP
+                if dist > shootRange then
+                    destroyFishEsp(part)
+                    trackedFishEspTargets[part] = nil
+                elseif data.label then
+                    local nameText = data.displayName or "Fish"
+                    local d = math.floor(dist or 0)
+                    data.label.Text = string.format("%s | %d suds", nameText, d)
+                end
             end
         end
     end
@@ -1107,7 +1116,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.2+"
+    title.Text = "Spear Fish Farm V3.3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
