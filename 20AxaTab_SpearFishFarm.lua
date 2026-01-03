@@ -1,15 +1,15 @@
 --==========================================================
---  20AxaTab_SpearFishFarm.lua
---  TAB 20: "Spear Fish Farm PRO++"
+--  19AxaTab_SpearFishFarm.lua
+--  TAB 19: "Spear Fish Farm PRO++"
 --  Fitur:
 --    - AutoFarm: universal fish Sea1 - Sea7 (Hit remote)
---    - AutoFarm Boss (WorldBoss > Point1 / Point2)
+--    - AutoFarm Boss (WorldBoss > Point1 / Point2) PRIORITAS
 --    - AutoFarm Mythic/Legendary/Secret (Sea4, Sea5)
 --    - AutoFarm Illahi/Divine (Sea6, Sea7)
---    - Sea Selector: AutoDetect / Sea1 - Sea7
+--    - Sea Selector: AutoDetect / Sea1 - Sea5 / Sea6&Sea7 (gabung)
 --    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
 --    - Per Fish list dinamis, sinkron Sea + Climate real time
---    - AimLock Fish + ESP Antena neon kuning (toggle terpisah)
+--    - AimLock Fish + ESP Antena kuning (Attachment + Beam di workspace)
 --    - Shooting Range slider (25 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
@@ -56,7 +56,7 @@ local autoFarmBoss     = false  -- Boss di WorldBoss
 local autoFarmRare     = false  -- Mythic/Legendary/Secret Sea4, Secret Sea5
 local autoFarmIllahi   = false  -- Illahi Sea6, Sea7
 
--- Sea mode
+-- Sea mode (Sea6 & Sea7 digabung satu opsi)
 local seaModeList = {
     "AutoDetect",
     "Sea1",
@@ -64,8 +64,7 @@ local seaModeList = {
     "Sea3",
     "Sea4",
     "Sea5",
-    "Sea6",
-    "Sea7",
+    "Sea6_7", -- gabungan Sea6 & Sea7
 }
 local seaModeIndex = 1  -- AutoDetect default
 
@@ -79,7 +78,7 @@ local rarityModeIndex = 1  -- default Disabled
 
 -- AimLock + ESP Antena
 local aimLockEnabled    = true   -- lock target + label + highlight
-local espAntennaEnabled = true   -- khusus garis neon kuning HRP -> fish
+local espAntennaEnabled = true   -- garis kuning (Beam) HRP -> target
 
 -- Shooting range (stud)
 local SHOOT_RANGE_MIN = 25
@@ -94,6 +93,10 @@ local farmDelay       = 0.01
 -- Status label UI
 local statusLabel
 
+-- Boss target global (dipakai juga untuk prioritas boss)
+local currentBossTarget     = nil
+local currentBossTargetPart = nil
+
 ------------------- FISH DATA SETS -------------------
 -- Illahi / Divine (Sea6, Sea7)
 local ILLAHI_SET = {
@@ -101,7 +104,7 @@ local ILLAHI_SET = {
     Fish401 = true, -- Nether Anglerfish (Sea7)
     Fish402 = true, -- Nether Manta Ray (Sea6)
     Fish403 = true, -- Nether SwordFish (Sea6)
-    Fish404 = true, -- Diamond Flying Fish (Sea6)
+    Fish404 = true, -- Nether Flying Fish (Sea6)
     Fish405 = true, -- Diamond Flying Fish (Sea6)
 }
 
@@ -186,7 +189,7 @@ local PER_FISH_CONFIG = {
     { id = "Fish401", sea = "Sea7", name = "Fish401 Nether Anglerfish Illahi (Sea7)" },
     { id = "Fish402", sea = "Sea6", name = "Fish402 Nether Manta Ray Illahi (Sea6)" },
     { id = "Fish403", sea = "Sea6", name = "Fish403 Nether SwordFish Illahi (Sea6)" },
-    { id = "Fish404", sea = "Sea6", name = "Fish404 Diamond Flying Fish Illahi (Sea6)" },
+    { id = "Fish404", sea = "Sea6", name = "Fish404 Nether Flying Fish Illahi (Sea6)" },
     { id = "Fish405", sea = "Sea6", name = "Fish405 Diamond Flying Fish Illahi (Sea6)" },
 }
 
@@ -349,20 +352,39 @@ local function getActiveSeaFolder()
     local mode = seaModeList[seaModeIndex] or "AutoDetect"
     if mode == "AutoDetect" then
         return detectCurrentSea()
+    elseif mode == "Sea6_7" then
+        -- gabungan Sea6 & Sea7: pilih yang paling dekat / aktif
+        local nearFolder, nearName = detectCurrentSea()
+        if nearName == "Sea6" or nearName == "Sea7" then
+            return nearFolder, nearName
+        end
+
+        local sea6 = getSeaFolderByName("Sea6")
+        if sea6 then
+            return sea6, "Sea6"
+        end
+        local sea7 = getSeaFolderByName("Sea7")
+        if sea7 then
+            return sea7, "Sea7"
+        end
+        return nil, nil
     else
         local seaFolder = getSeaFolderByName(mode)
         return seaFolder, mode
     end
 end
 
-------------------- AIMLOCK + ESP ANTENA (NEON) -------------------
+------------------- AIMLOCK + ESP ANTENA (ATTACHMENT + BEAM) -------------------
 local aimLockTarget        = nil
 local aimLockTargetPart    = nil
 local aimLockLabelName     = "Target"
 local aimLockBillboard     = nil
 local aimLockLabel         = nil
 local aimLockHighlight     = nil
-local antennaPart          = nil
+
+local antennaBeam          = nil
+local antennaAttachHRP     = nil
+local antennaAttachFish    = nil
 
 local function clearAimLockVisual()
     if aimLockBillboard then
@@ -371,15 +393,77 @@ local function clearAimLockVisual()
     if aimLockHighlight then
         pcall(function() aimLockHighlight:Destroy() end)
     end
-    if antennaPart then
-        pcall(function() antennaPart:Destroy() end)
+    if antennaBeam then
+        pcall(function() antennaBeam:Destroy() end)
+    end
+    if antennaAttachHRP then
+        pcall(function() antennaAttachHRP:Destroy() end)
+    end
+    if antennaAttachFish then
+        pcall(function() antennaAttachFish:Destroy() end)
     end
 
     aimLockBillboard  = nil
     aimLockLabel      = nil
     aimLockHighlight  = nil
-    antennaPart       = nil
+    antennaBeam       = nil
+    antennaAttachHRP  = nil
+    antennaAttachFish = nil
     aimLockTargetPart = nil
+    aimLockTarget     = nil
+end
+
+local function buildAntennaBeam()
+    if not espAntennaEnabled then
+        return
+    end
+    local hrp = getHRP()
+    if not hrp or not aimLockTargetPart then
+        return
+    end
+
+    -- Attachment di HRP
+    if not antennaAttachHRP or antennaAttachHRP.Parent ~= hrp then
+        if antennaAttachHRP then
+            pcall(function() antennaAttachHRP:Destroy() end)
+        end
+        antennaAttachHRP = Instance.new("Attachment")
+        antennaAttachHRP.Name = "AxaFarm_Antenna_HRP"
+        antennaAttachHRP.Parent = hrp
+    end
+
+    -- Attachment di fish target
+    if not antennaAttachFish or antennaAttachFish.Parent ~= aimLockTargetPart then
+        if antennaAttachFish then
+            pcall(function() antennaAttachFish:Destroy() end)
+        end
+        antennaAttachFish = Instance.new("Attachment")
+        antennaAttachFish.Name = "AxaFarm_Antenna_Fish"
+        antennaAttachFish.Parent = aimLockTargetPart
+    end
+
+    -- Beam kuning dari HRP ke fish
+    if not antennaBeam or antennaBeam.Parent == nil then
+        if antennaBeam then
+            pcall(function() antennaBeam:Destroy() end)
+        end
+        antennaBeam = Instance.new("Beam")
+        antennaBeam.Name = "AxaFarm_AntennaBeam"
+        antennaBeam.Attachment0 = antennaAttachHRP
+        antennaBeam.Attachment1 = antennaAttachFish
+        antennaBeam.Color       = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+        antennaBeam.Width0      = 0.1
+        antennaBeam.Width1      = 0.1
+        antennaBeam.LightEmission = 1
+        antennaBeam.FaceCamera  = true
+        antennaBeam.Transparency = NumberSequence.new(0)
+        antennaBeam.Enabled     = true
+        antennaBeam.Parent      = workspace
+    else
+        antennaBeam.Attachment0 = antennaAttachHRP
+        antennaBeam.Attachment1 = antennaAttachFish
+        antennaBeam.Enabled     = true
+    end
 end
 
 local function setAimLockTarget(newPart, displayName)
@@ -424,7 +508,7 @@ local function setAimLockTarget(newPart, displayName)
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent       = label
 
-    -- Highlight di fish (merah kuning tipis, supaya jelas)
+    -- Highlight di fish
     local adornee = aimLockTargetPart
     if aimLockTargetPart.Parent and aimLockTargetPart.Parent:IsA("Model") then
         adornee = aimLockTargetPart.Parent
@@ -439,28 +523,14 @@ local function setAimLockTarget(newPart, displayName)
     highlight.Adornee             = adornee
     highlight.Parent              = adornee
 
-    -- Antena neon hanya dibuat kalau ESP Antena aktif
-    if espAntennaEnabled then
-        antennaPart = Instance.new("Part")
-        antennaPart.Name        = "AxaFarm_Antenna"
-        antennaPart.Anchored    = true
-        antennaPart.CanCollide  = false
-        antennaPart.CanQuery    = false
-        antennaPart.CanTouch    = false
-        antennaPart.Material    = Enum.Material.Neon
-        antennaPart.Color       = Color3.fromRGB(255, 255, 0)
-        antennaPart.CastShadow  = false
-        antennaPart.Size        = Vector3.new(0.15, 1, 0.15)
-        antennaPart.Shape       = Enum.PartType.Cylinder
-        antennaPart.Transparency = 0
-        antennaPart.Parent      = workspace
-    else
-        antennaPart = nil
-    end
-
     aimLockBillboard = billboard
     aimLockLabel     = label
     aimLockHighlight = highlight
+
+    -- ESP Antena via Attachment + Beam di workspace
+    if espAntennaEnabled then
+        buildAntennaBeam()
+    end
 end
 
 local function updateAimLockDistanceLabel()
@@ -483,49 +553,19 @@ local function updateAimLockDistanceLabel()
 
     local fromPos = hrp.Position
     local toPos   = aimLockTargetPart.Position
-    local diff    = toPos - fromPos
-    local dist    = diff.Magnitude
+    local dist    = (toPos - fromPos).Magnitude
 
-    -- Label jarak tetap update walau ESP Antena OFF
     if aimLockLabel then
         aimLockLabel.Text = string.format("%s | %d suds", aimLockLabelName, math.floor(dist or 0))
     end
 
-    -- Jika ESP Antena OFF: sembunyikan garis kalau ada, lalu selesai
-    if not espAntennaEnabled then
-        if antennaPart then
-            antennaPart.Transparency = 1
-        end
-        return
+    -- Sinkron ON/OFF antena
+    if antennaBeam then
+        antennaBeam.Enabled = espAntennaEnabled
+    elseif espAntennaEnabled and aimLockTargetPart then
+        -- kalau beam belum ada tapi antena ON, bangun ulang
+        buildAntennaBeam()
     end
-
-    -- ESP Antena ON: pastikan part ada
-    if not antennaPart or antennaPart.Parent == nil then
-        antennaPart = Instance.new("Part")
-        antennaPart.Name        = "AxaFarm_Antenna"
-        antennaPart.Anchored    = true
-        antennaPart.CanCollide  = false
-        antennaPart.CanQuery    = false
-        antennaPart.CanTouch    = false
-        antennaPart.Material    = Enum.Material.Neon
-        antennaPart.Color       = Color3.fromRGB(255, 255, 0)
-        antennaPart.CastShadow  = false
-        antennaPart.Size        = Vector3.new(0.15, 1, 0.15)
-        antennaPart.Shape       = Enum.PartType.Cylinder
-        antennaPart.Transparency = 0
-        antennaPart.Parent      = workspace
-    end
-
-    if dist < 0.1 then
-        antennaPart.Transparency = 1
-        return
-    else
-        antennaPart.Transparency = 0
-    end
-
-    antennaPart.Size = Vector3.new(0.15, dist, 0.15)
-    local mid = fromPos + diff * 0.5
-    antennaPart.CFrame = CFrame.lookAt(mid, toPos) * CFrame.Angles(math.rad(90), 0, 0)
 end
 
 ------------------- HIT HELPERS -------------------
@@ -580,6 +620,32 @@ local function sendHit(fishInstance, hitPos, tool)
     pcall(function()
         FireRE:FireServer(unpack(args))
     end)
+end
+
+------------------- PRIORITAS BOSS (CEK BOSS HIDUP) -------------------
+local function isBossAlive()
+    if not autoFarmBoss then
+        return false
+    end
+    if not currentBossTargetPart or currentBossTargetPart.Parent == nil then
+        return false
+    end
+
+    local pos = currentBossTargetPart.Position
+    if not isInRange(pos) then
+        return false
+    end
+
+    local curHp = currentBossTargetPart:GetAttribute("CurHP")
+        or currentBossTargetPart:GetAttribute("CurHp")
+        or currentBossTargetPart:GetAttribute("HP")
+        or currentBossTargetPart:GetAttribute("Hp")
+
+    if curHp ~= nil and tonumber(curHp) <= 0 then
+        return false
+    end
+
+    return true
 end
 
 ------------------- RARITY FILTER LOGIC -------------------
@@ -702,6 +768,11 @@ local function pickNewFishTarget(seaFolder, seaName)
 end
 
 local function processAutoFarmFishStep()
+    -- PRIORITAS: kalau boss sedang hidup, skip AutoFarm fish
+    if autoFarmBoss and isBossAlive() then
+        return
+    end
+
     if not (autoFarmAll or autoFarmRare or autoFarmIllahi) then
         return
     end
@@ -757,9 +828,6 @@ local function processAutoFarmFishStep()
 end
 
 ------------------- AUTO FARM BOSS -------------------
-local currentBossTarget     = nil
-local currentBossTargetPart = nil
-
 local function getBossPartInRegion(region)
     if not region then
         return nil
@@ -904,7 +972,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V2"
+    title.Text = "Spear Fish Farm V3"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -916,7 +984,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "Auto Farm Spear + AimLock fish + ESP Antena neon kuning."
+    subtitle.Text = "Auto Farm Spear + PRIORITAS Boss + AimLock fish + ESP Antena kuning."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1193,7 +1261,14 @@ local function updateStatusLabel()
         return
     end
 
-    local seaModeText   = seaModeList[seaModeIndex]   or "AutoDetect"
+    local rawSeaMode = seaModeList[seaModeIndex] or "AutoDetect"
+    local seaModeText
+    if rawSeaMode == "Sea6_7" then
+        seaModeText = "Sea6&Sea7"
+    else
+        seaModeText = rawSeaMode
+    end
+
     local rarityModeTxt = rarityModeList[rarityModeIndex] or "Disabled"
 
     statusLabel.Text = string.format(
@@ -1333,7 +1408,7 @@ local function buildAutoFarmCard(bodyScroll)
     local card = createCard(
         bodyScroll,
         "Auto Farm - Spear Fishing",
-        "Auto Hit Spear Sea1 - Sea7 + Boss + Rare + Illahi. AimLock fish + ESP Antena neon dari body ke target.",
+        "Auto Hit Spear Sea1 - Sea7 + PRIORITAS Boss + Rare + Illahi. AimLock fish + ESP Antena kuning (Attachment + Beam).",
         1,
         540
     )
@@ -1372,7 +1447,7 @@ local function buildAutoFarmCard(bodyScroll)
     local autoFarmIllahiButton = createToggleButton(scroll, "AutoFarm Illahi/Divine", autoFarmIllahi)
 
     local aimLockButton        = createToggleButton(scroll, "AimLock Fish + Label", aimLockEnabled)
-    local espAntennaButton     = createToggleButton(scroll, "ESP Antena (Neon Line)", espAntennaEnabled)
+    local espAntennaButton     = createToggleButton(scroll, "ESP Antena (Beam Kuning)", espAntennaEnabled)
 
     local seaModeButton = Instance.new("TextButton")
     seaModeButton.Name = "SeaModeButton"
@@ -1401,8 +1476,10 @@ local function buildAutoFarmCard(bodyScroll)
             desc = mode .. ": Island Center / Lake"
         elseif mode == "Sea4" then
             desc = "Sea4: Submerged Pond"
-        elseif mode == "Sea5" or mode == "Sea6" or mode == "Sea7" then
-            desc = mode .. ": Nether Island"
+        elseif mode == "Sea5" then
+            desc = "Sea5: Nether Island"
+        elseif mode == "Sea6_7" then
+            desc = "Sea6 & Sea7: Nether Island (Illahi/Divine)"
         else
             desc = mode
         end
@@ -1555,6 +1632,11 @@ local function buildAutoFarmCard(bodyScroll)
         setToggleButtonState(aimLockButton, "AimLock Fish + Label", aimLockEnabled)
         if not aimLockEnabled then
             clearAimLockVisual()
+        else
+            -- kalau aimLock diaktifkan lagi dan ada target lama, rebuild label + beam
+            if aimLockTargetPart then
+                setAimLockTarget(aimLockTargetPart, aimLockLabelName)
+            end
         end
         updateStatusLabel()
         notify("Spear Fish Farm", "AimLock: " .. (aimLockEnabled and "ON" or "OFF"), 2)
@@ -1562,10 +1644,19 @@ local function buildAutoFarmCard(bodyScroll)
 
     table.insert(connections, espAntennaButton.MouseButton1Click:Connect(function()
         espAntennaEnabled = not espAntennaEnabled
-        setToggleButtonState(espAntennaButton, "ESP Antena (Neon Line)", espAntennaEnabled)
-        if not espAntennaEnabled and antennaPart then
-            antennaPart.Transparency = 1
+        setToggleButtonState(espAntennaButton, "ESP Antena (Beam Kuning)", espAntennaEnabled)
+
+        if not espAntennaEnabled then
+            if antennaBeam then
+                antennaBeam.Enabled = false
+            end
+        else
+            -- antena ON, kalau sudah ada target, bangun beam langsung
+            if aimLockEnabled and aimLockTargetPart then
+                buildAntennaBeam()
+            end
         end
+
         updateStatusLabel()
         notify("Spear Fish Farm", "ESP Antena: " .. (espAntennaEnabled and "ON" or "OFF"), 2)
     end))
