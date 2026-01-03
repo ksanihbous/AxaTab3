@@ -8,8 +8,9 @@
 --    - AutoFarm Illahi/Divine (Sea6, Sea7)
 --    - Sea Selector: AutoDetect / Sea1 - Sea7
 --    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
---    - AimLock Fish + Antena kuning ke target
---    - Shooting Range slider (300 - 1000 stud)
+--    - Per Fish list dinamis, sinkron Sea + Climate real time
+--    - AimLock Fish + Antena merah/kuning menyala ke target
+--    - Shooting Range slider (25 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
 
@@ -79,7 +80,7 @@ local rarityModeIndex = 1  -- default Disabled
 local aimLockEnabled = true
 
 -- Shooting range (stud)
-local SHOOT_RANGE_MIN = 300
+local SHOOT_RANGE_MIN = 25
 local SHOOT_RANGE_MAX = 1000
 local shootRange      = 600   -- default
 
@@ -145,46 +146,46 @@ local BOSS_IDS = {
     Boss03 = true, -- Crimson Rift Dragon
 }
 
-------------------- PER FISH CONFIG (UNTUK RARITY MODE "PER FISH") -------------------
+------------------- PER FISH CONFIG -------------------
 local PER_FISH_CONFIG = {
-    -- Sea4 Grassland
-    { id = "Fish55",  name = "Fish55 Purple Jellyfish (Sea4)" },
-    { id = "Fish56",  name = "Fish56 Prism Jellyfish (Sea4)" },
-    { id = "Fish57",  name = "Fish57 Prism Crab (Sea4)" },
-    { id = "Fish98",  name = "Fish98 Shark (Sea4)" },
-    { id = "Fish305", name = "Fish305 Christmas Shark (Sea4)" },
-    { id = "Fish201", name = "Fish201 Shimmer Puffer (Sea4)" },
+    -- Sea4 - Climate Grassland
+    { id = "Fish55",  sea = "Sea4", climates = {"Grassland"}, name = "Fish55 Purple Jellyfish Legendary (Sea4 / Grassland)" },
+    { id = "Fish56",  sea = "Sea4", climates = {"Grassland"}, name = "Fish56 Prism Jellyfish Legendary (Sea4 / Grassland)" },
+    { id = "Fish57",  sea = "Sea4", climates = {"Grassland"}, name = "Fish57 Prism Crab Legendary (Sea4 / Grassland)" },
+    { id = "Fish98",  sea = "Sea4", climates = {"Grassland"}, name = "Fish98 Shark Mythic (Sea4 / Grassland)" },
+    { id = "Fish305", sea = "Sea4", climates = {"Grassland","Marsh","Iceborne"}, name = "Fish305 Christmas Shark Mythic (Sea4 / All Climate)" },
+    { id = "Fish201", sea = "Sea4", climates = {"Grassland"}, name = "Fish201 Shimmer Puffer Secret (Sea4 / Grassland)" },
 
-    -- Sea4 Marsh
-    { id = "Fish104", name = "Fish104 Bullfrog (Sea4)" },
-    { id = "Fish105", name = "Fish105 Poison Dart Frog (Sea4)" },
-    { id = "Fish102", name = "Fish102 Swamp Crocodile (Sea4)" },
-    { id = "Fish97",  name = "Fish97 Sawtooth Shark (Sea4)" },
-    { id = "Fish202", name = "Fish202 Nebula Lantern Carp (Sea4)" },
+    -- Sea4 - Climate Marsh
+    { id = "Fish104", sea = "Sea4", climates = {"Marsh"}, name = "Fish104 Bullfrog Legendary (Sea4 / Marsh)" },
+    { id = "Fish105", sea = "Sea4", climates = {"Marsh"}, name = "Fish105 Poison Dart Frog Mythic (Sea4 / Marsh)" },
+    { id = "Fish102", sea = "Sea4", climates = {"Marsh"}, name = "Fish102 Swamp Crocodile Mythic (Sea4 / Marsh)" },
+    { id = "Fish97",  sea = "Sea4", climates = {"Marsh"}, name = "Fish97 Sawtooth Shark Mythic (Sea4 / Marsh)" },
+    { id = "Fish202", sea = "Sea4", climates = {"Marsh"}, name = "Fish202 Nebula Lantern Carp Secret (Sea4 / Marsh)" },
 
-    -- Sea4 Iceborne
-    { id = "Fish121", name = "Fish121 Dragon Whisker Fish (Sea4)" },
-    { id = "Fish123", name = "Fish123 Leatherback Turtle (Sea4)" },
-    { id = "Fish111", name = "Fish111 Frost Anglerfish (Sea4)" },
-    { id = "Fish130", name = "Fish130 Devil Ray (Sea4)" },
-    { id = "Fish203", name = "Fish203 Shimmer Unicorn Fish (Sea4)" },
+    -- Sea4 - Climate Iceborne
+    { id = "Fish121", sea = "Sea4", climates = {"Iceborne"}, name = "Fish121 Dragon Whisker Fish Legendary (Sea4 / Iceborne)" },
+    { id = "Fish123", sea = "Sea4", climates = {"Iceborne"}, name = "Fish123 Leatherback Turtle Mythic (Sea4 / Iceborne)" },
+    { id = "Fish111", sea = "Sea4", climates = {"Iceborne"}, name = "Fish111 Frost Anglerfish Mythic (Sea4 / Iceborne)" },
+    { id = "Fish130", sea = "Sea4", climates = {"Iceborne"}, name = "Fish130 Devil Ray Mythic (Sea4 / Iceborne)" },
+    { id = "Fish203", sea = "Sea4", climates = {"Iceborne"}, name = "Fish203 Shimmer Unicorn Fish Secret (Sea4 / Iceborne)" },
 
     -- Sea5 Secret
-    { id = "Fish500", name = "Fish500 Abyssal Demon Shark (Sea5)" },
-    { id = "Fish501", name = "Fish501 Nighfall Demon Shark (Sea5)" },
-    { id = "Fish503", name = "Fish503 Ancient Gopala (Sea5)" },
-    { id = "Fish504", name = "Fish504 Nighfall Gopala (Sea5)" },
-    { id = "Fish505", name = "Fish505 Sharkster (Sea5)" },
-    { id = "Fish508", name = "Fish508 Mayfly Dragon (Sea5)" },
-    { id = "Fish510", name = "Fish510 Nighfall Sharkster (Sea5)" },
+    { id = "Fish500", sea = "Sea5", name = "Fish500 Abyssal Demon Shark Secret (Sea5)" },
+    { id = "Fish501", sea = "Sea5", name = "Fish501 Nighfall Demon Shark Secret (Sea5)" },
+    { id = "Fish503", sea = "Sea5", name = "Fish503 Ancient Gopala Secret (Sea5)" },
+    { id = "Fish504", sea = "Sea5", name = "Fish504 Nighfall Gopala Secret (Sea5)" },
+    { id = "Fish505", sea = "Sea5", name = "Fish505 Sharkster Secret (Sea5)" },
+    { id = "Fish508", sea = "Sea5", name = "Fish508 Mayfly Dragon Secret (Sea5)" },
+    { id = "Fish510", sea = "Sea5", name = "Fish510 Nighfall Sharkster Secret (Sea5)" },
 
     -- Sea6/Sea7 Illahi/Divine
-    { id = "Fish400", name = "Fish400 Nether Barracuda (Sea7)" },
-    { id = "Fish401", name = "Fish401 Nether Anglerfish (Sea7)" },
-    { id = "Fish402", name = "Fish402 Nether Manta Ray (Sea6)" },
-    { id = "Fish403", name = "Fish403 Nether SwordFish (Sea6)" },
-    { id = "Fish404", name = "Fish404 Diamond Flying Fish (Sea6)" },
-    { id = "Fish405", name = "Fish405 Diamond Flying Fish (Sea6)" },
+    { id = "Fish400", sea = "Sea7", name = "Fish400 Nether Barracuda Illahi (Sea7)" },
+    { id = "Fish401", sea = "Sea7", name = "Fish401 Nether Anglerfish Illahi (Sea7)" },
+    { id = "Fish402", sea = "Sea6", name = "Fish402 Nether Manta Ray Illahi (Sea6)" },
+    { id = "Fish403", sea = "Sea6", name = "Fish403 Nether SwordFish Illahi (Sea6)" },
+    { id = "Fish404", sea = "Sea6", name = "Fish404 Diamond Flying Fish Illahi (Sea6)" },
+    { id = "Fish405", sea = "Sea6", name = "Fish405 Diamond Flying Fish Illahi (Sea6)" },
 }
 
 local PER_FISH_FLAGS = {}
@@ -192,7 +193,7 @@ for _, cfg in ipairs(PER_FISH_CONFIG) do
     PER_FISH_FLAGS[cfg.id] = false
 end
 
-------------------- HELPERS: NOTIFY -------------------
+------------------- NOTIFY -------------------
 local function notify(title, text, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -203,7 +204,7 @@ local function notify(title, text, dur)
     end)
 end
 
-------------------- HELPERS: CHARACTER / HRP -------------------
+------------------- CHARACTER / HRP -------------------
 local function getHRP()
     if not character then
         return nil
@@ -224,13 +225,11 @@ local function getEquippedHarpoonTool()
         return nil
     end
 
-    -- Prioritas Harpoon22 kalau ada
     local harpoon22 = char:FindFirstChild("Harpoon22")
     if harpoon22 and harpoon22:IsA("Tool") then
         return harpoon22
     end
 
-    -- Harpoon dengan nama pola HarpoonXX
     local bestTool
     local bestNum = -1
     for _, child in ipairs(char:GetChildren()) do
@@ -263,9 +262,7 @@ local function ensureToolEquipped()
     if ToolRE then
         local args = {
             [1] = "Switch",
-            [2] = {
-                ["index"] = 1
-            }
+            [2] = { ["index"] = 1 }
         }
         pcall(function()
             ToolRE:FireServer(unpack(args))
@@ -356,14 +353,15 @@ local function getActiveSeaFolder()
     end
 end
 
-------------------- AIMLOCK ANTENA -------------------
-local aimLockTarget        = nil  -- Instance target fish atau boss
-local aimLockTargetPart    = nil  -- BasePart target
+------------------- AIMLOCK + ESP ANTENA -------------------
+local aimLockTarget        = nil
+local aimLockTargetPart    = nil
 local aimLockLabelName     = "Target"
 local aimLockBeam          = nil
 local aimLockAttachment    = nil
 local aimLockBillboard     = nil
 local aimLockLabel         = nil
+local aimLockHighlight     = nil
 local hrpAttachment        = nil
 
 local function ensureHRPAttachment()
@@ -399,11 +397,15 @@ local function clearAimLockVisual()
     if aimLockBillboard then
         pcall(function() aimLockBillboard:Destroy() end)
     end
+    if aimLockHighlight then
+        pcall(function() aimLockHighlight:Destroy() end)
+    end
 
     aimLockBeam       = nil
     aimLockAttachment = nil
     aimLockBillboard  = nil
     aimLockLabel      = nil
+    aimLockHighlight  = nil
     aimLockTargetPart = nil
 end
 
@@ -418,36 +420,51 @@ local function setAimLockTarget(newPart, displayName)
         return
     end
 
+    if not aimLockTargetPart or not aimLockTargetPart:IsA("BasePart") then
+        return
+    end
+
     local hrpAtt = ensureHRPAttachment()
     if not hrpAtt then
         return
     end
 
-    if not aimLockTargetPart or not aimLockTargetPart:IsA("BasePart") then
-        return
-    end
-
+    -- Attachment di fish (ujung antena)
     local fishAttachment = Instance.new("Attachment")
     fishAttachment.Name   = "AxaFarm_Target_Att"
     fishAttachment.Parent = aimLockTargetPart
 
+    -- Beam merah/kuning tebal dari HRP ke fish
     local beam = Instance.new("Beam")
-    beam.Name          = "AxaFarm_Target_Beam"
-    beam.Attachment0   = hrpAtt
-    beam.Attachment1   = fishAttachment
-    beam.FaceCamera    = true
-    beam.Width0        = 0.12
-    beam.Width1        = 0.12
-    beam.Segments      = 10
-    beam.Color         = ColorSequence.new(Color3.fromRGB(255, 255, 0))
-    beam.LightEmission = 1
+    beam.Name        = "AxaFarm_Target_Beam"
+    beam.Attachment0 = hrpAtt
+    beam.Attachment1 = fishAttachment
+    beam.FaceCamera  = false
+    beam.Width0      = 0.35
+    beam.Width1      = 0.35
+    beam.Segments    = 16
+    beam.LightEmission  = 1
     beam.LightInfluence = 0
-    beam.Transparency  = NumberSequence.new(0)
-    beam.Parent        = aimLockTargetPart
 
+    beam.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(255, 0, 0)),   -- merah
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 0)), -- kuning
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 0, 0)),   -- merah
+    })
+
+    beam.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0,   0),
+        NumberSequenceKeypoint.new(0.5, 0),
+        NumberSequenceKeypoint.new(1,   0),
+    })
+
+    beam.TextureSpeed = 2
+    beam.Parent       = hrpAtt.Parent or aimLockTargetPart
+
+    -- Billboard teks di atas fish
     local billboard = Instance.new("BillboardGui")
     billboard.Name        = "AxaFarm_Target_Billboard"
-    billboard.Size        = UDim2.new(0, 160, 0, 24)
+    billboard.Size        = UDim2.new(0, 170, 0, 26)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent      = aimLockTargetPart
@@ -455,26 +472,37 @@ local function setAimLockTarget(newPart, displayName)
     local label = Instance.new("TextLabel")
     label.Name                   = "Text"
     label.Parent                 = billboard
-    label.BackgroundTransparency = 0.25
-    label.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+    label.BackgroundTransparency = 0.2
+    label.BackgroundColor3       = Color3.fromRGB(10, 10, 10)
     label.BorderSizePixel        = 0
     label.Size                   = UDim2.new(1, 0, 1, 0)
     label.Font                   = Enum.Font.GothamSemibold
     label.TextSize               = 12
     label.TextColor3             = Color3.fromRGB(255, 255, 0)
-    label.TextStrokeTransparency = 0.5
+    label.TextStrokeTransparency = 0.3
     label.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
     label.TextWrapped            = true
-    label.Text                   = aimLockLabelName .. " | Target"
+    label.Text                   = aimLockLabelName .. " | 0 suds"
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent       = label
 
+    -- Highlight merah/kuning di fish (ESP jelas)
+    local highlight = Instance.new("Highlight")
+    highlight.Name               = "AxaFarm_Target_Highlight"
+    highlight.FillColor          = Color3.fromRGB(255, 40, 40)
+    highlight.FillTransparency   = 0.7
+    highlight.OutlineColor       = Color3.fromRGB(255, 255, 0)
+    highlight.OutlineTransparency= 0
+    highlight.Adornee            = aimLockTargetPart
+    highlight.Parent             = aimLockTargetPart
+
     aimLockBeam       = beam
     aimLockAttachment = fishAttachment
     aimLockBillboard  = billboard
     aimLockLabel      = label
+    aimLockHighlight  = highlight
 end
 
 local function updateAimLockDistanceLabel()
@@ -603,25 +631,19 @@ local function shouldTargetFish(seaName, fishName)
         return false
     end
 
-    -- Boss tidak lewat sini
     if BOSS_IDS[fishName] then
         return false
     end
 
-    -- Dasar: minimal salah satu mode autoFarm aktif
     if not baseFlagsAllowFish(seaName, fishName) then
         return false
     end
 
-    -- Rarity mode
     if rarityModeIndex == 1 then
-        -- Disabled: pakai base flags tanpa filter tambahan
         return true
     elseif rarityModeIndex == 2 then
-        -- Hanya Legendary/Mythic/Secret/Illahi
         return isRareTypeFish(seaName, fishName)
     elseif rarityModeIndex == 3 then
-        -- Per Fish pilihan user
         return PER_FISH_FLAGS[fishName] == true
     end
 
@@ -889,7 +911,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V1.1"
+    title.Text = "Spear Fish Farm V1.3 (ESP Antena)"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -901,7 +923,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "Auto Farm Spear: Sea1 - Sea7 + Boss + Rare + Illahi + Rarity Filter."
+    subtitle.Text = "Auto Farm Spear + ESP Antena merah/kuning dari body ke fish target."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -935,7 +957,7 @@ local function createMainLayout()
 end
 
 local function createCard(parent, titleText, subtitleText, layoutOrder, height)
-    height = height or 340
+    height = height or 480
 
     local card = Instance.new("Frame")
     card.Name = titleText or "Card"
@@ -1029,7 +1051,6 @@ local function createToggleButton(parent, labelText, initialState)
     return button
 end
 
--- Slider dengan input box
 local function createSliderWithBox(parent, titleText, minValue, maxValue, initialValue, decimals, onChanged)
     decimals = decimals or 0
     local factor = 10 ^ decimals
@@ -1196,14 +1217,131 @@ local function updateStatusLabel()
     )
 end
 
+------------------- CLIMATE + PER FISH UI SYNC -------------------
+local perFishContainer
+local perFishInfoLabel
+local lastPerFishSeaName   = nil
+local lastPerFishClimate   = nil
+
+local function normalizeClimateName(raw)
+    if not raw then
+        return nil
+    end
+    local s = string.lower(tostring(raw))
+    if s:find("grass") then
+        return "Grassland"
+    end
+    if s:find("marsh") or s:find("swamp") then
+        return "Marsh"
+    end
+    if s:find("ice") or s:find("frost") or s:find("snow") then
+        return "Iceborne"
+    end
+    return nil
+end
+
+local function getCurrentClimateTag()
+    local ws = workspace
+    local v = ws:GetAttribute("Climate") or ws:GetAttribute("ClimateName") or ws:GetAttribute("CurClimate")
+    local tag = normalizeClimateName(v)
+    if tag then
+        return tag
+    end
+
+    local plr = LocalPlayer
+    if plr then
+        v = plr:GetAttribute("Climate") or plr:GetAttribute("CurClimate")
+        tag = normalizeClimateName(v)
+        if tag then
+            return tag
+        end
+    end
+
+    local rs = ReplicatedStorage
+    local cands = {"Climate","CurClimate","ClimateName"}
+    for _, name in ipairs(cands) do
+        local inst = rs:FindFirstChild(name)
+        if inst and inst:IsA("StringValue") then
+            tag = normalizeClimateName(inst.Value)
+            if tag then
+                return tag
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getPerFishCandidates()
+    local _, seaName = getActiveSeaFolder()
+    if not seaName or (seaName ~= "Sea4" and seaName ~= "Sea5" and seaName ~= "Sea6" and seaName ~= "Sea7") then
+        return {}, seaName, nil
+    end
+
+    local climateTag = getCurrentClimateTag()
+    local result = {}
+
+    for _, cfg in ipairs(PER_FISH_CONFIG) do
+        if (not cfg.sea or cfg.sea == seaName) then
+            if not cfg.climates or not climateTag then
+                table.insert(result, cfg)
+            else
+                for _, c in ipairs(cfg.climates) do
+                    if c == climateTag then
+                        table.insert(result, cfg)
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    return result, seaName, climateTag
+end
+
+local function refreshPerFishButtons(force)
+    if not perFishContainer then
+        return
+    end
+
+    local configs, seaName, climateTag = getPerFishCandidates()
+
+    if not force and seaName == lastPerFishSeaName and climateTag == lastPerFishClimate then
+        return
+    end
+    lastPerFishSeaName = seaName
+    lastPerFishClimate = climateTag
+
+    for _, child in ipairs(perFishContainer:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    if perFishInfoLabel then
+        local seaText     = seaName or "Unknown"
+        local climateText = climateTag or "All"
+        perFishInfoLabel.Text = string.format("Per Fish (Sea: %s, Climate: %s) – %d opsi.", seaText, climateText, #configs)
+    end
+
+    for _, cfg in ipairs(configs) do
+        local btn = createToggleButton(perFishContainer, cfg.name, PER_FISH_FLAGS[cfg.id])
+        table.insert(connections, btn.MouseButton1Click:Connect(function()
+            local newState = not PER_FISH_FLAGS[cfg.id]
+            PER_FISH_FLAGS[cfg.id] = newState
+            setToggleButtonState(btn, cfg.name, newState)
+        end))
+    end
+end
+
 ------------------- BUILD UI CARD: AUTO FARM SPEAR -------------------
 local function buildAutoFarmCard(bodyScroll)
     local card = createCard(
         bodyScroll,
         "Auto Farm - Spear Fishing",
-        "Auto Hit Spear untuk semua Sea, Boss, Rare, Illahi dengan Rarity Filter dan AimLock.",
+        "Auto Hit Spear Sea1 - Sea7 + Boss + Rare + Illahi dengan ESP Antena merah/kuning.",
         1,
-        480
+        520
     )
 
     local scroll = Instance.new("ScrollingFrame")
@@ -1234,7 +1372,6 @@ local function buildAutoFarmCard(bodyScroll)
         scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
     end))
 
-    -- Toggles utama
     local autoFarmAllButton    = createToggleButton(scroll, "AutoFarm Universal (Sea1 - Sea7)", autoFarmAll)
     local autoFarmBossButton   = createToggleButton(scroll, "AutoFarm Boss (WorldBoss)", autoFarmBoss)
     local autoFarmRareButton   = createToggleButton(scroll, "AutoFarm Mythic/Legendary/Secret", autoFarmRare)
@@ -1242,7 +1379,6 @@ local function buildAutoFarmCard(bodyScroll)
 
     local aimLockButton        = createToggleButton(scroll, "AimLock Fish + Antena", aimLockEnabled)
 
-    -- Sea mode button
     local seaModeButton = Instance.new("TextButton")
     seaModeButton.Name = "SeaModeButton"
     seaModeButton.Parent = scroll
@@ -1280,7 +1416,6 @@ local function buildAutoFarmCard(bodyScroll)
 
     updateSeaModeButtonText()
 
-    -- Rarity mode button
     local rarityModeButton = Instance.new("TextButton")
     rarityModeButton.Name = "RarityModeButton"
     rarityModeButton.Parent = scroll
@@ -1305,7 +1440,7 @@ local function buildAutoFarmCard(bodyScroll)
         elseif rarityModeIndex == 2 then
             desc = "Legendary/Mythic/Secret/Illahi berdasarkan Sea"
         elseif rarityModeIndex == 3 then
-            desc = "Per Fish (gunakan toggle per ikan di bawah)"
+            desc = "Per Fish (list dinamis Sea + Climate)"
         else
             desc = mode
         end
@@ -1314,10 +1449,9 @@ local function buildAutoFarmCard(bodyScroll)
 
     updateRarityModeButtonText()
 
-    -- Slider range dan delay
     createSliderWithBox(
         scroll,
-        "Shooting Range (stud) 300 - 1000",
+        "Shooting Range (stud) 25 - 1000",
         SHOOT_RANGE_MIN,
         SHOOT_RANGE_MAX,
         shootRange,
@@ -1341,7 +1475,6 @@ local function buildAutoFarmCard(bodyScroll)
         end
     )
 
-    -- Label per fish
     local perFishLabel = Instance.new("TextLabel")
     perFishLabel.Name = "PerFishLabel"
     perFishLabel.Parent = scroll
@@ -1351,19 +1484,34 @@ local function buildAutoFarmCard(bodyScroll)
     perFishLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     perFishLabel.TextXAlignment = Enum.TextXAlignment.Left
     perFishLabel.Size = UDim2.new(1, 0, 0, 18)
-    perFishLabel.Text = "Per Fish Selection (Sea4/Sea5/Sea6/Sea7):"
+    perFishLabel.Text = "Per Fish Selection (Sea4/Sea5/Sea6/Sea7, sinkron Sea + Climate):"
 
-    -- Toggle per ikan
-    for _, cfg in ipairs(PER_FISH_CONFIG) do
-        local btn = createToggleButton(scroll, cfg.name, PER_FISH_FLAGS[cfg.id])
-        table.insert(connections, btn.MouseButton1Click:Connect(function()
-            local newState = not PER_FISH_FLAGS[cfg.id]
-            PER_FISH_FLAGS[cfg.id] = newState
-            setToggleButtonState(btn, cfg.name, newState)
-        end))
-    end
+    perFishContainer = Instance.new("Frame")
+    perFishContainer.Name = "PerFishContainer"
+    perFishContainer.Parent = scroll
+    perFishContainer.BackgroundTransparency = 1
+    perFishContainer.BorderSizePixel = 0
+    perFishContainer.Size = UDim2.new(1, 0, 0, 0)
+    perFishContainer.AutomaticSize = Enum.AutomaticSize.Y
 
-    -- Status text
+    local perFishLayout = Instance.new("UIListLayout")
+    perFishLayout.Parent = perFishContainer
+    perFishLayout.FillDirection = Enum.FillDirection.Vertical
+    perFishLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    perFishLayout.Padding = UDim.new(0, 4)
+
+    perFishInfoLabel = Instance.new("TextLabel")
+    perFishInfoLabel.Name = "PerFishInfo"
+    perFishInfoLabel.Parent = perFishContainer
+    perFishInfoLabel.BackgroundTransparency = 1
+    perFishInfoLabel.Font = Enum.Font.Gotham
+    perFishInfoLabel.TextSize = 11
+    perFishInfoLabel.TextColor3 = Color3.fromRGB(180, 180, 220)
+    perFishInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    perFishInfoLabel.TextWrapped = true
+    perFishInfoLabel.Size = UDim2.new(1, 0, 0, 30)
+    perFishInfoLabel.Text = "Per Fish (Sea: -, Climate: -)."
+
     statusLabel = Instance.new("TextLabel")
     statusLabel.Name = "StatusLabel"
     statusLabel.Parent = scroll
@@ -1377,8 +1525,8 @@ local function buildAutoFarmCard(bodyScroll)
     statusLabel.Text = ""
 
     updateStatusLabel()
+    refreshPerFishButtons(true)
 
-    -- Events
     table.insert(connections, autoFarmAllButton.MouseButton1Click:Connect(function()
         autoFarmAll = not autoFarmAll
         setToggleButtonState(autoFarmAllButton, "AutoFarm Universal (Sea1 - Sea7)", autoFarmAll)
@@ -1424,6 +1572,7 @@ local function buildAutoFarmCard(bodyScroll)
         end
         updateSeaModeButtonText()
         updateStatusLabel()
+        refreshPerFishButtons(true)
     end))
 
     table.insert(connections, rarityModeButton.MouseButton1Click:Connect(function()
@@ -1433,6 +1582,7 @@ local function buildAutoFarmCard(bodyScroll)
         end
         updateRarityModeButtonText()
         updateStatusLabel()
+        refreshPerFishButtons(true)
     end))
 end
 
@@ -1473,6 +1623,19 @@ task.spawn(function()
     while alive do
         pcall(updateAimLockDistanceLabel)
         task.wait(0.25)
+    end
+end)
+
+-- Sinkron Sea + Climate untuk Per Fish UI (ringan)
+task.spawn(function()
+    while alive do
+        local ok = pcall(function()
+            refreshPerFishButtons(false)
+        end)
+        if not ok then
+            -- diam saja agar tidak spam warn
+        end
+        task.wait(3)
     end
 end)
 
