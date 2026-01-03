@@ -151,6 +151,61 @@ local BOSS_IDS = {
     Boss03 = true, -- Crimson Rift Dragon
 }
 
+------------------- FRIENDLY DISPLAY NAMES -------------------
+-- Dipakai untuk label ESP: "Nether Flying Fish | 123 suds"
+local FRIENDLY_FISH_NAMES = {
+    -- Sea4 Grassland
+    Fish55  = "Purple Jellyfish",
+    Fish56  = "Prism Jellyfish",
+    Fish57  = "Prism Crab",
+    Fish98  = "Shark",
+    Fish305 = "Christmas Shark",
+    Fish201 = "Shimmer Puffer",
+
+    -- Sea4 Marsh
+    Fish104 = "Bullfrog",
+    Fish105 = "Poison Dart Frog",
+    Fish102 = "Swamp Crocodile",
+    Fish97  = "Sawtooth Shark",
+    Fish202 = "Nebula Lantern Carp",
+
+    -- Sea4 Iceborne
+    Fish121 = "Dragon Whisker Fish",
+    Fish123 = "Leatherback Turtle",
+    Fish111 = "Frost Anglerfish",
+    Fish130 = "Devil Ray",
+    Fish203 = "Shimmer Unicorn Fish",
+
+    -- Sea5 Secret
+    Fish500 = "Abyssal Demon Shark",
+    Fish501 = "Nighfall Demon Shark",
+    Fish503 = "Ancient Gopala",
+    Fish504 = "Nighfall Gopala",
+    Fish505 = "Sharkster",
+    Fish508 = "Mayfly Dragon",
+    Fish510 = "Nighfall Sharkster",
+
+    -- Sea6/Sea7 Illahi/Divine
+    Fish400 = "Nether Barracuda",
+    Fish401 = "Nether Anglerfish",
+    Fish402 = "Nether Manta Ray",
+    Fish403 = "Nether SwordFish",
+    Fish404 = "Nether Flying Fish",  -- sesuai permintaan
+    Fish405 = "Diamond Flying Fish",
+
+    -- Boss
+    Boss01 = "Humpback Whale",
+    Boss02 = "Whale Shark",
+    Boss03 = "Crimson Rift Dragon",
+}
+
+local function getFriendlyNameById(fishId, fallback)
+    if fishId and FRIENDLY_FISH_NAMES[fishId] then
+        return FRIENDLY_FISH_NAMES[fishId]
+    end
+    return fallback or fishId or "Fish"
+end
+
 ------------------- PER FISH CONFIG -------------------
 local PER_FISH_CONFIG = {
     -- Sea4 - Climate Grassland
@@ -221,7 +276,7 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
     character = newChar
 end))
 
-------------------- ESP DATA STRUCT (ANTENA BEAM SEPERTI TAB 15) -------------------
+------------------- ESP DATA STRUCT (ANTENA BEAM) -------------------
 -- target yang bisa di-ESP (AimLock target)
 -- trackedFishEspTargets[part] = { fishId, fishType, displayName }
 local trackedFishEspTargets = {}
@@ -360,14 +415,23 @@ local function evaluateEspForPart(part)
         return
     end
 
-    -- Di tab ini ESP hanya dikontrol oleh espAntennaEnabled
     if not espAntennaEnabled then
         destroyFishEsp(part)
         return
     end
 
+    -- Friendly name mapping di sini
     if not fishEspMap[part] then
-        createEspInstancesForPart(part, info.displayName, info.fishType, info.fishId)
+        local friendly = getFriendlyNameById(info.fishId, info.displayName)
+        createEspInstancesForPart(part, friendly, info.fishType, info.fishId)
+    else
+        -- update displayName jika belum friendly
+        local data = fishEspMap[part]
+        local friendly = getFriendlyNameById(info.fishId, info.displayName)
+        data.displayName = friendly
+        if data.label then
+            data.label.Text = friendly
+        end
     end
 end
 
@@ -385,10 +449,12 @@ local function registerFishPartForEsp(part, fishId, fishType, displayName)
         return
     end
 
+    local friendly = getFriendlyNameById(fishId, displayName)
+
     trackedFishEspTargets[part] = {
         fishId      = fishId,
         fishType    = fishType,
-        displayName = displayName or fishId or "Fish",
+        displayName = friendly,
     }
 
     evaluateEspForPart(part)
@@ -423,6 +489,7 @@ local function updateEspTextDistances()
             if ok and data.label then
                 local nameText = data.displayName or "Fish"
                 local d = math.floor(dist or 0)
+                -- Hasil: "Nether Flying Fish | 123 suds"
                 data.label.Text = string.format("%s | %d suds", nameText, d)
             end
         end
@@ -443,7 +510,8 @@ local function clearAimLockVisual()
     aimLockTarget     = nil
 end
 
-local function setAimLockTarget(newPart, displayName)
+-- fishId dipakai untuk friendly name
+local function setAimLockTarget(newPart, fishId)
     clearAimLockVisual()
 
     if not newPart or not newPart:IsA("BasePart") then
@@ -452,10 +520,9 @@ local function setAimLockTarget(newPart, displayName)
 
     aimLockTarget     = newPart
     aimLockTargetPart = newPart
-    aimLockLabelName  = displayName or "Fish"
+    aimLockLabelName  = getFriendlyNameById(fishId, fishId or "Fish")
 
-    -- Visual selalu mengikuti target aktif
-    registerFishPartForEsp(newPart, "AimLock", "AimLock", aimLockLabelName)
+    registerFishPartForEsp(newPart, fishId or "AimLock", "AimLock", aimLockLabelName)
 end
 
 local function updateAimLockDistanceLabel()
@@ -594,7 +661,6 @@ local function getActiveSeaFolder()
     if mode == "AutoDetect" then
         return detectCurrentSea()
     elseif mode == "Sea6_7" then
-        -- gabungan Sea6 & Sea7: pilih yang paling dekat / aktif
         local nearFolder, nearName = detectCurrentSea()
         if nearName == "Sea6" or nearName == "Sea7" then
             return nearFolder, nearName
@@ -804,6 +870,7 @@ local function pickNewFishTarget(seaFolder, seaName)
     if closestFish and closestPart then
         currentFishTarget    = closestFish
         currentFishTargetSea = seaName
+        -- kirim fishId = closestFish.Name (misal "Fish404")
         setAimLockTarget(closestPart, closestFish.Name)
         return closestFish
     end
@@ -938,6 +1005,7 @@ local function pickBossTarget()
     if bestPart then
         currentBossTarget     = bestPart
         currentBossTargetPart = bestPart
+        -- Boss01 -> "Humpback Whale" dll
         setAimLockTarget(bestPart, bestPart.Name or "Boss")
         return bestPart
     end
@@ -1019,7 +1087,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3+"
+    title.Text = "Spear Fish Farm V3.1"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1031,7 +1099,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "Auto Farm Spear + PRIORITAS Boss + AimLock fish + ESP Antena kuning."
+    subtitle.Text = "Auto Farm Spear + PRIORITAS Boss + AimLock fish + ESP Antena kuning (friendly name)."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1388,20 +1456,57 @@ local function getCurrentClimateTag()
     return nil
 end
 
+-- GANTI FUNCTION getPerFishCandidates LAMA DENGAN INI
 local function getPerFishCandidates()
-    local _, seaName = getActiveSeaFolder()
-    if not seaName or (seaName ~= "Sea4" and seaName ~= "Sea5" and seaName ~= "Sea6" and seaName ~= "Sea7") then
-        return {}, seaName, nil
+    -- Sea mode yang dipilih di UI
+    local uiSeaMode = seaModeList[seaModeIndex] or "AutoDetect"
+
+    -- Sea aktif hasil detect (tetap dipakai untuk kasus normal)
+    local _, activeSeaName = getActiveSeaFolder()
+
+    -- Kumpulan Sea yang diizinkan untuk Per Fish
+    local allowedSeas = {}
+    local seaNameForDisplay
+
+    if uiSeaMode == "Sea6_7" then
+        -- MODE KHUSUS: Sea6 & Sea7 digabung
+        allowedSeas["Sea6"] = true
+        allowedSeas["Sea7"] = true
+        seaNameForDisplay = "Sea6&Sea7"
+    else
+        -- MODE BIASA: pakai Sea yang memang aktif
+        if activeSeaName then
+            allowedSeas[activeSeaName] = true
+            seaNameForDisplay = activeSeaName
+        end
+    end
+
+    -- Hanya support Per Fish untuk Sea4, Sea5, Sea6, Sea7
+    local anyWanted = false
+    for seaName, _ in pairs(allowedSeas) do
+        if seaName == "Sea4" or seaName == "Sea5" or seaName == "Sea6" or seaName == "Sea7" then
+            anyWanted = true
+            break
+        end
+    end
+
+    if not anyWanted then
+        -- Di luar Sea4/5/6/7 tidak ada Per Fish list
+        return {}, seaNameForDisplay, nil
     end
 
     local climateTag = getCurrentClimateTag()
     local result = {}
 
+    -- Filter PER_FISH_CONFIG berdasarkan allowedSeas + Climate
     for _, cfg in ipairs(PER_FISH_CONFIG) do
-        if (not cfg.sea or cfg.sea == seaName) then
+        local cfgSea = cfg.sea  -- contoh "Sea6" atau "Sea7"
+        if not cfgSea or allowedSeas[cfgSea] then
             if not cfg.climates or not climateTag then
+                -- Tidak pakai filter climate, masuk semua fish untuk Sea yg diizinkan
                 table.insert(result, cfg)
             else
+                -- Pakai filter climate (Grassland / Marsh / Iceborne)
                 for _, c in ipairs(cfg.climates) do
                     if c == climateTag then
                         table.insert(result, cfg)
@@ -1412,42 +1517,7 @@ local function getPerFishCandidates()
         end
     end
 
-    return result, seaName, climateTag
-end
-
-local function refreshPerFishButtons(force)
-    if not perFishContainer then
-        return
-    end
-
-    local configs, seaName, climateTag = getPerFishCandidates()
-
-    if not force and seaName == lastPerFishSeaName and climateTag == lastPerFishClimate then
-        return
-    end
-    lastPerFishSeaName = seaName
-    lastPerFishClimate = climateTag
-
-    for _, child in ipairs(perFishContainer:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-
-    if perFishInfoLabel then
-        local seaText     = seaName or "Unknown"
-        local climateText = climateTag or "All"
-        perFishInfoLabel.Text = string.format("Per Fish (Sea: %s, Climate: %s) – %d opsi.", seaText, climateText, #configs)
-    end
-
-    for _, cfg in ipairs(configs) do
-        local btn = createToggleButton(perFishContainer, cfg.name, PER_FISH_FLAGS[cfg.id])
-        table.insert(connections, btn.MouseButton1Click:Connect(function()
-            local newState = not PER_FISH_FLAGS[cfg.id]
-            PER_FISH_FLAGS[cfg.id] = newState
-            setToggleButtonState(btn, cfg.name, newState)
-        end))
-    end
+    return result, seaNameForDisplay, climateTag
 end
 
 ------------------- BUILD UI CARD: AUTO FARM SPEAR -------------------
@@ -1455,7 +1525,7 @@ local function buildAutoFarmCard(bodyScroll)
     local card = createCard(
         bodyScroll,
         "Auto Farm - Spear Fishing",
-        "Auto Hit Spear Sea1 - Sea7 + PRIORITAS Boss + Rare + Illahi. AimLock fish + ESP Antena kuning (Attachment + Beam).",
+        "Auto Hit Spear Sea1 - Sea7 + PRIORITAS Boss + Rare + Illahi. AimLock fish + ESP Antena kuning (friendly name, Attachment + Beam).",
         1,
         540
     )
@@ -1482,7 +1552,7 @@ local function buildAutoFarmCard(bodyScroll)
     layout.Parent = scroll
     layout.FillDirection = Enum.FillDirection.Vertical
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 6)
+    layout.Padding = UDim2.new(0, 6)
 
     table.insert(connections, layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
@@ -1617,7 +1687,7 @@ local function buildAutoFarmCard(bodyScroll)
     perFishLayout.Parent = perFishContainer
     perFishLayout.FillDirection = Enum.FillDirection.Vertical
     perFishLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    perFishLayout.Padding = UDim.new(0, 4)
+    perFishLayout.Padding = UDim2.new(0, 4)
 
     perFishInfoLabel = Instance.new("TextLabel")
     perFishInfoLabel.Name = "PerFishInfo"
