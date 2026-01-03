@@ -1,6 +1,17 @@
 --==========================================================
 --  19AxaTab_SpearFishFarm.lua
 --  TAB 19: "Spear Fish Farm PRO++"
+--  Fitur:
+--    - AutoFarm: universal fish Sea1 - Sea7 (Hit remote)
+--    - AutoFarm Boss (WorldBoss > Point1 / Point2) PRIORITY
+--    - AutoFarm Mythic/Legendary/Secret (Sea4, Sea5)
+--    - AutoFarm Illahi/Divine (Sea6 & Sea7 gabung)
+--    - Sea Selector: AutoDetect / Sea1 - Sea5 / Sea6&7
+--    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
+--    - Per Fish list dinamis, sinkron Sea + Climate real time
+--    - AimLock Fish + ESP Antena neon kuning (toggle terpisah)
+--    - Shooting Range slider (25 - 1000 stud)
+--    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -137,7 +148,6 @@ local BOSS_IDS = {
 }
 
 ------------------- DISPLAY NAME MAP -------------------
--- Supaya label AimLock / ESP lebih rapi, bukan "Fish404" tapi nama jelas.
 local FISH_DISPLAY_NAME_MAP = {
     -- Sea4 Grassland
     Fish55  = "Purple Jellyfish",
@@ -388,7 +398,6 @@ local function getActiveSeaFolder()
     if mode == "AutoDetect" then
         return detectCurrentSea()
     elseif mode == "Sea6_7" then
-        -- Khusus Sea6&7: pakai detect tapi hanya valid jika hasilnya Sea6 atau Sea7
         local seaFolder, seaName = detectCurrentSea()
         if seaName == "Sea6" or seaName == "Sea7" then
             return seaFolder, seaName
@@ -429,12 +438,13 @@ local function clearAimLockVisual()
     aimLockTarget     = nil
 end
 
+-- PERBAIKAN: clear dipanggil DULU, baru set target baru
 local function setAimLockTarget(newPart, displayName)
+    clearAimLockVisual()
+
     aimLockTarget     = newPart
     aimLockTargetPart = newPart
     aimLockLabelName  = displayName or "Fish"
-
-    clearAimLockVisual()
 
     if not aimLockEnabled then
         return
@@ -444,7 +454,6 @@ local function setAimLockTarget(newPart, displayName)
         return
     end
 
-    -- Billboard teks di atas fish (Nama + jarak)
     local billboard = Instance.new("BillboardGui")
     billboard.Name        = "AxaFarm_Target_Billboard"
     billboard.Size        = UDim2.new(0, 170, 0, 26)
@@ -471,7 +480,6 @@ local function setAimLockTarget(newPart, displayName)
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent       = label
 
-    -- Highlight
     local adornee = aimLockTargetPart
     if aimLockTargetPart.Parent and aimLockTargetPart.Parent:IsA("Model") then
         adornee = aimLockTargetPart.Parent
@@ -486,7 +494,6 @@ local function setAimLockTarget(newPart, displayName)
     highlight.Adornee             = adornee
     highlight.Parent              = adornee
 
-    -- Antena neon kalau ESP Antena ON
     if espAntennaEnabled then
         antennaPart = Instance.new("Part")
         antennaPart.Name        = "AxaFarm_Antenna"
@@ -533,12 +540,10 @@ local function updateAimLockDistanceLabel()
     local diff    = toPos - fromPos
     local dist    = diff.Magnitude
 
-    -- Label jarak
     if aimLockLabel then
         aimLockLabel.Text = string.format("%s | %d suds", aimLockLabelName, math.floor(dist or 0))
     end
 
-    -- Jika ESP Antena OFF: sembunyikan garis kalau ada
     if not espAntennaEnabled then
         if antennaPart then
             antennaPart.Transparency = 1
@@ -546,7 +551,6 @@ local function updateAimLockDistanceLabel()
         return
     end
 
-    -- ESP Antena ON: pastikan part ada
     if not antennaPart or antennaPart.Parent == nil then
         antennaPart = Instance.new("Part")
         antennaPart.Name        = "AxaFarm_Antenna"
@@ -694,6 +698,9 @@ end
 local currentFishTarget    = nil
 local currentFishTargetSea = nil
 
+local currentBossTarget     = nil
+local currentBossTargetPart = nil
+
 local function pickNewFishTarget(seaFolder, seaName)
     if not seaFolder or not seaName then
         return nil
@@ -751,9 +758,7 @@ local function pickNewFishTarget(seaFolder, seaName)
 end
 
 local function processAutoFarmFishStep()
-    -- PRIORITY BOSS:
-    -- Jika AutoFarm Boss ON dan sudah ada target Boss aktif,
-    -- jangan AutoFarm ikan dulu.
+    -- Priority Boss: jika ada target boss aktif, jangan auto farm ikan dulu
     if autoFarmBoss and currentBossTarget ~= nil then
         return
     end
@@ -813,9 +818,6 @@ local function processAutoFarmFishStep()
 end
 
 ------------------- AUTO FARM BOSS -------------------
-local currentBossTarget     = nil
-local currentBossTargetPart = nil
-
 local function getBossPartInRegion(region)
     if not region then
         return nil
@@ -923,7 +925,6 @@ local function processAutoFarmBossStep()
     if not isValidBoss(target) then
         target = pickBossTarget()
         if not target then
-            -- Jika tidak ada Boss yang valid, kosongkan target Boss
             currentBossTarget     = nil
             currentBossTargetPart = nil
             return
@@ -965,7 +966,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.1+"
+    title.Text = "Spear Fish Farm V3.2"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -977,7 +978,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "Auto Farm Spear Sea1 - Sea7 + Boss Priority + Rare + Illahi. AimLock + ESP Antena neon kuning."
+    subtitle.Text = "Auto Farm Spear Sea1 - Sea7 + Boss Priority."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1256,7 +1257,7 @@ local function updateStatusLabel()
 
     local seaModeText = seaModeList[seaModeIndex] or "AutoDetect"
     if seaModeText == "Sea6_7" then
-        seaModeText = "Sea6&7"
+        seaModeText = "Sea6&Sea7"
     end
 
     local rarityModeTxt = rarityModeList[rarityModeIndex] or "Disabled"
@@ -1331,14 +1332,10 @@ local function getCurrentClimateTag()
     return nil
 end
 
--- VERSI BARU: support Sea Mode "Sea6_7" (gabung Sea6 & Sea7)
 local function getPerFishCandidates()
     local uiSeaMode = seaModeList[seaModeIndex] or "AutoDetect"
-
-    -- Sea aktif real (untuk AutoDetect atau mode biasa)
     local _, activeSeaName = getActiveSeaFolder()
 
-    -- Sea yang diizinkan untuk Per Fish
     local allowedSeas = {}
     local seaNameForDisplay
 
@@ -1353,7 +1350,6 @@ local function getPerFishCandidates()
         end
     end
 
-    -- Per Fish hanya untuk Sea4, Sea5, Sea6, Sea7
     local anyWanted = false
     for seaName, _ in pairs(allowedSeas) do
         if seaName == "Sea4" or seaName == "Sea5" or seaName == "Sea6" or seaName == "Sea7" then
@@ -1469,7 +1465,6 @@ local function buildAutoFarmCard(bodyScroll)
     local aimLockButton    = createToggleButton(scroll, "AimLock Fish + Label", aimLockEnabled)
     local espAntennaButton = createToggleButton(scroll, "ESP Antena (Neon Line)", espAntennaEnabled)
 
-    -- Sea Mode button
     local seaModeButton = Instance.new("TextButton")
     seaModeButton.Name = "SeaModeButton"
     seaModeButton.Parent = scroll
@@ -1509,7 +1504,6 @@ local function buildAutoFarmCard(bodyScroll)
 
     updateSeaModeButtonText()
 
-    -- Rarity Mode button
     local rarityModeButton = Instance.new("TextButton")
     rarityModeButton.Name = "RarityModeButton"
     rarityModeButton.Parent = scroll
@@ -1543,7 +1537,6 @@ local function buildAutoFarmCard(bodyScroll)
 
     updateRarityModeButtonText()
 
-    -- Shooting Range slider
     createSliderWithBox(
         scroll,
         "Shooting Range (stud) 25 - 1000",
@@ -1557,7 +1550,6 @@ local function buildAutoFarmCard(bodyScroll)
         end
     )
 
-    -- Farm Delay slider
     createSliderWithBox(
         scroll,
         "Farm Delay (detik) 0.01 - 0.30",
@@ -1594,7 +1586,7 @@ local function buildAutoFarmCard(bodyScroll)
     perFishLayout.Parent = perFishContainer
     perFishLayout.FillDirection = Enum.FillDirection.Vertical
     perFishLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    perFishLayout.Padding = UDim.new(0, 4)
+    perFishLayout.Padding = UDim2.new(0, 4)
 
     perFishInfoLabel = Instance.new("TextLabel")
     perFishInfoLabel.Name = "PerFishInfo"
@@ -1623,7 +1615,6 @@ local function buildAutoFarmCard(bodyScroll)
     updateStatusLabel()
     refreshPerFishButtons(true)
 
-    -- Toggle events
     table.insert(connections, autoFarmAllButton.MouseButton1Click:Connect(function()
         autoFarmAll = not autoFarmAll
         setToggleButtonState(autoFarmAllButton, "AutoFarm Universal (Sea1 - Sea7)", autoFarmAll)
@@ -1733,7 +1724,6 @@ task.spawn(function()
     end
 end)
 
--- Sinkron Sea + Climate untuk Per Fish UI (ringan)
 task.spawn(function()
     while alive do
         pcall(function()
