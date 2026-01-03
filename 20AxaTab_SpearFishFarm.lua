@@ -52,7 +52,7 @@ local WorldBoss    = workspace:FindFirstChild("WorldBoss")
 
 -- Auto farm flags
 local autoFarmAll      = false  -- Semua fish sesuai Sea filter
-local autoFarmBoss     = false  -- Boss di WorldBoss
+local autoFarmBoss     = true  -- Boss di WorldBoss
 local autoFarmRare     = false  -- Mythic/Legendary/Secret Sea4, Secret Sea5
 local autoFarmIllahi   = false  -- Illahi Sea6, Sea7
 
