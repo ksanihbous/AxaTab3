@@ -9,8 +9,8 @@
 --    - Sea Selector: AutoDetect / Sea1 - Sea7
 --    - Rarity Mode: Disabled / Legendary+Mythic+Secret+Illahi / Per Fish
 --    - Per Fish list dinamis, sinkron Sea + Climate real time
---    - AimLock Fish + Antena merah/kuning menyala ke target
---    - Shooting Range slider (25 - 1000 stud)
+--    - AimLock Fish + ESP Antena kuning dari badan ke fish
+--    - Shooting Range slider (300 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
 --==========================================================
 
@@ -24,6 +24,7 @@ local RunService          = RunService          or game:GetService("RunService")
 local UserInputService    = UserInputService    or game:GetService("UserInputService")
 local StarterGui          = StarterGui          or game:GetService("StarterGui")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local workspace           = workspace
 
 if not (frame and LocalPlayer) then
     return
@@ -80,7 +81,7 @@ local rarityModeIndex = 1  -- default Disabled
 local aimLockEnabled = true
 
 -- Shooting range (stud)
-local SHOOT_RANGE_MIN = 25
+local SHOOT_RANGE_MIN = 300
 local SHOOT_RANGE_MAX = 1000
 local shootRange      = 600   -- default
 
@@ -353,59 +354,30 @@ local function getActiveSeaFolder()
     end
 end
 
-------------------- AIMLOCK + ESP ANTENA -------------------
+------------------- AIMLOCK + ESP ANTENA (NEON) -------------------
 local aimLockTarget        = nil
 local aimLockTargetPart    = nil
 local aimLockLabelName     = "Target"
-local aimLockBeam          = nil
-local aimLockAttachment    = nil
 local aimLockBillboard     = nil
 local aimLockLabel         = nil
 local aimLockHighlight     = nil
-local hrpAttachment        = nil
-
-local function ensureHRPAttachment()
-    local hrp = getHRP()
-    if not hrp then
-        hrpAttachment = nil
-        return nil
-    end
-
-    if hrpAttachment and hrpAttachment.Parent == hrp then
-        return hrpAttachment
-    end
-
-    local existing = hrp:FindFirstChild("AxaFarm_HRP_Att")
-    if existing and existing:IsA("Attachment") then
-        hrpAttachment = existing
-    else
-        local att = Instance.new("Attachment")
-        att.Name = "AxaFarm_HRP_Att"
-        att.Parent = hrp
-        hrpAttachment = att
-    end
-    return hrpAttachment
-end
+local antennaPart          = nil
 
 local function clearAimLockVisual()
-    if aimLockBeam then
-        pcall(function() aimLockBeam:Destroy() end)
-    end
-    if aimLockAttachment then
-        pcall(function() aimLockAttachment:Destroy() end)
-    end
     if aimLockBillboard then
         pcall(function() aimLockBillboard:Destroy() end)
     end
     if aimLockHighlight then
         pcall(function() aimLockHighlight:Destroy() end)
     end
+    if antennaPart then
+        pcall(function() antennaPart:Destroy() end)
+    end
 
-    aimLockBeam       = nil
-    aimLockAttachment = nil
-    aimLockBillboard  = nil
-    aimLockLabel      = nil
-    aimLockHighlight  = nil
+    aimLockBillboard = nil
+    aimLockLabel     = nil
+    aimLockHighlight = nil
+    antennaPart      = nil
     aimLockTargetPart = nil
 end
 
@@ -424,44 +396,7 @@ local function setAimLockTarget(newPart, displayName)
         return
     end
 
-    local hrpAtt = ensureHRPAttachment()
-    if not hrpAtt then
-        return
-    end
-
-    -- Attachment di fish (ujung antena)
-    local fishAttachment = Instance.new("Attachment")
-    fishAttachment.Name   = "AxaFarm_Target_Att"
-    fishAttachment.Parent = aimLockTargetPart
-
-    -- Beam merah/kuning tebal dari HRP ke fish
-    local beam = Instance.new("Beam")
-    beam.Name        = "AxaFarm_Target_Beam"
-    beam.Attachment0 = hrpAtt
-    beam.Attachment1 = fishAttachment
-    beam.FaceCamera  = false
-    beam.Width0      = 0.35
-    beam.Width1      = 0.35
-    beam.Segments    = 16
-    beam.LightEmission  = 1
-    beam.LightInfluence = 0
-
-    beam.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(255, 0, 0)),   -- merah
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 0)), -- kuning
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 0, 0)),   -- merah
-    })
-
-    beam.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0,   0),
-        NumberSequenceKeypoint.new(0.5, 0),
-        NumberSequenceKeypoint.new(1,   0),
-    })
-
-    beam.TextureSpeed = 2
-    beam.Parent       = hrpAtt.Parent or aimLockTargetPart
-
-    -- Billboard teks di atas fish
+    -- Billboard teks di atas fish (Nama + jarak)
     local billboard = Instance.new("BillboardGui")
     billboard.Name        = "AxaFarm_Target_Billboard"
     billboard.Size        = UDim2.new(0, 170, 0, 26)
@@ -488,21 +423,38 @@ local function setAimLockTarget(newPart, displayName)
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent       = label
 
-    -- Highlight merah/kuning di fish (ESP jelas)
-    local highlight = Instance.new("Highlight")
-    highlight.Name               = "AxaFarm_Target_Highlight"
-    highlight.FillColor          = Color3.fromRGB(255, 40, 40)
-    highlight.FillTransparency   = 0.7
-    highlight.OutlineColor       = Color3.fromRGB(255, 255, 0)
-    highlight.OutlineTransparency= 0
-    highlight.Adornee            = aimLockTargetPart
-    highlight.Parent             = aimLockTargetPart
+    -- Highlight di fish (merah kuning tipis, supaya jelas)
+    local adornee = aimLockTargetPart
+    if aimLockTargetPart.Parent and aimLockTargetPart.Parent:IsA("Model") then
+        adornee = aimLockTargetPart.Parent
+    end
 
-    aimLockBeam       = beam
-    aimLockAttachment = fishAttachment
-    aimLockBillboard  = billboard
-    aimLockLabel      = label
-    aimLockHighlight  = highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Name                = "AxaFarm_Target_Highlight"
+    highlight.FillColor           = Color3.fromRGB(255, 40, 40)
+    highlight.FillTransparency    = 0.7
+    highlight.OutlineColor        = Color3.fromRGB(255, 255, 0)
+    highlight.OutlineTransparency = 0
+    highlight.Adornee             = adornee
+    highlight.Parent              = adornee
+
+    -- Antena neon kuning dari badan ke fish
+    antennaPart = Instance.new("Part")
+    antennaPart.Name = "AxaFarm_Antenna"
+    antennaPart.Anchored = true
+    antennaPart.CanCollide = false
+    antennaPart.CanQuery = false
+    antennaPart.CanTouch = false
+    antennaPart.Material = Enum.Material.Neon
+    antennaPart.Color = Color3.fromRGB(255, 255, 0)
+    antennaPart.CastShadow = false
+    antennaPart.Size = Vector3.new(0.15, 1, 0.15)
+    antennaPart.Shape = Enum.PartType.Cylinder
+    antennaPart.Parent = workspace
+
+    aimLockBillboard = billboard
+    aimLockLabel     = label
+    aimLockHighlight = highlight
 end
 
 local function updateAimLockDistanceLabel()
@@ -518,21 +470,45 @@ local function updateAimLockDistanceLabel()
         return
     end
 
-    local hrpAtt = ensureHRPAttachment()
-    if aimLockBeam and hrpAtt and aimLockBeam.Attachment0 ~= hrpAtt then
-        aimLockBeam.Attachment0 = hrpAtt
-    end
-
     if aimLockTargetPart.Parent == nil then
         clearAimLockVisual()
         return
     end
 
-    local dist = (aimLockTargetPart.Position - hrp.Position).Magnitude
-    local d    = math.floor(dist or 0)
+    local fromPos = hrp.Position
+    local toPos   = aimLockTargetPart.Position
+    local diff    = toPos - fromPos
+    local dist    = diff.Magnitude
+
     if aimLockLabel then
-        aimLockLabel.Text = string.format("%s | %d suds", aimLockLabelName, d)
+        aimLockLabel.Text = string.format("%s | %d suds", aimLockLabelName, math.floor(dist or 0))
     end
+
+    if not antennaPart or antennaPart.Parent == nil then
+        antennaPart = Instance.new("Part")
+        antennaPart.Name = "AxaFarm_Antenna"
+        antennaPart.Anchored = true
+        antennaPart.CanCollide = false
+        antennaPart.CanQuery = false
+        antennaPart.CanTouch = false
+        antennaPart.Material = Enum.Material.Neon
+        antennaPart.Color = Color3.fromRGB(255, 255, 0)
+        antennaPart.CastShadow = false
+        antennaPart.Size = Vector3.new(0.15, 1, 0.15)
+        antennaPart.Shape = Enum.PartType.Cylinder
+        antennaPart.Parent = workspace
+    end
+
+    if dist < 0.1 then
+        antennaPart.Transparency = 1
+        return
+    else
+        antennaPart.Transparency = 0
+    end
+
+    antennaPart.Size = Vector3.new(0.15, dist, 0.15)
+    local mid = fromPos + diff * 0.5
+    antennaPart.CFrame = CFrame.lookAt(mid, toPos) * CFrame.Angles(math.rad(90), 0, 0)
 end
 
 ------------------- HIT HELPERS -------------------
@@ -911,7 +887,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V1.3 (ESP Antena)"
+    title.Text = "Spear Fish Farm V1.4 (Antena Neon)"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -923,7 +899,7 @@ local function createMainLayout()
     subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     subtitle.Position = UDim2.new(0, 14, 0, 22)
     subtitle.Size = UDim2.new(1, -28, 0, 18)
-    subtitle.Text = "Auto Farm Spear + ESP Antena merah/kuning dari body ke fish target."
+    subtitle.Text = "Auto Farm Spear + ESP Antena neon kuning dari body ke fish target."
 
     local bodyScroll = Instance.new("ScrollingFrame")
     bodyScroll.Name = "BodyScroll"
@@ -1339,7 +1315,7 @@ local function buildAutoFarmCard(bodyScroll)
     local card = createCard(
         bodyScroll,
         "Auto Farm - Spear Fishing",
-        "Auto Hit Spear Sea1 - Sea7 + Boss + Rare + Illahi dengan ESP Antena merah/kuning.",
+        "Auto Hit Spear Sea1 - Sea7 + Boss + Rare + Illahi dengan ESP Antena neon kuning.",
         1,
         520
     )
@@ -1451,7 +1427,7 @@ local function buildAutoFarmCard(bodyScroll)
 
     createSliderWithBox(
         scroll,
-        "Shooting Range (stud) 25 - 1000",
+        "Shooting Range (stud) 300 - 1000",
         SHOOT_RANGE_MIN,
         SHOOT_RANGE_MAX,
         shootRange,
@@ -1622,7 +1598,7 @@ end)
 task.spawn(function()
     while alive do
         pcall(updateAimLockDistanceLabel)
-        task.wait(0.25)
+        task.wait(0.05)
     end
 end)
 
@@ -1633,7 +1609,6 @@ task.spawn(function()
             refreshPerFishButtons(false)
         end)
         if not ok then
-            -- diam saja agar tidak spam warn
         end
         task.wait(3)
     end
