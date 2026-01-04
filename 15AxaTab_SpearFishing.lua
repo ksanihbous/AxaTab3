@@ -1017,7 +1017,7 @@ local function fireSkill2()
     local args = {
         [1] = "Skill",
         [2] = {
-            ["ID"] = "Skill03"
+            ["ID"] = "Skill02"
         }
     }
 
@@ -1027,7 +1027,7 @@ local function fireSkill2()
     if ok then
         skill2LastFireTime = os.clock()
     else
-        warn("[SpearFishing] Auto Skill03 gagal:", err)
+        warn("[SpearFishing] Auto Skill02 gagal:", err)
     end
 end
 
@@ -1300,14 +1300,14 @@ local function formatBossRemainingText(remainSeconds)
         mmss = string.format("%02d:%02d", m, s)
     end
 
-    return "Time Now: Guranteed Devine Boss In " .. mmss .. " menit"
+    return "Time Now: Guranteed Divine Boss In " .. mmss .. " menit"
 end
 
 local function buildSpawnBossEmbed(region, stageKey, remainSeconds, bossName)
     local remainingText
 
     if stageKey == "spawn" then
-        remainingText = "Time Now: Guranteed Devine Boss In 00:00 menit"
+        remainingText = "Time Now: Guranteed Divine Boss In 00:00 menit"
     else
         remainingText = formatBossRemainingText(remainSeconds)
     end
