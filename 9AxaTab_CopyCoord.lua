@@ -1,5 +1,5 @@
 --==========================================================
---  9AxaTab_CopyCoord.lua (UPGRADE: Position + LookAt)
+--  9AxaTab_CopyCoord.lua (UPGRADE: Position + LookAt + Server Info)
 --  Env dari CORE:
 --    TAB_FRAME, TAB_ID
 --    Players, LocalPlayer, RunService, UserInputService, StarterGui
@@ -21,6 +21,10 @@ local vecPayload       = "Vector3.new(0, 0, 0)"      -- posisi
 local lookVecPayload   = "Vector3.new(0, 0, 0)"      -- lookAt
 local vecAssignPayload = "position = Vector3.new(0, 0, 0), lookAt = Vector3.new(0, 0, 0)"
 local cfPayload        = "CFrame.new(Vector3.new(0, 0, 0), Vector3.new(0, 0, 0))"
+
+-- Server/Game payload
+local serverIdPayload  = tostring(game.JobId or "")
+local gameIdPayload    = tostring(game.GameId or "")
 
 ----------------------------------------------------------------
 -- SMALL HELPERS
@@ -253,34 +257,76 @@ makeLabel(
 )
 
 ----------------------------------------------------------------
--- BUTTON ROW
+-- BUTTON CARD (2 KOLOM, SCROLL VERTIKAL)
 ----------------------------------------------------------------
-local btnRowHolder = Instance.new("Frame")
-btnRowHolder.Name = "BtnRowHolder"
-btnRowHolder.Size = UDim2.new(1,0,0,32)
-btnRowHolder.BackgroundTransparency = 1
-btnRowHolder.Parent = body
+local btnCard = makeCard(body,"ButtonCard",UDim2.new(1,0,0,120),UDim2.new(0,0,0,0))
 
-local btnRowLayout = Instance.new("UIListLayout")
-btnRowLayout.FillDirection       = Enum.FillDirection.Horizontal
-btnRowLayout.SortOrder           = Enum.SortOrder.LayoutOrder
-btnRowLayout.Padding             = UDim.new(0,6)
-btnRowLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
-btnRowLayout.Parent              = btnRowHolder
+local btnCardTitle = makeLabel(
+    btnCard,"BtnTitle","Actions: Copy Coord & Server Info",
+    UDim2.new(1,-10,0,18),UDim2.new(0,6,0,6),
+    {
+        Font      = Enum.Font.GothamSemibold,
+        TextSize  = 13,
+        TextColor3= Color3.fromRGB(45,45,80)
+    }
+)
 
+local btnScroll = Instance.new("ScrollingFrame")
+btnScroll.Name = "BtnScroll"
+btnScroll.Position = UDim2.new(0,6,0,28)
+btnScroll.Size = UDim2.new(1,-12,1,-36)
+btnScroll.BackgroundTransparency = 1
+btnScroll.BorderSizePixel = 0
+btnScroll.ScrollBarThickness = 3
+btnScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+btnScroll.CanvasSize = UDim2.new(0,0,0,0)
+btnScroll.Parent = btnCard
+
+local btnScrollPad = Instance.new("UIPadding")
+btnScrollPad.PaddingLeft   = UDim.new(0,0)
+btnScrollPad.PaddingRight  = UDim.new(0,0)
+btnScrollPad.PaddingTop    = UDim.new(0,2)
+btnScrollPad.PaddingBottom = UDim.new(0,2)
+btnScrollPad.Parent = btnScroll
+
+local btnGrid = Instance.new("UIGridLayout")
+btnGrid.CellSize           = UDim2.new(0.5,-4,0,28) -- 2 kolom
+btnGrid.CellPadding        = UDim2.new(0,4,0,4)
+btnGrid.FillDirection      = Enum.FillDirection.Horizontal
+btnGrid.FillDirectionMaxCells = 2
+btnGrid.SortOrder          = Enum.SortOrder.LayoutOrder
+btnGrid.HorizontalAlignment= Enum.HorizontalAlignment.Left
+btnGrid.VerticalAlignment  = Enum.VerticalAlignment.Top
+btnGrid.Parent             = btnScroll
+
+btnGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    btnScroll.CanvasSize = UDim2.new(0,0,0,btnGrid.AbsoluteContentSize.Y + 4)
+end)
+
+-- Tombol-tombol (akan otomatis di-grid 2 kolom)
 local btnRefresh = makeButton(
-    btnRowHolder,"RefreshBtn","Refresh",
-    UDim2.new(0.33,-2,1,0),UDim2.new()
+    btnScroll,"RefreshBtn","Refresh",
+    UDim2.new(0,0,0,28),UDim2.new()
 )
 
 local btnCopyVec = makeButton(
-    btnRowHolder,"CopyVecBtn","Copy position + lookAt",
-    UDim2.new(0.33,-2,1,0),UDim2.new()
+    btnScroll,"CopyVecBtn","Copy position + lookAt",
+    UDim2.new(0,0,0,28),UDim2.new()
 )
 
 local btnCopyCF = makeButton(
-    btnRowHolder,"CopyCFBtn","Copy CFrame(Pos,Look)",
-    UDim2.new(0.34,-2,1,0),UDim2.new()
+    btnScroll,"CopyCFBtn","Copy CFrame(Pos,Look)",
+    UDim2.new(0,0,0,28),UDim2.new()
+)
+
+local btnCopyServerId = makeButton(
+    btnScroll,"CopyServerIdBtn","Copy Server ID",
+    UDim2.new(0,0,0,28),UDim2.new()
+)
+
+local btnCopyGameId = makeButton(
+    btnScroll,"CopyGameIdBtn","Copy GameId",
+    UDim2.new(0,0,0,28),UDim2.new()
 )
 
 ----------------------------------------------------------------
@@ -368,6 +414,16 @@ end)
 -- Copy CFrame.new(Vector3(Pos), Vector3(LookAt))
 connect(btnCopyCF.MouseButton1Click, function()
     doCopy(cfPayload,"CFrame(Pos, LookAt)")
+end)
+
+-- Copy Server ID (JobId)
+connect(btnCopyServerId.MouseButton1Click, function()
+    doCopy(serverIdPayload,"Server ID")
+end)
+
+-- Copy GameId
+connect(btnCopyGameId.MouseButton1Click, function()
+    doCopy(gameIdPayload,"GameId")
 end)
 
 -- Hotkey: C → copy assignment yang sama (selama tidak sedang ketik di TextBox)
