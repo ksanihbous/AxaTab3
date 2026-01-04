@@ -979,60 +979,18 @@ local skill4LastFireTime = 0
 local skill5LastFireTime = 0
 
 local skill1BaseInfoText = string.format(
-    "Skill 1 (Skill02) Cooldown server (perkiraan): %d detik (UI info).",
+    "Skill 1 Cooldown server (perkiraan): %d detik (UI info).",
     SKILL1_COOLDOWN
 )
 
 local skill2BaseInfoText = string.format(
-    "Skill 2 (Skill08) Cooldown server (perkiraan): %d detik (UI info). Jeda antar Skill1 -> Skill2: %d detik.",
+    "Skill 2 Cooldown server (perkiraan): %d detik (UI info). Jeda antar Skill1 -> Skill2: %d detik.",
     SKILL2_COOLDOWN,
     SKILL_SEQUENCE_GAP
 )
 
 local function fireSkill1()
     if not alive or not autoSkill1 then return end
-    if not FishRE then return end
-
-    local args = {
-        [1] = "Skill",
-        [2] = {
-            ["ID"] = "Skill02"
-        }
-    }
-
-    local ok, err = pcall(function()
-        FishRE:FireServer(unpack(args))
-    end)
-    if ok then
-        skill1LastFireTime = os.clock()
-    else
-        warn("[SpearFishing] Auto Skill02 gagal:", err)
-    end
-end
-
-local function fireSkill2()
-    if not alive or not autoSkill2 then return end
-    if not FishRE then return end
-
-    local args = {
-        [1] = "Skill",
-        [2] = {
-            ["ID"] = "Skill08"
-        }
-    }
-
-    local ok, err = pcall(function()
-        FishRE:FireServer(unpack(args))
-    end)
-    if ok then
-        skill2LastFireTime = os.clock()
-    else
-        warn("[SpearFishing] Auto Skill08 gagal:", err)
-    end
-end
-
-local function fireSkill3()
-    if not alive or not autoSkill3 then return end
     if not FishRE then return end
 
     local args = {
@@ -1046,35 +1004,14 @@ local function fireSkill3()
         FishRE:FireServer(unpack(args))
     end)
     if ok then
-        skill3LastFireTime = os.clock()
+        skill1LastFireTime = os.clock()
     else
         warn("[SpearFishing] Auto Skill01 gagal:", err)
     end
 end
 
-local function fireSkill4()
-    if not alive or not autoSkill4 then return end
-    if not FishRE then return end
-
-    local args = {
-        [1] = "Skill",
-        [2] = {
-            ["ID"] = "Skill07"
-        }
-    }
-
-    local ok, err = pcall(function()
-        FishRE:FireServer(unpack(args))
-    end)
-    if ok then
-        skill4LastFireTime = os.clock()
-    else
-        warn("[SpearFishing] Auto Skill07 gagal:", err)
-    end
-end
-
-local function fireSkill5()
-    if not alive or not autoSkill5 then return end
+local function fireSkill2()
+    if not alive or not autoSkill2 then return end
     if not FishRE then return end
 
     local args = {
@@ -1088,9 +1025,72 @@ local function fireSkill5()
         FishRE:FireServer(unpack(args))
     end)
     if ok then
+        skill2LastFireTime = os.clock()
+    else
+        warn("[SpearFishing] Auto Skill03 gagal:", err)
+    end
+end
+
+local function fireSkill3()
+    if not alive or not autoSkill3 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill04"
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill3LastFireTime = os.clock()
+    else
+        warn("[SpearFishing] Auto Skill04 gagal:", err)
+    end
+end
+
+local function fireSkill4()
+    if not alive or not autoSkill4 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill08"
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
+        skill4LastFireTime = os.clock()
+    else
+        warn("[SpearFishing] Auto Skill08 gagal:", err)
+    end
+end
+
+local function fireSkill5()
+    if not alive or not autoSkill5 then return end
+    if not FishRE then return end
+
+    local args = {
+        [1] = "Skill",
+        [2] = {
+            ["ID"] = "Skill07"
+        }
+    }
+
+    local ok, err = pcall(function()
+        FishRE:FireServer(unpack(args))
+    end)
+    if ok then
         skill5LastFireTime = os.clock()
     else
-        warn("[SpearFishing] Auto Skill09 gagal:", err)
+        warn("[SpearFishing] Auto Skill07 gagal:", err)
     end
 end
 
