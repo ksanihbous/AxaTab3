@@ -26,7 +26,7 @@ local UserInputService    = UserInputService    or game:GetService("UserInputSer
 local StarterGui          = StarterGui          or game:GetService("StarterGui")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local workspace           = workspace
-local TweenService        = TweenService        or game:GetService("TweenService") -- NEW: Tween untuk teleport smooth
+local TweenService        = TweenService        or game:GetService("TweenService")
 
 if not (frame and LocalPlayer) then
     return
@@ -53,17 +53,18 @@ local WorldSea     = workspace:FindFirstChild("WorldSea")
 local WorldBoss    = workspace:FindFirstChild("WorldBoss")
 
 -- Auto farm flags
-local autoFarmAll      = false  -- Semua fish sesuai Sea filter
-local autoFarmBoss     = true   -- Boss di WorldBoss
-local autoFarmRare     = false  -- Mythic/Legendary/Secret Sea4, Secret Sea5
-local autoFarmIllahi   = false  -- Illahi Sea6, Sea7
+local autoFarmAll      = false
+local autoFarmBoss     = true
+local autoFarmRare     = false
+local autoFarmIllahi   = false
 
--- NEW: Chest Farm flags + state
+-- Chest Farm flags + state
 local autoChestEnabled       = true   -- Auto Chest teleport
 local chestReturnEnabled     = false  -- Last Location (kembali ke posisi awal)
 local lastLocationCFrame     = nil    -- CFrame lokasi awal sebelum ke Chest
 local chestCurrentTargetPart = nil    -- Chest yang sedang dituju
-local chestHadRecently       = false  -- True kalau barusan ada Chest, false saat sudah habis
+local chestHadRecently       = false  -- True kalau barusan ada Chest
+local activeChestTween       = nil    -- tween teleport aktif (NEW)
 
 -- Sea mode (Sea6 & Sea7 digabung satu opsi)
 local seaModeList = {
@@ -73,26 +74,26 @@ local seaModeList = {
     "Sea3",
     "Sea4",
     "Sea5",
-    "Sea6_7", -- gabungan Sea6 & Sea7
+    "Sea6_7",
 }
-local seaModeIndex = 1  -- AutoDetect default
+local seaModeIndex = 1
 
 -- Rarity mode dropdown
 local rarityModeList = {
-    "Disabled",                         -- 1
-    "Legendary/Mythic/Secret/Illahi",   -- 2
-    "Per Fish",                         -- 3
+    "Disabled",
+    "Legendary/Mythic/Secret/Illahi",
+    "Per Fish",
 }
-local rarityModeIndex = 1  -- default Disabled
+local rarityModeIndex = 1
 
 -- AimLock + ESP Antena
-local aimLockEnabled    = true   -- lock target + pemilihan target
-local espAntennaEnabled = true   -- garis kuning (Beam) HRP -> target
+local aimLockEnabled    = true
+local espAntennaEnabled = true
 
 -- Shooting range (stud)
 local SHOOT_RANGE_MIN = 25
 local SHOOT_RANGE_MAX = 1000
-local shootRange      = 600   -- default
+local shootRange      = 600
 
 -- Farm delay (detik)
 local FARM_DELAY_MIN  = 0.01
@@ -102,67 +103,59 @@ local farmDelay       = 0.01
 -- Status label UI
 local statusLabel
 
--- Boss target global (dipakai juga untuk prioritas boss)
+-- Boss target global
 local currentBossTarget     = nil
 local currentBossTargetPart = nil
 
 ------------------- FISH DATA SETS -------------------
--- Illahi / Divine (Sea6, Sea7)
 local ILLAHI_SET = {
-    Fish400 = true, -- Nether Barracuda (Sea7)
-    Fish401 = true, -- Nether Anglerfish (Sea7)
-    Fish402 = true, -- Nether Manta Ray (Sea6)
-    Fish403 = true, -- Nether SwordFish (Sea6)
-    Fish404 = true, -- Nether Flying Fish (Sea6)
-    Fish405 = true, -- Diamond Flying Fish (Sea6)
+    Fish400 = true,
+    Fish401 = true,
+    Fish402 = true,
+    Fish403 = true,
+    Fish404 = true,
+    Fish405 = true,
 }
 
--- Secret Nether Island (Sea5)
 local SECRET_SEA5_SET = {
-    Fish500 = true, -- Abyssal Demon Shark (Sea5)
-    Fish501 = true, -- Nighfall Demon Shark (Sea5)
-    Fish503 = true, -- Ancient Gopala (Sea5)
-    Fish504 = true, -- Nighfall Gopala (Sea5)
-    Fish505 = true, -- Sharkster (Sea5)
-    Fish508 = true, -- Mayfly Dragon (Sea5)
-    Fish510 = true, -- Nighfall Sharkster (Sea5)
+    Fish500 = true,
+    Fish501 = true,
+    Fish503 = true,
+    Fish504 = true,
+    Fish505 = true,
+    Fish508 = true,
+    Fish510 = true,
 }
 
--- Submerged Pond rare list (Sea4) Legendary/Mythic/Secret
 local RARE_SEA4_SET = {
-    -- Climate Grassland
-    Fish55  = true, -- Purple Jellyfish Legendary
-    Fish56  = true, -- Prism Jellyfish Legendary
-    Fish57  = true, -- Prism Crab Legendary
-    Fish98  = true, -- Shark Mythic
-    Fish305 = true, -- Christmas Shark Mythic
-    Fish201 = true, -- Shimmer Puffer Secret
+    Fish55  = true,
+    Fish56  = true,
+    Fish57  = true,
+    Fish98  = true,
+    Fish305 = true,
+    Fish201 = true,
 
-    -- Climate Marsh
-    Fish104 = true, -- Bullfrog Legendary
-    Fish105 = true, -- Poison Dart Frog Mythic
-    Fish102 = true, -- Swamp Crocodile Mythic
-    Fish97  = true, -- Sawtooth Shark Mythic
-    Fish202 = true, -- Nebula Lantern Carp Secret
+    Fish104 = true,
+    Fish105 = true,
+    Fish102 = true,
+    Fish97  = true,
+    Fish202 = true,
 
-    -- Climate Iceborne
-    Fish121 = true, -- Dragon Whisker Fish Legendary
-    Fish123 = true, -- Leatherback Turtle Mythic
-    Fish111 = true, -- Frost Anglerfish Mythic
-    Fish130 = true, -- Devil Ray Mythic
-    Fish203 = true, -- Shimmer Unicorn Fish Secret
+    Fish121 = true,
+    Fish123 = true,
+    Fish111 = true,
+    Fish130 = true,
+    Fish203 = true,
 }
 
--- Boss IDs di WorldBoss
 local BOSS_IDS = {
-    Boss01 = true, -- Humpback Whale
-    Boss02 = true, -- Whale Shark
-    Boss03 = true, -- Crimson Rift Dragon
+    Boss01 = true,
+    Boss02 = true,
+    Boss03 = true,
 }
 
-------------------- DISPLAY NAME MAP (UNTUK LABEL ESP) -------------------
+------------------- DISPLAY NAME MAP -------------------
 local FISH_DISPLAY_NAME_MAP = {
-    -- Sea4 Grassland
     Fish55  = "Purple Jellyfish",
     Fish56  = "Prism Jellyfish",
     Fish57  = "Prism Crab",
@@ -170,21 +163,18 @@ local FISH_DISPLAY_NAME_MAP = {
     Fish305 = "Christmas Shark",
     Fish201 = "Shimmer Puffer",
 
-    -- Sea4 Marsh
     Fish104 = "Bullfrog",
     Fish105 = "Poison Dart Frog",
     Fish102 = "Swamp Crocodile",
     Fish97  = "Sawtooth Shark",
     Fish202 = "Nebula Lantern Carp",
 
-    -- Sea4 Iceborne
     Fish121 = "Dragon Whisker Fish",
     Fish123 = "Leatherback Turtle",
     Fish111 = "Frost Anglerfish",
     Fish130 = "Devil Ray",
     Fish203 = "Shimmer Unicorn Fish",
 
-    -- Sea5 Secret
     Fish500 = "Abyssal Demon Shark",
     Fish501 = "Nighfall Demon Shark",
     Fish503 = "Ancient Gopala",
@@ -193,7 +183,6 @@ local FISH_DISPLAY_NAME_MAP = {
     Fish508 = "Mayfly Dragon",
     Fish510 = "Nighfall Sharkster",
 
-    -- Sea6/Sea7 Illahi
     Fish400 = "Nether Barracuda",
     Fish401 = "Nether Anglerfish",
     Fish402 = "Nether Manta Ray",
@@ -224,7 +213,6 @@ end
 
 ------------------- PER FISH CONFIG -------------------
 local PER_FISH_CONFIG = {
-    -- Sea4 - Climate Grassland
     { id = "Fish55",  sea = "Sea4", climates = {"Grassland"}, name = "Fish55 Purple Jellyfish Legendary (Sea4 / Grassland)" },
     { id = "Fish56",  sea = "Sea4", climates = {"Grassland"}, name = "Fish56 Prism Jellyfish Legendary (Sea4 / Grassland)" },
     { id = "Fish57",  sea = "Sea4", climates = {"Grassland"}, name = "Fish57 Prism Crab Legendary (Sea4 / Grassland)" },
@@ -232,21 +220,18 @@ local PER_FISH_CONFIG = {
     { id = "Fish305", sea = "Sea4", climates = {"Grassland","Marsh","Iceborne"}, name = "Fish305 Christmas Shark Mythic (Sea4 / All Climate)" },
     { id = "Fish201", sea = "Sea4", climates = {"Grassland"}, name = "Fish201 Shimmer Puffer Secret (Sea4 / Grassland)" },
 
-    -- Sea4 - Climate Marsh
     { id = "Fish104", sea = "Sea4", climates = {"Marsh"}, name = "Fish104 Bullfrog Legendary (Sea4 / Marsh)" },
     { id = "Fish105", sea = "Sea4", climates = {"Marsh"}, name = "Fish105 Poison Dart Frog Mythic (Sea4 / Marsh)" },
     { id = "Fish102", sea = "Sea4", climates = {"Marsh"}, name = "Fish102 Swamp Crocodile Mythic (Sea4 / Marsh)" },
     { id = "Fish97",  sea = "Sea4", climates = {"Marsh"}, name = "Fish97 Sawtooth Shark Mythic (Sea4 / Marsh)" },
     { id = "Fish202", sea = "Sea4", climates = {"Marsh"}, name = "Fish202 Nebula Lantern Carp Secret (Sea4 / Marsh)" },
 
-    -- Sea4 - Climate Iceborne
     { id = "Fish121", sea = "Sea4", climates = {"Iceborne"}, name = "Fish121 Dragon Whisker Fish Legendary (Sea4 / Iceborne)" },
     { id = "Fish123", sea = "Sea4", climates = {"Iceborne"}, name = "Fish123 Leatherback Turtle Mythic (Sea4 / Iceborne)" },
     { id = "Fish111", sea = "Sea4", climates = {"Iceborne"}, name = "Fish111 Frost Anglerfish Mythic (Sea4 / Iceborne)" },
     { id = "Fish130", sea = "Sea4", climates = {"Iceborne"}, name = "Fish130 Devil Ray Mythic (Sea4 / Iceborne)" },
     { id = "Fish203", sea = "Sea4", climates = {"Iceborne"}, name = "Fish203 Shimmer Unicorn Fish Secret (Sea4 / Iceborne)" },
 
-    -- Sea5 Secret
     { id = "Fish500", sea = "Sea5", name = "Fish500 Abyssal Demon Shark Secret (Sea5)" },
     { id = "Fish501", sea = "Sea5", name = "Fish501 Nighfall Demon Shark Secret (Sea5)" },
     { id = "Fish503", sea = "Sea5", name = "Fish503 Ancient Gopala Secret (Sea5)" },
@@ -255,7 +240,6 @@ local PER_FISH_CONFIG = {
     { id = "Fish508", sea = "Sea5", name = "Fish508 Mayfly Dragon Secret (Sea5)" },
     { id = "Fish510", sea = "Sea5", name = "Fish510 Nighfall Sharkster Secret (Sea5)" },
 
-    -- Sea6/Sea7 Illahi/Divine
     { id = "Fish400", sea = "Sea7", name = "Fish400 Nether Barracuda Illahi (Sea7)" },
     { id = "Fish401", sea = "Sea7", name = "Fish401 Nether Anglerfish Illahi (Sea7)" },
     { id = "Fish402", sea = "Sea6", name = "Fish402 Nether Manta Ray Illahi (Sea6)" },
@@ -292,13 +276,8 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(newChar)
     character = newChar
 end))
 
-------------------- ESP DATA STRUCT (ANTENA BEAM SEPERTI TAB 15) -------------------
--- target yang bisa di-ESP (AimLock target)
--- trackedFishEspTargets[part] = { fishId, fishType, displayName }
+------------------- ESP STRUCT -------------------
 local trackedFishEspTargets = {}
-
--- ESP instance aktif
--- fishEspMap[part] = { beam, attachment, billboard, label, displayName, fishType, fishId }
 local fishEspMap    = {}
 local hrpAttachment = nil
 
@@ -431,7 +410,6 @@ local function evaluateEspForPart(part)
         return
     end
 
-    -- Di tab ini ESP hanya dikontrol oleh espAntennaEnabled
     if not espAntennaEnabled then
         destroyFishEsp(part)
         return
@@ -473,8 +451,6 @@ local function registerFishPartForEsp(part, fishId, fishType, displayName)
     table.insert(connections, conn)
 end
 
--- UPDATE: ESP Antena sekarang ikut Shooting Range:
--- jika target keluar dari jarak shootRange, ESP dihancurkan.
 local function updateEspTextDistances()
     if not next(fishEspMap) then
         return
@@ -495,7 +471,6 @@ local function updateEspTextDistances()
                 return (part.Position - hrpPos).Magnitude
             end)
             if ok then
-                -- Range check untuk ESP
                 if dist > shootRange then
                     destroyFishEsp(part)
                     trackedFishEspTargets[part] = nil
@@ -509,7 +484,7 @@ local function updateEspTextDistances()
     end
 end
 
-------------------- AIMLOCK STATE (PAKAI ESP DI ATAS) -------------------
+------------------- AIMLOCK STATE -------------------
 local aimLockTarget     = nil
 local aimLockTargetPart = nil
 local aimLockLabelName  = "Target"
@@ -534,7 +509,6 @@ local function setAimLockTarget(newPart, displayName)
     aimLockTargetPart = newPart
     aimLockLabelName  = displayName or "Fish"
 
-    -- Visual selalu mengikuti target aktif
     registerFishPartForEsp(newPart, "AimLock", "AimLock", aimLockLabelName)
 end
 
@@ -674,7 +648,6 @@ local function getActiveSeaFolder()
     if mode == "AutoDetect" then
         return detectCurrentSea()
     elseif mode == "Sea6_7" then
-        -- gabungan Sea6 & Sea7: pilih yang paling dekat / aktif
         local nearFolder, nearName = detectCurrentSea()
         if nearName == "Sea6" or nearName == "Sea7" then
             return nearFolder, nearName
@@ -750,7 +723,6 @@ local function sendHit(fishInstance, hitPos, tool)
 end
 
 ------------------- CHEST FARM HELPERS -------------------
--- Sumber Chest dari workspace, cari semua instance bernama "Chest"
 local function getChestParts()
     local root = workspace
     if not root then
@@ -811,6 +783,14 @@ local function smoothTeleportTo(position, lookAtPos)
         return
     end
 
+    -- Cancel tween lama kalau masih jalan
+    if activeChestTween then
+        pcall(function()
+            activeChestTween:Cancel()
+        end)
+        activeChestTween = nil
+    end
+
     local targetCFrame
     if lookAtPos and (lookAtPos - position).Magnitude > 0.1 then
         targetCFrame = CFrame.new(position, lookAtPos)
@@ -820,20 +800,36 @@ local function smoothTeleportTo(position, lookAtPos)
 
     local fromPos  = hrp.Position
     local distance = (fromPos - position).Magnitude
-    local duration = math.clamp(distance / 120, 0.08, 0.6)
 
-    pcall(function()
-        local tween = TweenService:Create(
-            hrp,
-            TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-            { CFrame = targetCFrame }
-        )
-        tween:Play()
-        tween.Completed:Wait()
+    -- Kalau jarak sangat dekat, langsung snap saja
+    if distance < 3 then
+        hrp.CFrame = targetCFrame
+        return
+    end
+
+    -- Durasi lebih pendek supaya terasa fast
+    local duration = math.clamp(distance / 260, 0.05, 0.22)
+
+    local tween = TweenService:Create(
+        hrp,
+        TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+        { CFrame = targetCFrame }
+    )
+    activeChestTween = tween
+    tween:Play()
+
+    -- Jangan block thread loop, tunggu di task terpisah
+    task.spawn(function()
+        pcall(function()
+            tween.Completed:Wait()
+        end)
+        if activeChestTween == tween then
+            activeChestTween = nil
+        end
     end)
 end
 
-------------------- PRIORITAS BOSS (CEK BOSS HIDUP) -------------------
+------------------- BOSS PRIORITY -------------------
 local function isBossAlive()
     if not autoFarmBoss then
         return false
@@ -859,7 +855,7 @@ local function isBossAlive()
     return true
 end
 
-------------------- RARITY FILTER LOGIC -------------------
+------------------- RARITY FILTER -------------------
 local function baseFlagsAllowFish(seaName, fishName)
     if autoFarmAll then
         return true
@@ -896,7 +892,6 @@ local function isRareTypeFish(seaName, fishName)
     return false
 end
 
--- Helper: cek apakah ada minimal satu Illahi yang di-toggle ON di Per Fish
 local function anyIllahiPerFishEnabled()
     for fishId, _ in pairs(ILLAHI_SET) do
         if PER_FISH_FLAGS[fishId] == true then
@@ -919,9 +914,6 @@ local function shouldTargetFish(seaName, fishName)
         return false
     end
 
-    -- PRIORITAS / UPGRADE:
-    -- Jika AutoFarm Illahi aktif dan ada minimal satu Illahi yang di-toggle
-    -- maka semua Illahi akan mengikuti toggle Per Fish, walaupun Rarity Mode bukan "Per Fish".
     if (seaName == "Sea6" or seaName == "Sea7") and ILLAHI_SET[fishName] then
         if anyIllahiPerFishEnabled() then
             return PER_FISH_FLAGS[fishName] == true
@@ -929,20 +921,17 @@ local function shouldTargetFish(seaName, fishName)
     end
 
     if rarityModeIndex == 1 then
-        -- Disabled: hanya pakai flag AutoFarm (All / Rare / Illahi)
         return true
     elseif rarityModeIndex == 2 then
-        -- Legendary/Mythic/Secret/Illahi
         return isRareTypeFish(seaName, fishName)
     elseif rarityModeIndex == 3 then
-        -- Per Fish global (termasuk Illahi kalau tidak sedang override khusus di atas)
         return PER_FISH_FLAGS[fishName] == true
     end
 
     return false
 end
 
-------------------- AUTO FARM FISH (SEA) -------------------
+------------------- AUTO FARM FISH -------------------
 local currentFishTarget      = nil
 local currentFishTargetSea   = nil
 
@@ -1003,7 +992,6 @@ local function pickNewFishTarget(seaFolder, seaName)
 end
 
 local function processAutoFarmFishStep()
-    -- PRIORITAS: kalau boss sedang hidup, skip AutoFarm fish
     if autoFarmBoss and isBossAlive() then
         return
     end
@@ -1209,7 +1197,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.4"
+    title.Text = "Spear Fish Farm V3.4+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1580,7 +1568,6 @@ local function getCurrentClimateTag()
     return nil
 end
 
--- PERBAIKAN: Sea Mode "Sea6 & Sea7" harus memunculkan 6 ikan (Sea6 + Sea7)
 local function getPerFishCandidates()
     local uiMode = seaModeList[seaModeIndex] or "AutoDetect"
     local _, detectedSeaName = getActiveSeaFolder()
@@ -1983,7 +1970,7 @@ end
 local function buildAllUI()
     local _, bodyScroll = createMainLayout()
     buildAutoFarmCard(bodyScroll)
-    buildChestFarmCard(bodyScroll) -- NEW: card kedua
+    buildChestFarmCard(bodyScroll)
 end
 
 buildAllUI()
@@ -2020,7 +2007,6 @@ task.spawn(function()
     end
 end)
 
--- Sinkron Sea + Climate untuk Per Fish UI (ringan)
 task.spawn(function()
     while alive do
         local ok = pcall(function()
@@ -2032,7 +2018,7 @@ task.spawn(function()
     end
 end)
 
--- NEW: Loop Chest Farm (teleport smooth + last location)
+-- Loop Chest Farm (lebih cepat + non-blocking)
 task.spawn(function()
     while alive do
         local ok, err = pcall(function()
@@ -2048,7 +2034,6 @@ task.spawn(function()
             local chestPart = getNearestChestPart()
 
             if chestPart then
-                -- Simpan lokasi awal sekali di awal sesi chest
                 if chestReturnEnabled and not lastLocationCFrame then
                     lastLocationCFrame = hrp.CFrame
                 end
@@ -2058,11 +2043,10 @@ task.spawn(function()
                     chestHadRecently       = true
 
                     local chestPos = chestPart.Position
-                    local offset   = Vector3.new(0, 4, 0) -- sedikit di atas Chest
+                    local offset   = Vector3.new(0, 4, 0)
                     smoothTeleportTo(chestPos + offset, chestPos)
                 end
             else
-                -- Tidak ada chest di workspace
                 if chestHadRecently then
                     chestHadRecently       = false
                     chestCurrentTargetPart = nil
@@ -2082,7 +2066,7 @@ task.spawn(function()
             warn("[SpearFishFarm] ChestFarm error:", err)
         end
 
-        task.wait(0.3)
+        task.wait(0.1) -- sebelumnya 0.3, sekarang lebih responsif
     end
 end)
 
@@ -2097,7 +2081,6 @@ _G.AxaHub.TabCleanup[tabId] = function()
     aimLockEnabled     = false
     espAntennaEnabled  = false
 
-    -- NEW: reset Chest Farm
     autoChestEnabled       = false
     chestReturnEnabled     = false
     lastLocationCFrame     = nil
@@ -2113,6 +2096,13 @@ _G.AxaHub.TabCleanup[tabId] = function()
 
     trackedFishEspTargets = {}
     fishEspMap            = {}
+
+    if activeChestTween then
+        pcall(function()
+            activeChestTween:Cancel()
+        end)
+        activeChestTween = nil
+    end
 
     for _, conn in ipairs(connections) do
         if conn and conn.Disconnect then
