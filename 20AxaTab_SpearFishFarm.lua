@@ -60,7 +60,7 @@ local autoFarmIllahi   = false
 
 -- Chest Farm flags + state
 local autoChestEnabled       = true   -- Auto Chest teleport
-local chestReturnEnabled     = false  -- Last Location (kembali ke posisi awal)
+local chestReturnEnabled     = true  -- Last Location (kembali ke posisi awal)
 local lastLocationCFrame     = nil    -- CFrame lokasi awal sebelum ke Chest
 local chestCurrentTargetPart = nil    -- Chest yang sedang dituju
 local chestHadRecently       = false  -- True kalau barusan ada Chest
@@ -1197,7 +1197,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.4+"
+    title.Text = "Spear Fish Farm V3.3+"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
