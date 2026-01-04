@@ -12,6 +12,7 @@
 --    - AimLock Fish + ESP Antena kuning (Attachment + Beam dari HRP)
 --    - Shooting Range slider (25 - 1000 stud)
 --    - Farm Delay slider (0.01 - 0.30 detik)
+--    - Chest Farm: Auto Chest + Last Location
 --==========================================================
 
 ------------------- ENV / SHORTCUT -------------------
@@ -25,6 +26,7 @@ local UserInputService    = UserInputService    or game:GetService("UserInputSer
 local StarterGui          = StarterGui          or game:GetService("StarterGui")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local workspace           = workspace
+local TweenService        = TweenService        or game:GetService("TweenService") -- NEW: Tween untuk teleport smooth
 
 if not (frame and LocalPlayer) then
     return
@@ -52,9 +54,16 @@ local WorldBoss    = workspace:FindFirstChild("WorldBoss")
 
 -- Auto farm flags
 local autoFarmAll      = false  -- Semua fish sesuai Sea filter
-local autoFarmBoss     = true  -- Boss di WorldBoss
+local autoFarmBoss     = true   -- Boss di WorldBoss
 local autoFarmRare     = false  -- Mythic/Legendary/Secret Sea4, Secret Sea5
 local autoFarmIllahi   = false  -- Illahi Sea6, Sea7
+
+-- NEW: Chest Farm flags + state
+local autoChestEnabled       = true   -- Auto Chest teleport
+local chestReturnEnabled     = false  -- Last Location (kembali ke posisi awal)
+local lastLocationCFrame     = nil    -- CFrame lokasi awal sebelum ke Chest
+local chestCurrentTargetPart = nil    -- Chest yang sedang dituju
+local chestHadRecently       = false  -- True kalau barusan ada Chest, false saat sudah habis
 
 -- Sea mode (Sea6 & Sea7 digabung satu opsi)
 local seaModeList = {
@@ -740,6 +749,90 @@ local function sendHit(fishInstance, hitPos, tool)
     end)
 end
 
+------------------- CHEST FARM HELPERS -------------------
+-- Sumber Chest dari workspace, cari semua instance bernama "Chest"
+local function getChestParts()
+    local root = workspace
+    if not root then
+        return {}
+    end
+
+    local result = {}
+    local ok, descendants = pcall(function()
+        return root:GetDescendants()
+    end)
+    if not ok or not descendants then
+        return result
+    end
+
+    for _, inst in ipairs(descendants) do
+        if inst.Name == "Chest" then
+            if inst:IsA("BasePart") then
+                table.insert(result, inst)
+            elseif inst:IsA("Model") then
+                local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+                if primary then
+                    table.insert(result, primary)
+                end
+            end
+        end
+    end
+
+    return result
+end
+
+local function getNearestChestPart()
+    local hrp = getHRP()
+    if not hrp then
+        return nil
+    end
+    local hrpPos = hrp.Position
+
+    local parts = getChestParts()
+    local best
+    local bestDist = math.huge
+
+    for _, part in ipairs(parts) do
+        if part and part.Parent then
+            local d = (part.Position - hrpPos).Magnitude
+            if d < bestDist then
+                bestDist = d
+                best     = part
+            end
+        end
+    end
+
+    return best
+end
+
+local function smoothTeleportTo(position, lookAtPos)
+    local hrp = getHRP()
+    if not hrp or not position then
+        return
+    end
+
+    local targetCFrame
+    if lookAtPos and (lookAtPos - position).Magnitude > 0.1 then
+        targetCFrame = CFrame.new(position, lookAtPos)
+    else
+        targetCFrame = CFrame.new(position)
+    end
+
+    local fromPos  = hrp.Position
+    local distance = (fromPos - position).Magnitude
+    local duration = math.clamp(distance / 120, 0.08, 0.6)
+
+    pcall(function()
+        local tween = TweenService:Create(
+            hrp,
+            TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+            { CFrame = targetCFrame }
+        )
+        tween:Play()
+        tween.Completed:Wait()
+    end)
+end
+
 ------------------- PRIORITAS BOSS (CEK BOSS HIDUP) -------------------
 local function isBossAlive()
     if not autoFarmBoss then
@@ -1116,7 +1209,7 @@ local function createMainLayout()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Position = UDim2.new(0, 14, 0, 4)
     title.Size = UDim2.new(1, -28, 0, 20)
-    title.Text = "Spear Fish Farm V3.3"
+    title.Text = "Spear Fish Farm V3.4"
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
@@ -1416,11 +1509,13 @@ local function updateStatusLabel()
     local rarityModeTxt = rarityModeList[rarityModeIndex] or "Disabled"
 
     statusLabel.Text = string.format(
-        "Status: AutoFarm %s, Boss %s, Rare %s, Illahi %s, SeaMode %s, Rarity %s, AimLock %s, ESP Antena %s, Range %.0f stud, Delay %.3fs.",
+        "Status: AutoFarm %s, Boss %s, Rare %s, Illahi %s, Chest %s, LastLoc %s, SeaMode %s, Rarity %s, AimLock %s, ESP Antena %s, Range %.0f stud, Delay %.3fs.",
         autoFarmAll and "ON" or "OFF",
         autoFarmBoss and "ON" or "OFF",
         autoFarmRare and "ON" or "OFF",
         autoFarmIllahi and "ON" or "OFF",
+        autoChestEnabled and "ON" or "OFF",
+        chestReturnEnabled and "ON" or "OFF",
         seaModeText,
         rarityModeTxt,
         aimLockEnabled and "ON" or "OFF",
@@ -1825,10 +1920,70 @@ local function buildAutoFarmCard(bodyScroll)
     end))
 end
 
+------------------- BUILD UI CARD: CHEST FARM -------------------
+local function buildChestFarmCard(bodyScroll)
+    local card = createCard(
+        bodyScroll,
+        "Chest Farm",
+        "Auto teleport smooth ke Chest saat muncul dari workspace, dan kembali ke posisi awal setelah Chest habis (opsional).",
+        2,
+        140
+    )
+
+    local container = Instance.new("Frame")
+    container.Name = "ChestFarmContainer"
+    container.Parent = card
+    container.BackgroundTransparency = 1
+    container.BorderSizePixel = 0
+    container.Position = UDim2.new(0, 0, 0, 40)
+    container.Size = UDim2.new(1, 0, 1, -40)
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = container
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 6)
+
+    local autoChestButton = createToggleButton(
+        container,
+        "Auto Chest (Teleport ke Chest)",
+        autoChestEnabled
+    )
+
+    local lastLocButton = createToggleButton(
+        container,
+        "Last Location (Kembali ke posisi awal)",
+        chestReturnEnabled
+    )
+
+    table.insert(connections, autoChestButton.MouseButton1Click:Connect(function()
+        autoChestEnabled = not autoChestEnabled
+        setToggleButtonState(autoChestButton, "Auto Chest (Teleport ke Chest)", autoChestEnabled)
+        if not autoChestEnabled then
+            chestCurrentTargetPart = nil
+            lastLocationCFrame     = nil
+            chestHadRecently       = false
+        end
+        updateStatusLabel()
+        notify("Spear Fish Farm", "Auto Chest: " .. (autoChestEnabled and "ON" or "OFF"), 2)
+    end))
+
+    table.insert(connections, lastLocButton.MouseButton1Click:Connect(function()
+        chestReturnEnabled = not chestReturnEnabled
+        setToggleButtonState(lastLocButton, "Last Location (Kembali ke posisi awal)", chestReturnEnabled)
+        if not chestReturnEnabled then
+            lastLocationCFrame = nil
+        end
+        updateStatusLabel()
+        notify("Spear Fish Farm", "Last Location: " .. (chestReturnEnabled and "ON" or "OFF"), 2)
+    end))
+end
+
 ------------------- BUILD UI -------------------
 local function buildAllUI()
     local _, bodyScroll = createMainLayout()
     buildAutoFarmCard(bodyScroll)
+    buildChestFarmCard(bodyScroll) -- NEW: card kedua
 end
 
 buildAllUI()
@@ -1877,6 +2032,60 @@ task.spawn(function()
     end
 end)
 
+-- NEW: Loop Chest Farm (teleport smooth + last location)
+task.spawn(function()
+    while alive do
+        local ok, err = pcall(function()
+            if not autoChestEnabled then
+                return
+            end
+
+            local hrp = getHRP()
+            if not hrp then
+                return
+            end
+
+            local chestPart = getNearestChestPart()
+
+            if chestPart then
+                -- Simpan lokasi awal sekali di awal sesi chest
+                if chestReturnEnabled and not lastLocationCFrame then
+                    lastLocationCFrame = hrp.CFrame
+                end
+
+                if chestPart ~= chestCurrentTargetPart then
+                    chestCurrentTargetPart = chestPart
+                    chestHadRecently       = true
+
+                    local chestPos = chestPart.Position
+                    local offset   = Vector3.new(0, 4, 0) -- sedikit di atas Chest
+                    smoothTeleportTo(chestPos + offset, chestPos)
+                end
+            else
+                -- Tidak ada chest di workspace
+                if chestHadRecently then
+                    chestHadRecently       = false
+                    chestCurrentTargetPart = nil
+
+                    if chestReturnEnabled and lastLocationCFrame then
+                        local backPos = lastLocationCFrame.Position
+                        local lookPos = backPos + lastLocationCFrame.LookVector
+                        smoothTeleportTo(backPos, lookPos)
+                    end
+
+                    lastLocationCFrame = nil
+                end
+            end
+        end)
+
+        if not ok then
+            warn("[SpearFishFarm] ChestFarm error:", err)
+        end
+
+        task.wait(0.3)
+    end
+end)
+
 ------------------- TAB CLEANUP -------------------
 _G.AxaHub.TabCleanup[tabId] = function()
     alive = false
@@ -1887,6 +2096,13 @@ _G.AxaHub.TabCleanup[tabId] = function()
     autoFarmIllahi     = false
     aimLockEnabled     = false
     espAntennaEnabled  = false
+
+    -- NEW: reset Chest Farm
+    autoChestEnabled       = false
+    chestReturnEnabled     = false
+    lastLocationCFrame     = nil
+    chestCurrentTargetPart = nil
+    chestHadRecently       = false
 
     currentFishTarget      = nil
     currentFishTargetSea   = nil
