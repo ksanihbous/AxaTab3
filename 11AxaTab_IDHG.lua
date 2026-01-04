@@ -761,6 +761,7 @@ local FavoriteFish = (function()
     local FAV_FISH_NAME = {
         { Name = "Disable"        },
         { Name = "ikan lumba pink"},
+        { Name = "ikan orca"      },
         { Name = "ikan kraken"    },
         { Name = "ikan kuda"      },
         { Name = "ikan lele"      },
